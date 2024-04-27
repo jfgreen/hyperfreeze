@@ -1,4 +1,3 @@
-use std::iter::Peekable;
 use std::str::CharIndices;
 
 const NODE_START: char = '[';
@@ -14,10 +13,9 @@ enum Token<'a> {
     Whitespace,
 }
 
-//TODO: Try a simple implementation without peekable, do the peek ourself
 struct Tokeniser<'a> {
     input: &'a str,
-    chars: Peekable<CharIndices<'a>>,
+    chars: CharIndices<'a>,
     current_char: Option<char>,
     current_index: usize,
     next_char: Option<char>,
@@ -47,16 +45,21 @@ impl<'a> Iterator for Tokeniser<'a> {
         }
     }
 }
+
 impl<'a> Tokeniser<'a> {
     fn new(input: &'a str) -> Self {
-        Self {
+        let mut tokeniser = Self {
             input,
-            chars: input.char_indices().peekable(),
+            chars: input.char_indices(),
             current_char: None,
             current_index: 0,
             next_char: None,
             next_index: 0,
-        }
+        };
+
+        // Advance to establish peek ahead
+        tokeniser.advance();
+        tokeniser
     }
 
     // TODO: Maybe want to be less restrictive about what can be in a node name?
@@ -85,12 +88,16 @@ impl<'a> Tokeniser<'a> {
     }
 
     fn advance(&mut self) {
-        let next = self.chars.next();
-        let peek = self.chars.peek();
-        self.current_char = next.map(|(_, c)| c);
-        self.current_index = next.map(|(i, _)| i).unwrap_or(self.input.len());
-        self.next_char = peek.map(|(_, c)| *c);
-        self.next_index = peek.map(|(i, _)| *i).unwrap_or(self.input.len());
+        self.current_char = self.next_char;
+        self.current_index = self.next_index;
+
+        if let Some((i, c)) = self.chars.next() {
+            self.next_char = Some(c);
+            self.next_index = i
+        } else {
+            self.next_char = None;
+            self.next_index = self.input.len()
+        }
     }
 
     fn advance_while(&mut self, predicate: fn(char) -> bool) {
