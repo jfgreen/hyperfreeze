@@ -5,6 +5,16 @@ const NODE_END: char = ']';
 
 //TODO: Have an enum for accepted Node keywords?
 
+trait CharExt {
+    fn can_be_used_in_text(&self) -> bool;
+}
+
+impl CharExt for char {
+    fn can_be_used_in_text(&self) -> bool {
+        !(*self == NODE_START || *self == NODE_END || self.is_whitespace())
+    }
+}
+
 #[derive(PartialEq, Eq, Debug)]
 enum Token<'a> {
     NodeStart(&'a str),
@@ -42,7 +52,6 @@ impl<'a> Iterator for Tokeniser<'a> {
     }
 }
 
-//TODO: If possible, continue to simplify
 impl<'a> Tokeniser<'a> {
     fn new(input: &'a str) -> Self {
         let mut tokeniser = Self {
@@ -79,10 +88,7 @@ impl<'a> Tokeniser<'a> {
 
     fn consume_node_name(&mut self) -> &'a str {
         // If the '[' is not followed, by any usable chars, dont advance
-        if self
-            .next_char
-            .is_some_and(|c| c == NODE_START || c == NODE_END || c.is_whitespace())
-        {
+        if !self.next_char_is_text() {
             return "";
         }
 
@@ -97,7 +103,7 @@ impl<'a> Tokeniser<'a> {
 
     fn consume_text(&mut self) -> &'a str {
         let i1 = self.current_index;
-        self.advance_while_next_is(|c| c != NODE_START && c != NODE_END && !c.is_whitespace());
+        self.advance_while_next_is(|c| c.can_be_used_in_text());
         let i2 = self.next_index;
         &self.input[i1..i2]
     }
@@ -113,6 +119,10 @@ impl<'a> Tokeniser<'a> {
             self.next_char = None;
             self.next_index = self.input.len()
         }
+    }
+
+    fn next_char_is_text(&mut self) -> bool {
+        self.next_char.is_some_and(|c| c.can_be_used_in_text())
     }
 
     fn advance_while_next_is(&mut self, predicate: fn(char) -> bool) {
