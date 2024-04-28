@@ -3,8 +3,6 @@ use std::str::CharIndices;
 const NODE_START: char = '[';
 const NODE_END: char = ']';
 
-//TODO: Have an enum for accepted Node keywords?
-
 trait CharExt {
     fn can_be_used_in_text(&self) -> bool;
 }
@@ -169,7 +167,6 @@ impl<'a> Tokeniser<'a> {
 //TODO: Try and be more evil in tests
 //TODO: At least test for unicode/emoji
 //TODO: Node attributes
-//TODO: Test for empty node [bold]
 //TODO: Escaping, i.e \[, \], and \\
 
 #[cfg(test)]
@@ -333,6 +330,17 @@ mod test {
             Token::NodeStart(NodeType::Title),
             Token::NodeStart(NodeType::Unknown),
         ];
+
+        let actual = tokenise(input);
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn empty_node() {
+        let input = "[bold]";
+
+        let expected = vec![Token::NodeStart(NodeType::Bold), Token::NodeEnd];
 
         let actual = tokenise(input);
 
