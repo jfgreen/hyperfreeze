@@ -16,8 +16,16 @@ impl CharExt for char {
 }
 
 #[derive(PartialEq, Eq, Debug)]
+enum NodeType {
+    Bold,
+    Underline,
+    Title,
+    Unknown,
+}
+
+#[derive(PartialEq, Eq, Debug)]
 enum Token<'a> {
-    NodeStart(&'a str),
+    NodeStart(NodeType),
     NodeEnd,
     Linebreak,
     Text(&'a str),
@@ -75,7 +83,18 @@ impl<'a> Tokeniser<'a> {
     fn handle_node_start(&mut self) -> Token<'a> {
         let node_name = self.eat_node_name();
         self.eat_following_whitespace();
-        Token::NodeStart(node_name)
+
+        // Note that we fall back to an 'unknown' node type because in practice
+        // this is simpler than the alterantive of returning an error. It also
+        // makes it possible for the tokeniser to implement the Iterator trait.
+
+        let node_type = match node_name {
+            "bold" => NodeType::Bold,
+            "underline" => NodeType::Underline,
+            "title" => NodeType::Title,
+            _ => NodeType::Unknown,
+        };
+        Token::NodeStart(node_type)
     }
 
     fn handle_new_line(&mut self) -> Token<'a> {
@@ -102,12 +121,12 @@ impl<'a> Tokeniser<'a> {
     }
 
     fn eat_node_name(&mut self) -> &'a str {
-        // If the '[' is not followed, by any usable chars, dont advance
+        // Only continue if the '[' is followed by usable characters
         if !self.next_char_is_text() {
             return "";
         }
 
-        // Otherwise, eat the chars comprising the node name
+        // Otherwise, eat the characters comprising the node name
         self.advance();
         self.eat_text()
     }
@@ -150,6 +169,8 @@ impl<'a> Tokeniser<'a> {
 //TODO: Try and be more evil in tests
 //TODO: At least test for unicode/emoji
 //TODO: Node attributes
+//TODO: Test for empty node [bold]
+//TODO: Escaping, i.e \[, \], and \\
 
 #[cfg(test)]
 mod test {
@@ -165,7 +186,7 @@ mod test {
         let input = "[title Enterprise Software Design For Cats]";
 
         let expected = vec![
-            Token::NodeStart("title"),
+            Token::NodeStart(NodeType::Title),
             Token::Text("Enterprise"),
             Token::Whitespace,
             Token::Text("Software"),
@@ -203,8 +224,8 @@ mod test {
         let input = "[bold[underline Cats]]";
 
         let expected = vec![
-            Token::NodeStart("bold"),
-            Token::NodeStart("underline"),
+            Token::NodeStart(NodeType::Bold),
+            Token::NodeStart(NodeType::Underline),
             Token::Text("Cats"),
             Token::NodeEnd,
             Token::NodeEnd,
@@ -220,7 +241,7 @@ mod test {
         let input = "[ Fantastic creatures";
 
         let expected = vec![
-            Token::NodeStart(""),
+            Token::NodeStart(NodeType::Unknown),
             Token::Text("Fantastic"),
             Token::Whitespace,
             Token::Text("creatures"),
@@ -236,9 +257,9 @@ mod test {
         let input = "[[[";
 
         let expected = vec![
-            Token::NodeStart(""),
-            Token::NodeStart(""),
-            Token::NodeStart(""),
+            Token::NodeStart(NodeType::Unknown),
+            Token::NodeStart(NodeType::Unknown),
+            Token::NodeStart(NodeType::Unknown),
         ];
 
         let actual = tokenise(input);
@@ -286,6 +307,7 @@ mod test {
 
         assert_eq!(actual, expected);
     }
+
     #[test]
     fn three_new_lines_becomes_linebreak() {
         let input = "Cats\n\n\nwhiskers";
@@ -294,6 +316,22 @@ mod test {
             Token::Text("Cats"),
             Token::Linebreak,
             Token::Text("whiskers"),
+        ];
+
+        let actual = tokenise(input);
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn node_types() {
+        let input = concat!("[bold\n", "[underline\n", "[title\n", "[mango");
+
+        let expected = vec![
+            Token::NodeStart(NodeType::Bold),
+            Token::NodeStart(NodeType::Underline),
+            Token::NodeStart(NodeType::Title),
+            Token::NodeStart(NodeType::Unknown),
         ];
 
         let actual = tokenise(input);
