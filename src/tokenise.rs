@@ -19,6 +19,7 @@ impl CharExt for char {
 enum Token<'a> {
     NodeStart(&'a str),
     NodeEnd,
+    Linebreak,
     Text(&'a str),
     Whitespace,
 }
@@ -43,10 +44,11 @@ impl<'a> Iterator for Tokeniser<'a> {
         self.advance();
 
         match self.current_char {
-            Some(NODE_START) => Some(self.eat_node_start()),
+            Some(NODE_START) => Some(self.handle_node_start()),
             Some(NODE_END) => Some(Token::NodeEnd),
-            Some(c) if c.is_whitespace() => Some(self.eat_whitespace()),
-            Some(_) => Some(self.eat_text()),
+            Some('\n') => Some(self.handle_new_line()),
+            Some(c) if c.is_whitespace() => Some(self.handle_whitespace()),
+            Some(_) => Some(self.handle_text()),
             None => None,
         }
     }
@@ -70,38 +72,51 @@ impl<'a> Tokeniser<'a> {
         tokeniser
     }
 
-    fn eat_node_start(&mut self) -> Token<'a> {
-        let node_name = self.consume_node_name();
-        self.consume_following_whitespace();
+    fn handle_node_start(&mut self) -> Token<'a> {
+        let node_name = self.eat_node_name();
+        self.eat_following_whitespace();
         Token::NodeStart(node_name)
     }
 
-    fn eat_whitespace(&mut self) -> Token<'a> {
-        self.consume_following_whitespace();
+    fn handle_new_line(&mut self) -> Token<'a> {
+        // New lines are usually treated as whitespace. However, if there is
+        // more than one in a row, they are all treated as a single line break
+        if self.next_char == Some('\n') {
+            while self.next_char == Some('\n') {
+                self.advance();
+            }
+            Token::Linebreak
+        } else {
+            Token::Whitespace
+        }
+    }
+
+    fn handle_whitespace(&mut self) -> Token<'a> {
+        self.eat_following_whitespace();
         Token::Whitespace
     }
 
-    fn eat_text(&mut self) -> Token<'a> {
-        let text = self.consume_text();
+    fn handle_text(&mut self) -> Token<'a> {
+        let text = self.eat_text();
         Token::Text(text)
     }
 
-    fn consume_node_name(&mut self) -> &'a str {
+    fn eat_node_name(&mut self) -> &'a str {
         // If the '[' is not followed, by any usable chars, dont advance
         if !self.next_char_is_text() {
             return "";
         }
 
-        // Otherwise, consume chars comprising the nodes name
+        // Otherwise, eat the chars comprising the node name
         self.advance();
-        self.consume_text()
+        self.eat_text()
     }
 
-    fn consume_following_whitespace(&mut self) {
+    fn eat_following_whitespace(&mut self) {
         self.advance_while_next_is(|c| c.is_whitespace());
     }
 
-    fn consume_text(&mut self) -> &'a str {
+    fn eat_text(&mut self) -> &'a str {
         let i1 = self.current_index;
         self.advance_while_next_is(|c| c.can_be_used_in_text());
         let i2 = self.next_index;
@@ -134,7 +149,6 @@ impl<'a> Tokeniser<'a> {
 
 //TODO: Try and be more evil in tests
 //TODO: At least test for unicode/emoji
-//TODO: Make two newlines be a linebreak (but one just be whitespace)
 //TODO: Node attributes
 
 #[cfg(test)]
@@ -237,6 +251,50 @@ mod test {
         let input = "";
 
         let expected = vec![];
+
+        let actual = tokenise(input);
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn new_line_becomes_whitespace() {
+        let input = "Cats\nwhiskers";
+
+        let expected = vec![
+            Token::Text("Cats"),
+            Token::Whitespace,
+            Token::Text("whiskers"),
+        ];
+
+        let actual = tokenise(input);
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn two_new_lines_becomes_linebreak() {
+        let input = "Cats\n\nwhiskers";
+
+        let expected = vec![
+            Token::Text("Cats"),
+            Token::Linebreak,
+            Token::Text("whiskers"),
+        ];
+
+        let actual = tokenise(input);
+
+        assert_eq!(actual, expected);
+    }
+    #[test]
+    fn three_new_lines_becomes_linebreak() {
+        let input = "Cats\n\n\nwhiskers";
+
+        let expected = vec![
+            Token::Text("Cats"),
+            Token::Linebreak,
+            Token::Text("whiskers"),
+        ];
 
         let actual = tokenise(input);
 
