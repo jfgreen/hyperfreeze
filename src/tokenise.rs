@@ -33,20 +33,10 @@ impl<'a> Iterator for Tokeniser<'a> {
         self.advance();
 
         match self.current_char {
-            Some(NODE_START) => {
-                let node_name = self.eat_node_name();
-                self.eat_following_whitespace();
-                Some(Token::NodeStart(node_name))
-            }
+            Some(NODE_START) => Some(self.eat_node_start()),
             Some(NODE_END) => Some(Token::NodeEnd),
-            Some(c) if c.is_whitespace() => {
-                self.eat_following_whitespace();
-                Some(Token::Whitespace)
-            }
-            Some(_) => {
-                let text = self.eat_text();
-                Some(Token::Text(text))
-            }
+            Some(c) if c.is_whitespace() => Some(self.eat_whitespace()),
+            Some(_) => Some(self.eat_text()),
             None => None,
         }
     }
@@ -71,7 +61,23 @@ impl<'a> Tokeniser<'a> {
         tokeniser
     }
 
-    fn eat_node_name(&mut self) -> &'a str {
+    fn eat_node_start(&mut self) -> Token<'a> {
+        let node_name = self.consume_node_name();
+        self.consume_following_whitespace();
+        Token::NodeStart(node_name)
+    }
+
+    fn eat_whitespace(&mut self) -> Token<'a> {
+        self.consume_following_whitespace();
+        Token::Whitespace
+    }
+
+    fn eat_text(&mut self) -> Token<'a> {
+        let text = self.consume_text();
+        Token::Text(text)
+    }
+
+    fn consume_node_name(&mut self) -> &'a str {
         // If the '[' is not followed, by any usable chars, dont advance
         if self
             .next_char
@@ -82,14 +88,14 @@ impl<'a> Tokeniser<'a> {
 
         // Otherwise, consume chars comprising the nodes name
         self.advance();
-        self.eat_text()
+        self.consume_text()
     }
 
-    fn eat_following_whitespace(&mut self) {
+    fn consume_following_whitespace(&mut self) {
         self.advance_while_next_is(|c| c.is_whitespace());
     }
 
-    fn eat_text(&mut self) -> &'a str {
+    fn consume_text(&mut self) -> &'a str {
         let i1 = self.current_index;
         self.advance_while_next_is(|c| c != NODE_START && c != NODE_END && !c.is_whitespace());
         let i2 = self.next_index;
@@ -115,6 +121,11 @@ impl<'a> Tokeniser<'a> {
         }
     }
 }
+
+//TODO: Try and be more evil in tests
+//TODO: At least test for unicode/emoji
+//TODO: Make two newlines be a linebreak (but one just be whitespace)
+//TODO: Node attributes
 
 #[cfg(test)]
 mod test {
