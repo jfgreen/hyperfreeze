@@ -1,42 +1,40 @@
 use std::str::CharIndices;
 
-const NODE_START: char = '[';
-const NODE_END: char = ']';
+const DELIM_BOLD: char = '*';
+const DELIM_EMPH: char = '_';
+const DELIM_STRIKE: char = '-';
+const DELIM_RAW: char = '`';
 
-trait CharExt {
-    fn can_be_used_in_text(&self) -> bool;
-}
-
-impl CharExt for char {
-    fn can_be_used_in_text(&self) -> bool {
-        !(*self == NODE_START || *self == NODE_END || self.is_whitespace())
-    }
-}
+//TODO: Keep track of what line, row a token is on
 
 #[derive(PartialEq, Eq, Debug)]
-enum NodeType {
-    Bold,
-    Underline,
-    Title,
-    Unknown,
-}
-
-#[derive(PartialEq, Eq, Debug)]
-enum Token<'a> {
-    NodeStart(NodeType),
-    NodeEnd,
+pub enum Token<'a> {
     Linebreak,
-    Text(&'a str),
+    Word(&'a str),
     Whitespace,
+    BoldDelimiter,
+    EmphasisDelimiter,
+    StrikethroughDelimiter,
+    RawDelimiter,
 }
 
-struct Tokeniser<'a> {
+pub struct Tokeniser<'a> {
     input: &'a str,
     chars: CharIndices<'a>,
     current_char: Option<char>,
     current_index: usize,
     next_char: Option<char>,
     next_index: usize,
+}
+
+fn char_usable_in_word(c: char) -> bool {
+    // TODO: Is there a more efficent way to do this?
+    // Maybe by treating char as an int
+    !(c == DELIM_BOLD
+        || c == DELIM_EMPH
+        || c == DELIM_STRIKE
+        || c == DELIM_RAW
+        || c.is_whitespace())
 }
 
 impl<'a> Iterator for Tokeniser<'a> {
@@ -50,18 +48,21 @@ impl<'a> Iterator for Tokeniser<'a> {
         self.advance();
 
         match self.current_char {
-            Some(NODE_START) => Some(self.handle_node_start()),
-            Some(NODE_END) => Some(Token::NodeEnd),
             Some('\n') => Some(self.handle_new_line()),
+            Some(DELIM_BOLD) => Some(Token::BoldDelimiter),
+            Some(DELIM_EMPH) => Some(Token::EmphasisDelimiter),
+            Some(DELIM_STRIKE) => Some(Token::StrikethroughDelimiter),
+            Some(DELIM_RAW) => Some(Token::RawDelimiter),
             Some(c) if c.is_whitespace() => Some(self.handle_whitespace()),
-            Some(_) => Some(self.handle_text()),
-            None => None,
+            //TODO: Do we really want any unicode char in a word?
+            Some(_) => Some(self.handle_word()),
+            _ => None,
         }
     }
 }
 
 impl<'a> Tokeniser<'a> {
-    fn new(input: &'a str) -> Self {
+    pub fn new(input: &'a str) -> Self {
         let mut tokeniser = Self {
             input,
             chars: input.char_indices(),
@@ -78,23 +79,6 @@ impl<'a> Tokeniser<'a> {
         tokeniser
     }
 
-    fn handle_node_start(&mut self) -> Token<'a> {
-        let node_name = self.eat_node_name();
-        self.eat_following_whitespace();
-
-        // Note that we fall back to an 'unknown' node type because in practice
-        // this is simpler than the alterantive of returning an error. It also
-        // makes it possible for the tokeniser to implement the Iterator trait.
-
-        let node_type = match node_name {
-            "bold" => NodeType::Bold,
-            "underline" => NodeType::Underline,
-            "title" => NodeType::Title,
-            _ => NodeType::Unknown,
-        };
-        Token::NodeStart(node_type)
-    }
-
     fn handle_new_line(&mut self) -> Token<'a> {
         // New lines are usually treated as whitespace. However, if there is
         // more than one in a row, they are all treated as a single line break
@@ -109,33 +93,22 @@ impl<'a> Tokeniser<'a> {
     }
 
     fn handle_whitespace(&mut self) -> Token<'a> {
-        self.eat_following_whitespace();
+        self.eat_whitespace();
         Token::Whitespace
     }
 
-    fn handle_text(&mut self) -> Token<'a> {
-        let text = self.eat_text();
-        Token::Text(text)
+    fn handle_word(&mut self) -> Token<'a> {
+        let word = self.eat_word();
+        Token::Word(word)
     }
 
-    fn eat_node_name(&mut self) -> &'a str {
-        // Only continue if the '[' is followed by usable characters
-        if !self.next_char_is_text() {
-            return "";
-        }
-
-        // Otherwise, eat the characters comprising the node name
-        self.advance();
-        self.eat_text()
+    fn eat_whitespace(&mut self) {
+        self.advance_while_next(char::is_whitespace)
     }
 
-    fn eat_following_whitespace(&mut self) {
-        self.advance_while_next_is(|c| c.is_whitespace());
-    }
-
-    fn eat_text(&mut self) -> &'a str {
+    fn eat_word(&mut self) -> &'a str {
         let i1 = self.current_index;
-        self.advance_while_next_is(|c| c.can_be_used_in_text());
+        self.advance_while_next(char_usable_in_word);
         let i2 = self.next_index;
         &self.input[i1..i2]
     }
@@ -146,28 +119,19 @@ impl<'a> Tokeniser<'a> {
 
         if let Some((i, c)) = self.chars.next() {
             self.next_char = Some(c);
-            self.next_index = i
+            self.next_index = i;
         } else {
             self.next_char = None;
-            self.next_index = self.input.len()
+            self.next_index = self.input.len();
         }
     }
 
-    fn next_char_is_text(&mut self) -> bool {
-        self.next_char.is_some_and(|c| c.can_be_used_in_text())
-    }
-
-    fn advance_while_next_is(&mut self, predicate: fn(char) -> bool) {
+    fn advance_while_next(&mut self, predicate: fn(char) -> bool) {
         while self.next_char.is_some_and(predicate) {
-            self.advance()
+            self.advance();
         }
     }
 }
-
-//TODO: Try and be more evil in tests
-//TODO: At least test for unicode/emoji
-//TODO: Node attributes
-//TODO: Escaping, i.e \[, \], and \\
 
 #[cfg(test)]
 mod test {
@@ -179,99 +143,44 @@ mod test {
     }
 
     #[test]
-    fn simple_document() {
-        let input = "[title Enterprise Software Design For Cats]";
+    fn simple_sentence() {
+        let input = "The nice little cat pounced over the silly fox";
 
         let expected = vec![
-            Token::NodeStart(NodeType::Title),
-            Token::Text("Enterprise"),
+            Token::Word("The"),
             Token::Whitespace,
-            Token::Text("Software"),
+            Token::Word("nice"),
             Token::Whitespace,
-            Token::Text("Design"),
+            Token::Word("little"),
             Token::Whitespace,
-            Token::Text("For"),
+            Token::Word("cat"),
             Token::Whitespace,
-            Token::Text("Cats"),
-            Token::NodeEnd,
+            Token::Word("pounced"),
+            Token::Whitespace,
+            Token::Word("over"),
+            Token::Whitespace,
+            Token::Word("the"),
+            Token::Whitespace,
+            Token::Word("silly"),
+            Token::Whitespace,
+            Token::Word("fox"),
         ];
 
         let actual = tokenise(input);
-
         assert_eq!(actual, expected);
     }
 
     #[test]
     fn double_space() {
-        let input = "Feline  Engineering";
+        let input = "Nice  kitty!";
 
         let expected = vec![
-            Token::Text("Feline"),
+            Token::Word("Nice"),
             Token::Whitespace,
-            Token::Text("Engineering"),
+            Token::Word("kitty!"),
         ];
 
         let actual = tokenise(input);
-
-        assert_eq!(actual, expected);
-    }
-
-    #[test]
-    fn nested_nodes_without_spaces() {
-        let input = "[bold[underline Cats]]";
-
-        let expected = vec![
-            Token::NodeStart(NodeType::Bold),
-            Token::NodeStart(NodeType::Underline),
-            Token::Text("Cats"),
-            Token::NodeEnd,
-            Token::NodeEnd,
-        ];
-
-        let actual = tokenise(input);
-
-        assert_eq!(actual, expected);
-    }
-
-    #[test]
-    fn nodes_missing_name() {
-        let input = "[ Fantastic creatures";
-
-        let expected = vec![
-            Token::NodeStart(NodeType::Unknown),
-            Token::Text("Fantastic"),
-            Token::Whitespace,
-            Token::Text("creatures"),
-        ];
-
-        let actual = tokenise(input);
-
-        assert_eq!(actual, expected);
-    }
-
-    #[test]
-    fn nodes_missing_name_without_whitespace() {
-        let input = "[[[";
-
-        let expected = vec![
-            Token::NodeStart(NodeType::Unknown),
-            Token::NodeStart(NodeType::Unknown),
-            Token::NodeStart(NodeType::Unknown),
-        ];
-
-        let actual = tokenise(input);
-
-        assert_eq!(actual, expected);
-    }
-
-    #[test]
-    fn empty_string() {
-        let input = "";
-
-        let expected = vec![];
-
-        let actual = tokenise(input);
-
         assert_eq!(actual, expected);
     }
 
@@ -280,13 +189,12 @@ mod test {
         let input = "Cats\nwhiskers";
 
         let expected = vec![
-            Token::Text("Cats"),
+            Token::Word("Cats"),
             Token::Whitespace,
-            Token::Text("whiskers"),
+            Token::Word("whiskers"),
         ];
 
         let actual = tokenise(input);
-
         assert_eq!(actual, expected);
     }
 
@@ -295,13 +203,12 @@ mod test {
         let input = "Cats\n\nwhiskers";
 
         let expected = vec![
-            Token::Text("Cats"),
+            Token::Word("Cats"),
             Token::Linebreak,
-            Token::Text("whiskers"),
+            Token::Word("whiskers"),
         ];
 
         let actual = tokenise(input);
-
         assert_eq!(actual, expected);
     }
 
@@ -310,40 +217,91 @@ mod test {
         let input = "Cats\n\n\nwhiskers";
 
         let expected = vec![
-            Token::Text("Cats"),
+            Token::Word("Cats"),
             Token::Linebreak,
-            Token::Text("whiskers"),
+            Token::Word("whiskers"),
         ];
 
         let actual = tokenise(input);
-
         assert_eq!(actual, expected);
     }
 
     #[test]
-    fn node_types() {
-        let input = concat!("[bold\n", "[underline\n", "[title\n", "[mango");
+    fn bold_word() {
+        let input = "Cats are *really* cute";
 
         let expected = vec![
-            Token::NodeStart(NodeType::Bold),
-            Token::NodeStart(NodeType::Underline),
-            Token::NodeStart(NodeType::Title),
-            Token::NodeStart(NodeType::Unknown),
+            Token::Word("Cats"),
+            Token::Whitespace,
+            Token::Word("are"),
+            Token::Whitespace,
+            Token::BoldDelimiter,
+            Token::Word("really"),
+            Token::BoldDelimiter,
+            Token::Whitespace,
+            Token::Word("cute"),
         ];
 
         let actual = tokenise(input);
-
         assert_eq!(actual, expected);
     }
 
     #[test]
-    fn empty_node() {
-        let input = "[bold]";
+    fn emphasis_word() {
+        let input = "Cats are _super_ smart";
 
-        let expected = vec![Token::NodeStart(NodeType::Bold), Token::NodeEnd];
+        let expected = vec![
+            Token::Word("Cats"),
+            Token::Whitespace,
+            Token::Word("are"),
+            Token::Whitespace,
+            Token::EmphasisDelimiter,
+            Token::Word("super"),
+            Token::EmphasisDelimiter,
+            Token::Whitespace,
+            Token::Word("smart"),
+        ];
 
         let actual = tokenise(input);
-
         assert_eq!(actual, expected);
     }
+
+    #[test]
+    fn strike_world() {
+        let input = "Learn -forbiden- cat secrets";
+
+        let expected = vec![
+            Token::Word("Learn"),
+            Token::Whitespace,
+            Token::StrikethroughDelimiter,
+            Token::Word("forbiden"),
+            Token::StrikethroughDelimiter,
+            Token::Whitespace,
+            Token::Word("cat"),
+            Token::Whitespace,
+            Token::Word("secrets"),
+        ];
+
+        let actual = tokenise(input);
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn raw_word() {
+        let input = "Cat `technology`!";
+
+        let expected = vec![
+            Token::Word("Cat"),
+            Token::Whitespace,
+            Token::RawDelimiter,
+            Token::Word("technology"),
+            Token::RawDelimiter,
+            Token::Word("!"),
+        ];
+
+        let actual = tokenise(input);
+        assert_eq!(actual, expected);
+    }
+
+    //TODO: References
 }
