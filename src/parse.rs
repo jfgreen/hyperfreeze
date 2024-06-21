@@ -2,7 +2,7 @@ use crate::tokenise::{Token, Tokeniser};
 
 #[derive(PartialEq, Eq, Debug)]
 struct Document<'a> {
-    nodes: Vec<Node<'a>>,
+    nodes: Box<[Node<'a>]>,
 }
 
 #[derive(PartialEq, Eq, Debug)]
@@ -25,7 +25,9 @@ fn parse(input: &str) -> Result<Document, ParseError> {
         }
     }
 
-    Ok(Document { nodes })
+    Ok(Document {
+        nodes: nodes.into_boxed_slice(),
+    })
 }
 
 #[cfg(test)]
@@ -37,14 +39,13 @@ mod test {
         let input = "We like cats very much";
 
         let expected = Document {
-            //TODO: Word content is a bit meh
-            nodes: vec![
+            nodes: Box::new([
                 Node::Word("We"),
                 Node::Word("like"),
                 Node::Word("cats"),
                 Node::Word("very"),
                 Node::Word("much"),
-            ],
+            ]),
         };
 
         let actual = parse(input).unwrap();
