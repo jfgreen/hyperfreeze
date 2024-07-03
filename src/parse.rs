@@ -8,6 +8,7 @@ struct Document<'a> {
 #[derive(PartialEq, Eq, Debug)]
 enum Node<'a> {
     Word(&'a str),
+    EmphasisedWords(Box<[&'a str]>),
 }
 
 #[derive(Debug)]
@@ -18,16 +19,39 @@ fn parse(input: &str) -> Result<Document, ParseError> {
     let mut nodes = Vec::new();
 
     let tokeniser = Tokeniser::new(input);
+    let mut tokens = tokeniser.into_iter();
 
-    for token in tokeniser {
-        if let Token::Word(s) = token {
-            nodes.push(Node::Word(s));
+    //TODO: Explictly look for an Eof token?
+
+    while let Some(token) = tokens.next() {
+        //TODO: Would lookahead be useful?
+
+        match token {
+            Token::Word(word) => nodes.push(Node::Word(word)),
+            Token::EmphasisDelimiter => nodes.push(parse_emphasised_text(&mut tokens)),
+            Token::Whitespace => (),
+            _ => panic!("unexpected token"), // TODO: Propper error handling
         }
     }
 
     Ok(Document {
         nodes: nodes.into_boxed_slice(),
     })
+}
+
+fn parse_emphasised_text<'a, 'b>(tokens: &'a mut Tokeniser<'b>) -> Node<'b> {
+    let mut words = Vec::new();
+
+    loop {
+        match tokens.next() {
+            Some(Token::Word(word)) => words.push(word),
+            Some(Token::Whitespace) => (),
+            Some(Token::EmphasisDelimiter) => break,
+            _ => panic!("unexpected token"), // TODO: Propper error handling
+        }
+    }
+
+    Node::EmphasisedWords(words.into_boxed_slice())
 }
 
 #[cfg(test)]
@@ -52,4 +76,41 @@ mod test {
 
         assert_eq!(actual, expected);
     }
+
+    #[test]
+    fn emphasised_words() {
+        let input = "We _totally adore_ them";
+
+        let expected = Document {
+            nodes: Box::new([
+                Node::Word("We"),
+                Node::EmphasisedWords(Box::new(["totally", "adore"])),
+                Node::Word("them"),
+            ]),
+        };
+
+        let actual = parse(input).unwrap();
+
+        assert_eq!(actual, expected);
+    }
+
+    /*
+    #[test]
+    fn emphasised_empty_string() {
+        let input = "Rules cats must follow: __";
+
+        let expected = Document {
+            nodes: Box::new([
+                Node::Word("Rules"),
+                Node::Word("cats"),
+                Node::Word("must"),
+                Node::Word("follow:"),
+            ]),
+        };
+
+        let actual = parse(input).unwrap();
+
+        assert_eq!(actual, expected);
+    }
+    */
 }
