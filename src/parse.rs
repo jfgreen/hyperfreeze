@@ -5,10 +5,13 @@ struct Document<'a> {
     nodes: Box<[Node<'a>]>,
 }
 
+//TODO: Is there a more efficent way of representing a document tree?
+// Think: Flatter, all pre-allocated, contigious
 #[derive(PartialEq, Eq, Debug)]
 enum Node<'a> {
     Word(&'a str),
     EmphasisedWords(Box<[&'a str]>),
+    BoldWords(Box<[&'a str]>),
 }
 
 #[derive(Debug)]
@@ -29,6 +32,7 @@ fn parse(input: &str) -> Result<Document, ParseError> {
         match token {
             Token::Word(word) => nodes.push(Node::Word(word)),
             Token::EmphasisDelimiter => nodes.push(parse_emphasised_text(&mut tokens)),
+            Token::BoldDelimiter => nodes.push(parse_bold_text(&mut tokens)),
             Token::Whitespace => (),
             _ => panic!("unexpected token"), // TODO: Propper error handling
         }
@@ -40,7 +44,7 @@ fn parse(input: &str) -> Result<Document, ParseError> {
 }
 
 fn parse_emphasised_text<'a, 'b>(tokens: &'a mut Tokeniser<'b>) -> Node<'b> {
-    let mut words = Vec::new();
+    let mut words: Vec<&'b str> = Vec::new();
 
     loop {
         match tokens.next() {
@@ -52,6 +56,22 @@ fn parse_emphasised_text<'a, 'b>(tokens: &'a mut Tokeniser<'b>) -> Node<'b> {
     }
 
     Node::EmphasisedWords(words.into_boxed_slice())
+}
+
+//FIXME: This is a bit repetative
+fn parse_bold_text<'a, 'b>(tokens: &'a mut Tokeniser<'b>) -> Node<'b> {
+    let mut words: Vec<&'b str> = Vec::new();
+
+    loop {
+        match tokens.next() {
+            Some(Token::Word(word)) => words.push(word),
+            Some(Token::Whitespace) => (),
+            Some(Token::BoldDelimiter) => break,
+            _ => panic!("unexpected token"), // TODO: Propper error handling
+        }
+    }
+
+    Node::BoldWords(words.into_boxed_slice())
 }
 
 #[cfg(test)]
@@ -94,17 +114,16 @@ mod test {
         assert_eq!(actual, expected);
     }
 
-    /*
     #[test]
-    fn emphasised_empty_string() {
-        let input = "Rules cats must follow: __";
+    fn bold_words() {
+        let input = "I *need to pet that cat* right away.";
 
         let expected = Document {
             nodes: Box::new([
-                Node::Word("Rules"),
-                Node::Word("cats"),
-                Node::Word("must"),
-                Node::Word("follow:"),
+                Node::Word("I"),
+                Node::BoldWords(Box::new(["need", "to", "pet", "that", "cat"])),
+                Node::Word("right"),
+                Node::Word("away."),
             ]),
         };
 
@@ -112,5 +131,7 @@ mod test {
 
         assert_eq!(actual, expected);
     }
-    */
+
+    //TODO: What do we do about 'Things like_this example'?
+    //TODO: ALso:  "Rules cats must follow: __"
 }
