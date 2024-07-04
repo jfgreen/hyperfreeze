@@ -22,6 +22,7 @@ enum Node<'a> {
     EmphasisedWords(Box<[&'a str]>),
     BoldWords(Box<[&'a str]>),
     StrikethroughWords(Box<[&'a str]>),
+    RawWords(Box<[&'a str]>),
 }
 
 #[derive(Debug)]
@@ -45,6 +46,7 @@ fn parse(input: &str) -> Result<Document, ParseError> {
             Token::EmphasisDelimiter => nodes.push(parse_emphasised_text(&mut tokens)),
             Token::BoldDelimiter => nodes.push(parse_bold_text(&mut tokens)),
             Token::StrikethroughDelimiter => nodes.push(parse_strikethrough_text(&mut tokens)),
+            Token::RawDelimiter => nodes.push(parse_raw_text(&mut tokens)),
             Token::Whitespace => (),
             _ => panic!("unexpected token"), // TODO: Propper error handling
         }
@@ -99,6 +101,21 @@ fn parse_strikethrough_text<'a, 'b>(tokens: &'a mut Tokeniser<'b>) -> Node<'b> {
     }
 
     Node::StrikethroughWords(words.into_boxed_slice())
+}
+
+fn parse_raw_text<'a, 'b>(tokens: &'a mut Tokeniser<'b>) -> Node<'b> {
+    let mut words: Vec<&'b str> = Vec::new();
+
+    loop {
+        match tokens.next() {
+            Some(Token::Word(word)) => words.push(word),
+            Some(Token::Whitespace) => (),
+            Some(Token::RawDelimiter) => break,
+            _ => panic!("unexpected token"), // TODO: Propper error handling
+        }
+    }
+
+    Node::RawWords(words.into_boxed_slice())
 }
 
 #[cfg(test)]
@@ -169,6 +186,25 @@ mod test {
                 Node::Word("are"),
                 Node::StrikethroughWords(Box::new(["ok", "i", "guess"])),
                 Node::Word("magnificant"),
+            ]),
+        };
+
+        let actual = parse(input).unwrap();
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn raw_words() {
+        let input = "Robot cat says `bleep bloop`!";
+
+        let expected = Document {
+            nodes: Box::new([
+                Node::Word("Robot"),
+                Node::Word("cat"),
+                Node::Word("says"),
+                Node::RawWords(Box::new(["bleep", "bloop"])),
+                Node::Word("!"),
             ]),
         };
 
