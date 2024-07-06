@@ -43,10 +43,21 @@ fn parse(input: &str) -> Result<Document, ParseError> {
         //FIXME: This is getting a bit unwieldy
         match token {
             Token::Word(word) => nodes.push(Node::Word(word)),
-            Token::EmphasisDelimiter => nodes.push(parse_emphasised_text(&mut tokens)),
-            Token::BoldDelimiter => nodes.push(parse_bold_text(&mut tokens)),
-            Token::StrikethroughDelimiter => nodes.push(parse_strikethrough_text(&mut tokens)),
-            Token::RawDelimiter => nodes.push(parse_raw_text(&mut tokens)),
+            Token::EmphasisDelimiter => nodes.push(Node::EmphasisedWords(parse_styled_text(
+                &mut tokens,
+                Token::EmphasisDelimiter,
+            ))),
+            Token::BoldDelimiter => nodes.push(Node::BoldWords(parse_styled_text(
+                &mut tokens,
+                Token::BoldDelimiter,
+            ))),
+            Token::StrikethroughDelimiter => nodes.push(Node::StrikethroughWords(
+                parse_styled_text(&mut tokens, Token::StrikethroughDelimiter),
+            )),
+            Token::RawDelimiter => nodes.push(Node::RawWords(parse_styled_text(
+                &mut tokens,
+                Token::RawDelimiter,
+            ))),
             Token::Whitespace => (),
             _ => panic!("unexpected token"), // TODO: Propper error handling
         }
@@ -57,65 +68,19 @@ fn parse(input: &str) -> Result<Document, ParseError> {
     })
 }
 
-//FIXME: This is a bit repetative, generic "parse styled text?"
-fn parse_emphasised_text<'a, 'b>(tokens: &'a mut Tokeniser<'b>) -> Node<'b> {
+fn parse_styled_text<'a, 'b>(tokens: &'a mut Tokeniser<'b>, end_token: Token) -> Box<[&'b str]> {
     let mut words: Vec<&'b str> = Vec::new();
 
     loop {
         match tokens.next() {
             Some(Token::Word(word)) => words.push(word),
             Some(Token::Whitespace) => (),
-            Some(Token::EmphasisDelimiter) => break,
+            Some(token) if token == end_token => break,
             _ => panic!("unexpected token"), // TODO: Propper error handling
         }
     }
 
-    Node::EmphasisedWords(words.into_boxed_slice())
-}
-
-fn parse_bold_text<'a, 'b>(tokens: &'a mut Tokeniser<'b>) -> Node<'b> {
-    let mut words: Vec<&'b str> = Vec::new();
-
-    loop {
-        match tokens.next() {
-            Some(Token::Word(word)) => words.push(word),
-            Some(Token::Whitespace) => (),
-            Some(Token::BoldDelimiter) => break,
-            _ => panic!("unexpected token"), // TODO: Propper error handling
-        }
-    }
-
-    Node::BoldWords(words.into_boxed_slice())
-}
-
-fn parse_strikethrough_text<'a, 'b>(tokens: &'a mut Tokeniser<'b>) -> Node<'b> {
-    let mut words: Vec<&'b str> = Vec::new();
-
-    loop {
-        match tokens.next() {
-            Some(Token::Word(word)) => words.push(word),
-            Some(Token::Whitespace) => (),
-            Some(Token::StrikethroughDelimiter) => break,
-            _ => panic!("unexpected token"), // TODO: Propper error handling
-        }
-    }
-
-    Node::StrikethroughWords(words.into_boxed_slice())
-}
-
-fn parse_raw_text<'a, 'b>(tokens: &'a mut Tokeniser<'b>) -> Node<'b> {
-    let mut words: Vec<&'b str> = Vec::new();
-
-    loop {
-        match tokens.next() {
-            Some(Token::Word(word)) => words.push(word),
-            Some(Token::Whitespace) => (),
-            Some(Token::RawDelimiter) => break,
-            _ => panic!("unexpected token"), // TODO: Propper error handling
-        }
-    }
-
-    Node::RawWords(words.into_boxed_slice())
+    words.into_boxed_slice()
 }
 
 #[cfg(test)]
