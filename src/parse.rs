@@ -16,6 +16,9 @@ struct Document<'a> {
 
 //TODO: Is there a more efficent way of representing a document tree?
 // Think: Flatter, all pre-allocated, contigious
+
+//TODO: Replace 'Word' with words?
+
 #[derive(PartialEq, Eq, Debug)]
 enum Node<'a> {
     Word(&'a str),
@@ -179,9 +182,135 @@ mod test {
         assert_eq!(actual, expected);
     }
 
-    //TODO: What do we do about 'Things like_this example'?
-    //TODO: Also: "Rules cats must follow: __"
-    //TODO: Also: "Or-this-example"
-    //TODO: Also: "or this-"
-    //TODO: Also: "-or this"
+    #[ignore]
+    #[test]
+    fn empty_emphasis() {
+        let input = "Rules cats must follow: __.";
+
+        let expected = Document {
+            nodes: Box::new([
+                Node::Word("Rules"),
+                Node::Word("cats"),
+                Node::Word("must"),
+                Node::Word("follow:"),
+                Node::Word("."),
+            ]),
+        };
+
+        let actual = parse(input).unwrap();
+
+        assert_eq!(actual, expected);
+    }
+
+    #[ignore]
+    #[test]
+    fn underscore_in_awkward_places() {
+        let input = "Cat cat_cat cat_ cat.";
+
+        let expected = Document {
+            nodes: Box::new([
+                Node::Word("Cat"),
+                Node::Word("cat_cat"),
+                Node::Word("cat_"),
+                Node::Word("cat."),
+            ]),
+        };
+
+        let actual = parse(input).unwrap();
+
+        assert_eq!(actual, expected);
+    }
+
+    #[ignore]
+    #[test]
+    fn multi_dash_mid_word() {
+        let input = "Visit Catville-on-sea today!";
+
+        let expected = Document {
+            nodes: Box::new([
+                Node::Word("Visit"),
+                Node::Word("Catville-on-sea"),
+                Node::Word("today!"),
+            ]),
+        };
+
+        let actual = parse(input).unwrap();
+
+        assert_eq!(actual, expected);
+    }
+
+    #[ignore]
+    #[test]
+    fn invalid_strikethroughs() {
+        let input = concat!(
+            "Cat -cat cat- cat.\n",   // 1
+            "Cat -cat cat - cat.\n",  // 2
+            "Cat - cat cat- cat.\n",  // 3
+            "Cat - cat cat - cat.\n", // 4
+            "Cat- cat cat- cat.\n",   // 5
+            "Cat -cat cat -cat.\n",   // 6
+            "Cat- cat cat -cat.\n"    // 7
+        );
+
+        let expected = Document {
+            nodes: Box::new([
+                // Line 1
+                Node::Word("Cat"),
+                Node::StrikethroughWords(Box::new(["cat", "cat"])),
+                Node::Word("cat."),
+                // Line 2
+                Node::Word("Cat"),
+                Node::Word("-cat"),
+                Node::Word("cat"),
+                Node::Word("-"),
+                Node::Word("cat."),
+                // Line 3
+                Node::Word("Cat"),
+                Node::Word("-"),
+                Node::Word("cat"),
+                Node::Word("cat-"),
+                Node::Word("cat."),
+                // Line 4
+                Node::Word("Cat"),
+                Node::Word("-"),
+                Node::Word("cat"),
+                Node::Word("cat"),
+                Node::Word("-"),
+                Node::Word("cat."),
+                // Line 5
+                Node::Word("Cat-"),
+                Node::Word("cat"),
+                Node::Word("cat-"),
+                Node::Word("cat."),
+                // Line 6
+                Node::Word("Cat"),
+                Node::Word("-cat"),
+                Node::Word("cat"),
+                Node::Word("-cat."),
+                // Line 7
+                Node::Word("Cat-"),
+                Node::Word("cat"),
+                Node::Word("cat"),
+                Node::Word("-cat."),
+            ]),
+        };
+    }
+
+    #[ignore]
+    #[test]
+    fn standalone_dash() {
+        let input = "Felines - fantastic!";
+
+        let expected = Document {
+            nodes: Box::new([
+                Node::Word("Felines"),
+                Node::Word("-"),
+                Node::Word("fantastic!"),
+            ]),
+        };
+
+        let actual = parse(input).unwrap();
+
+        assert_eq!(actual, expected);
+    }
 }
