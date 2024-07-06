@@ -43,21 +43,22 @@ fn parse(input: &str) -> Result<Document, ParseError> {
         //FIXME: This is getting a bit unwieldy
         match token {
             Token::Word(word) => nodes.push(Node::Word(word)),
-            Token::EmphasisDelimiter => nodes.push(Node::EmphasisedWords(parse_styled_text(
-                &mut tokens,
-                Token::EmphasisDelimiter,
-            ))),
-            Token::BoldDelimiter => nodes.push(Node::BoldWords(parse_styled_text(
-                &mut tokens,
-                Token::BoldDelimiter,
-            ))),
-            Token::StrikethroughDelimiter => nodes.push(Node::StrikethroughWords(
-                parse_styled_text(&mut tokens, Token::StrikethroughDelimiter),
-            )),
-            Token::RawDelimiter => nodes.push(Node::RawWords(parse_styled_text(
-                &mut tokens,
-                Token::RawDelimiter,
-            ))),
+            Token::EmphasisDelimiter => {
+                let text = parse_styled_text(&mut tokens, Token::EmphasisDelimiter);
+                nodes.push(Node::EmphasisedWords(text));
+            }
+            Token::BoldDelimiter => {
+                let text = parse_styled_text(&mut tokens, Token::BoldDelimiter);
+                nodes.push(Node::BoldWords(text));
+            }
+            Token::StrikethroughDelimiter => {
+                let text = parse_styled_text(&mut tokens, Token::StrikethroughDelimiter);
+                nodes.push(Node::StrikethroughWords(text));
+            }
+            Token::RawDelimiter => {
+                let text = parse_styled_text(&mut tokens, Token::RawDelimiter);
+                nodes.push(Node::RawWords(text));
+            }
             Token::Whitespace => (),
             _ => panic!("unexpected token"), // TODO: Propper error handling
         }
