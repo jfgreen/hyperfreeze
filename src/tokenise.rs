@@ -12,11 +12,18 @@ pub enum Token<'a> {
     Linebreak,
     Word(&'a str),
     Whitespace,
-    BoldDelimiter,
-    EmphasisDelimiter,
-    StrikethroughDelimiter,
-    RawDelimiter,
+    Delimiter(Delimit),
 }
+
+#[derive(PartialEq, Eq, Debug)]
+pub enum Delimit {
+    Bold,
+    Emphasis,
+    Strikethrough,
+    Raw,
+}
+
+const BOLD_DELIMITER: Token = Token::Delimiter(Delimit::Bold);
 
 pub struct Tokeniser<'a> {
     input: &'a str,
@@ -49,10 +56,10 @@ impl<'a> Iterator for Tokeniser<'a> {
 
         match self.current_char {
             Some('\n') => Some(self.handle_new_line()),
-            Some(DELIM_BOLD) => Some(Token::BoldDelimiter),
-            Some(DELIM_EMPH) => Some(Token::EmphasisDelimiter),
-            Some(DELIM_STRIKE) => Some(Token::StrikethroughDelimiter),
-            Some(DELIM_RAW) => Some(Token::RawDelimiter),
+            Some(DELIM_BOLD) => Some(Token::Delimiter(Delimit::Bold)),
+            Some(DELIM_EMPH) => Some(Token::Delimiter(Delimit::Emphasis)),
+            Some(DELIM_STRIKE) => Some(Token::Delimiter(Delimit::Strikethrough)),
+            Some(DELIM_RAW) => Some(Token::Delimiter(Delimit::Raw)),
             Some(c) if c.is_whitespace() => Some(self.handle_whitespace()),
             //TODO: Do we really want any unicode char in a word?
             Some(_) => Some(self.handle_word()),
@@ -235,9 +242,9 @@ mod test {
             Token::Whitespace,
             Token::Word("are"),
             Token::Whitespace,
-            Token::BoldDelimiter,
+            Token::Delimiter(Delimit::Bold),
             Token::Word("really"),
-            Token::BoldDelimiter,
+            Token::Delimiter(Delimit::Bold),
             Token::Whitespace,
             Token::Word("cute"),
         ];
@@ -255,9 +262,9 @@ mod test {
             Token::Whitespace,
             Token::Word("are"),
             Token::Whitespace,
-            Token::EmphasisDelimiter,
+            Token::Delimiter(Delimit::Emphasis),
             Token::Word("super"),
-            Token::EmphasisDelimiter,
+            Token::Delimiter(Delimit::Emphasis),
             Token::Whitespace,
             Token::Word("smart"),
         ];
@@ -273,9 +280,9 @@ mod test {
         let expected = vec![
             Token::Word("Learn"),
             Token::Whitespace,
-            Token::StrikethroughDelimiter,
+            Token::Delimiter(Delimit::Strikethrough),
             Token::Word("forbiden"),
-            Token::StrikethroughDelimiter,
+            Token::Delimiter(Delimit::Strikethrough),
             Token::Whitespace,
             Token::Word("cat"),
             Token::Whitespace,
@@ -293,9 +300,9 @@ mod test {
         let expected = vec![
             Token::Word("Cat"),
             Token::Whitespace,
-            Token::RawDelimiter,
+            Token::Delimiter(Delimit::Raw),
             Token::Word("technology"),
-            Token::RawDelimiter,
+            Token::Delimiter(Delimit::Raw),
             Token::Word("!"),
         ];
 

@@ -1,4 +1,4 @@
-use crate::tokenise::{Token, Tokeniser};
+use crate::tokenise::{Delimit, Token, Tokeniser};
 
 #[derive(PartialEq, Eq, Debug)]
 struct Document<'a> {
@@ -31,6 +31,8 @@ enum Node<'a> {
 #[derive(Debug)]
 enum ParseError {}
 
+// TODO: Propper error handling, replace calls to panic!
+
 fn parse(input: &str) -> Result<Document, ParseError> {
     //TODO: Pre allocate a sensible vec capacity
     let mut nodes = Vec::new();
@@ -40,51 +42,47 @@ fn parse(input: &str) -> Result<Document, ParseError> {
 
     //TODO: Explictly look for an Eof token?
 
-    while let Some(token) = tokens.next() {
-        //TODO: Would lookahead be useful?
+    //TODO: Try a simmilar pattern to tokeniser?
 
-        //FIXME: This is getting a bit unwieldy
+    while let Some(token) = tokens.next() {
         match token {
             Token::Word(word) => nodes.push(Node::Word(word)),
-            Token::EmphasisDelimiter => {
-                let text = parse_styled_text(&mut tokens, Token::EmphasisDelimiter);
-                nodes.push(Node::EmphasisedWords(text));
-            }
-            Token::BoldDelimiter => {
-                let text = parse_styled_text(&mut tokens, Token::BoldDelimiter);
-                nodes.push(Node::BoldWords(text));
-            }
-            Token::StrikethroughDelimiter => {
-                let text = parse_styled_text(&mut tokens, Token::StrikethroughDelimiter);
-                nodes.push(Node::StrikethroughWords(text));
-            }
-            Token::RawDelimiter => {
-                let text = parse_styled_text(&mut tokens, Token::RawDelimiter);
-                nodes.push(Node::RawWords(text));
+            Token::Delimiter(d1) => {
+                let mut words: Vec<&str> = Vec::new();
+
+                loop {
+                    match tokens.next() {
+                        Some(Token::Word(word)) => words.push(word),
+                        Some(Token::Whitespace) => (),
+                        Some(Token::Delimiter(d2)) if d1 == d2 => break,
+                        _ => panic!("unexpected token"),
+                    }
+                }
+
+                let text = words.into_boxed_slice();
+
+                if text.len() == 0 {
+                    // Empty delimited text, e.g __ or **
+                    continue;
+                }
+
+                let node = match d1 {
+                    Delimit::Emphasis => Node::EmphasisedWords(text),
+                    Delimit::Bold => Node::BoldWords(text),
+                    Delimit::Strikethrough => Node::StrikethroughWords(text),
+                    Delimit::Raw => Node::RawWords(text),
+                };
+
+                nodes.push(node);
             }
             Token::Whitespace => (),
-            _ => panic!("unexpected token"), // TODO: Propper error handling
+            _ => panic!("unexpected token"),
         }
     }
 
     Ok(Document {
         nodes: nodes.into_boxed_slice(),
     })
-}
-
-fn parse_styled_text<'a, 'b>(tokens: &'a mut Tokeniser<'b>, end_token: Token) -> Box<[&'b str]> {
-    let mut words: Vec<&'b str> = Vec::new();
-
-    loop {
-        match tokens.next() {
-            Some(Token::Word(word)) => words.push(word),
-            Some(Token::Whitespace) => (),
-            Some(token) if token == end_token => break,
-            _ => panic!("unexpected token"), // TODO: Propper error handling
-        }
-    }
-
-    words.into_boxed_slice()
 }
 
 #[cfg(test)]
@@ -182,7 +180,6 @@ mod test {
         assert_eq!(actual, expected);
     }
 
-    #[ignore]
     #[test]
     fn empty_emphasis() {
         let input = "Rules cats must follow: __.";
