@@ -2,10 +2,11 @@ use std::str::CharIndices;
 
 const DELIM_BOLD: char = '*';
 const DELIM_EMPH: char = '_';
-const DELIM_STRIKE: char = '-';
+const DELIM_STRIKE: char = '~';
 const DELIM_RAW: char = '`';
 
 //TODO: Keep track of what line, row a token is on
+//TODO: See if we actually need the lookahead? Escaping?
 
 #[derive(PartialEq, Eq, Debug)]
 pub enum Token<'a> {
@@ -275,7 +276,7 @@ mod test {
 
     #[test]
     fn strike_world() {
-        let input = "Learn -forbiden- cat secrets";
+        let input = "Learn ~forbiden~ cat secrets";
 
         let expected = vec![
             Token::Word("Learn"),

@@ -145,7 +145,7 @@ mod test {
 
     #[test]
     fn strikethrough_words() {
-        let input = "Cats are -ok i guess- magnificant";
+        let input = "Cats are ~ok i guess~ magnificant";
 
         let expected = Document {
             nodes: Box::new([
@@ -198,6 +198,16 @@ mod test {
 
         assert_eq!(actual, expected);
     }
+
+    //TODO: Revisit the following cases, is this actually realistic?
+    // Think: Cant enforce that formating needs whitespace due to punctuation.
+    // E.g Cats are *great*. <- The '.' would get pulled into the word.
+
+    // DJOT says: "A _ or * can open emphasis only if it is not directly
+    // followed by whitespace. It can close emphasis only if it is not
+    // directly preceded by whitespace, and only if there are some
+    // characters besides the delimiter character between the opener and
+    // the closer."
 
     #[ignore]
     #[test]
@@ -310,4 +320,7 @@ mod test {
 
         assert_eq!(actual, expected);
     }
+
+    //TODO: Test: -foo\nbar- <- Valid?
+    //TODO: Test: -foo\n\nbar- <- Invalid?
 }
