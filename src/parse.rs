@@ -16,12 +16,13 @@ struct Document<'a> {
 
 //TODO: Is there a more efficent way of representing a document tree?
 // Think: Flatter, all pre-allocated, contigious
+// Think: Copy words runs into string fragments?
 
 //TODO: Replace 'Word' with words?
 
 #[derive(PartialEq, Eq, Debug)]
 enum Node<'a> {
-    Word(&'a str),
+    Words(Box<[&'a str]>),
     EmphasisedWords(Box<[&'a str]>),
     BoldWords(Box<[&'a str]>),
     StrikethroughWords(Box<[&'a str]>),
@@ -38,7 +39,7 @@ fn parse(input: &str) -> Result<Document, ParseError> {
     let mut nodes = Vec::new();
 
     let tokeniser = Tokeniser::new(input);
-    let mut tokens = tokeniser.into_iter();
+    let mut tokens = tokeniser.into_iter().peekable();
 
     //TODO: Explictly look for an Eof token?
 
@@ -46,7 +47,38 @@ fn parse(input: &str) -> Result<Document, ParseError> {
 
     while let Some(token) = tokens.next() {
         match token {
-            Token::Word(word) => nodes.push(Node::Word(word)),
+            Token::Word(word) => {
+                let mut words: Vec<&str> = Vec::new();
+                words.push(word);
+                loop {
+                    match tokens.peek() {
+                        Some(Token::Word(word)) => words.push(word),
+                        Some(Token::Whitespace) => (),
+                        _ => break,
+                    }
+                    tokens.next();
+                }
+
+                let text = words.into_boxed_slice();
+
+                if let Some(Node::Words(existing_words)) = nodes.last() {
+                    // Heal word runs split by bogus use of delimiters. e.g '__'
+
+                    // FIXME: Either remove the need for this edge case,
+                    // or keep the last node as a vec.
+
+                    let mut joined_words: Vec<&str> = Vec::new();
+                    joined_words.extend(existing_words.iter());
+                    joined_words.extend(text.iter());
+                    let joined_text = joined_words.into_boxed_slice();
+
+                    // FIXME: This is a bit meh
+                    let last_node = nodes.len();
+                    nodes[last_node - 1] = Node::Words(joined_text);
+                } else {
+                    nodes.push(Node::Words(text));
+                }
+            }
             Token::Delimiter(d1) => {
                 let mut words: Vec<&str> = Vec::new();
 
@@ -94,13 +126,9 @@ mod test {
         let input = "We like cats very much";
 
         let expected = Document {
-            nodes: Box::new([
-                Node::Word("We"),
-                Node::Word("like"),
-                Node::Word("cats"),
-                Node::Word("very"),
-                Node::Word("much"),
-            ]),
+            nodes: Box::new([Node::Words(Box::new([
+                "We", "like", "cats", "very", "much",
+            ]))]),
         };
 
         let actual = parse(input).unwrap();
@@ -114,9 +142,9 @@ mod test {
 
         let expected = Document {
             nodes: Box::new([
-                Node::Word("We"),
+                Node::Words(Box::new(["We"])),
                 Node::EmphasisedWords(Box::new(["totally", "adore"])),
-                Node::Word("them"),
+                Node::Words(Box::new(["them"])),
             ]),
         };
 
@@ -131,10 +159,9 @@ mod test {
 
         let expected = Document {
             nodes: Box::new([
-                Node::Word("I"),
+                Node::Words(Box::new(["I"])),
                 Node::BoldWords(Box::new(["need", "to", "pet", "that", "cat"])),
-                Node::Word("right"),
-                Node::Word("away."),
+                Node::Words(Box::new(["right", "away."])),
             ]),
         };
 
@@ -149,10 +176,9 @@ mod test {
 
         let expected = Document {
             nodes: Box::new([
-                Node::Word("Cats"),
-                Node::Word("are"),
+                Node::Words(Box::new(["Cats", "are"])),
                 Node::StrikethroughWords(Box::new(["ok", "i", "guess"])),
-                Node::Word("magnificant"),
+                Node::Words(Box::new(["magnificant"])),
             ]),
         };
 
@@ -167,11 +193,9 @@ mod test {
 
         let expected = Document {
             nodes: Box::new([
-                Node::Word("Robot"),
-                Node::Word("cat"),
-                Node::Word("says"),
+                Node::Words(Box::new(["Robot", "cat", "says"])),
                 Node::RawWords(Box::new(["bleep", "bloop"])),
-                Node::Word("!"),
+                Node::Words(Box::new(["!"])),
             ]),
         };
 
@@ -185,13 +209,9 @@ mod test {
         let input = "Rules cats must follow: __.";
 
         let expected = Document {
-            nodes: Box::new([
-                Node::Word("Rules"),
-                Node::Word("cats"),
-                Node::Word("must"),
-                Node::Word("follow:"),
-                Node::Word("."),
-            ]),
+            nodes: Box::new([Node::Words(Box::new([
+                "Rules", "cats", "must", "follow:", ".",
+            ]))]),
         };
 
         let actual = parse(input).unwrap();
@@ -215,12 +235,7 @@ mod test {
         let input = "Cat cat_cat cat_ cat.";
 
         let expected = Document {
-            nodes: Box::new([
-                Node::Word("Cat"),
-                Node::Word("cat_cat"),
-                Node::Word("cat_"),
-                Node::Word("cat."),
-            ]),
+            nodes: Box::new([Node::Words(Box::new(["Cat", "cat_cat", "cat_", "cat."]))]),
         };
 
         let actual = parse(input).unwrap();
@@ -234,11 +249,11 @@ mod test {
         let input = "Visit Catville-on-sea today!";
 
         let expected = Document {
-            nodes: Box::new([
-                Node::Word("Visit"),
-                Node::Word("Catville-on-sea"),
-                Node::Word("today!"),
-            ]),
+            nodes: Box::new([Node::Words(Box::new([
+                "Visit",
+                "Catville-on-sea",
+                "today!",
+            ]))]),
         };
 
         let actual = parse(input).unwrap();
@@ -246,6 +261,8 @@ mod test {
         assert_eq!(actual, expected);
     }
 
+    // TODO: Maybe bring this back as individual tests?
+    /*
     #[ignore]
     #[test]
     fn invalid_strikethroughs() {
@@ -262,46 +279,47 @@ mod test {
         let expected = Document {
             nodes: Box::new([
                 // Line 1
-                Node::Word("Cat"),
+                "Cat",
                 Node::StrikethroughWords(Box::new(["cat", "cat"])),
-                Node::Word("cat."),
+                "cat.",
                 // Line 2
-                Node::Word("Cat"),
-                Node::Word("-cat"),
-                Node::Word("cat"),
-                Node::Word("-"),
-                Node::Word("cat."),
+                "Cat",
+                "-cat",
+                "cat",
+                "-",
+                "cat.",
                 // Line 3
-                Node::Word("Cat"),
-                Node::Word("-"),
-                Node::Word("cat"),
-                Node::Word("cat-"),
-                Node::Word("cat."),
+                "Cat",
+                "-",
+                "cat",
+                "cat-",
+                "cat.",
                 // Line 4
-                Node::Word("Cat"),
-                Node::Word("-"),
-                Node::Word("cat"),
-                Node::Word("cat"),
-                Node::Word("-"),
-                Node::Word("cat."),
+                "Cat",
+                "-",
+                "cat",
+                "cat",
+                "-",
+                "cat.",
                 // Line 5
-                Node::Word("Cat-"),
-                Node::Word("cat"),
-                Node::Word("cat-"),
-                Node::Word("cat."),
+                "Cat-",
+                "cat",
+                "cat-",
+                "cat.",
                 // Line 6
-                Node::Word("Cat"),
-                Node::Word("-cat"),
-                Node::Word("cat"),
-                Node::Word("-cat."),
+                "Cat",
+                "-cat",
+                "cat",
+                "-cat.",
                 // Line 7
-                Node::Word("Cat-"),
-                Node::Word("cat"),
-                Node::Word("cat"),
-                Node::Word("-cat."),
+                "Cat-",
+                "cat",
+                "cat",
+                "-cat.",
             ]),
         };
     }
+    */
 
     #[ignore]
     #[test]
@@ -309,11 +327,7 @@ mod test {
         let input = "Felines - fantastic!";
 
         let expected = Document {
-            nodes: Box::new([
-                Node::Word("Felines"),
-                Node::Word("-"),
-                Node::Word("fantastic!"),
-            ]),
+            nodes: Box::new([Node::Words(Box::new(["Felines", "-", "fantastic!"]))]),
         };
 
         let actual = parse(input).unwrap();

@@ -24,8 +24,6 @@ pub enum Delimit {
     Raw,
 }
 
-const BOLD_DELIMITER: Token = Token::Delimiter(Delimit::Bold);
-
 pub struct Tokeniser<'a> {
     input: &'a str,
     chars: CharIndices<'a>,
