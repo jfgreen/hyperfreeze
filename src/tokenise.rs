@@ -27,6 +27,7 @@ pub enum Delimit {
 pub struct Tokeniser<'a> {
     input: &'a str,
     chars: CharIndices<'a>,
+    last_char: Option<char>,
     current_char: Option<char>,
     current_index: usize,
     next_char: Option<char>,
@@ -47,18 +48,12 @@ impl<'a> Iterator for Tokeniser<'a> {
     type Item = Token<'a>;
 
     fn next(&mut self) -> Option<Token<'a>> {
-        // The first time this function is called, `next_char` will hold the
-        // start of the input string. Therefore the initial call to advance will
-        // place the first char of the input into `current_char` (assuming that
-        // the input is a non empty string).
-        self.advance();
-
         match self.current_char {
             Some('\n') => Some(self.handle_new_line()),
-            Some(DELIM_BOLD) => Some(Token::Delimiter(Delimit::Bold)),
-            Some(DELIM_EMPH) => Some(Token::Delimiter(Delimit::Emphasis)),
-            Some(DELIM_STRIKE) => Some(Token::Delimiter(Delimit::Strikethrough)),
-            Some(DELIM_RAW) => Some(Token::Delimiter(Delimit::Raw)),
+            Some(DELIM_BOLD) => Some(self.handle_delimiter(Delimit::Bold)),
+            Some(DELIM_EMPH) => Some(self.handle_delimiter(Delimit::Emphasis)),
+            Some(DELIM_STRIKE) => Some(self.handle_delimiter(Delimit::Strikethrough)),
+            Some(DELIM_RAW) => Some(self.handle_delimiter(Delimit::Raw)),
             Some(c) if c.is_whitespace() => Some(self.handle_whitespace()),
             //TODO: Do we really want any unicode char in a word?
             Some(_) => Some(self.handle_word()),
@@ -72,6 +67,7 @@ impl<'a> Tokeniser<'a> {
         let mut tokeniser = Self {
             input,
             chars: input.char_indices(),
+            last_char: None,
             current_char: None,
             current_index: 0,
             next_char: None,
@@ -82,14 +78,19 @@ impl<'a> Tokeniser<'a> {
         // of input string into 'next_char', assuming it has at least once char
         tokeniser.advance();
 
+        // Then again, to place the first char of the input into `current_char`
+        tokeniser.advance();
+
         tokeniser
     }
 
     fn handle_new_line(&mut self) -> Token<'a> {
+        self.advance();
+
         // New lines are usually treated as whitespace. However, if there is
         // more than one in a row, they are all treated as a single line break
-        if self.next_char == Some('\n') {
-            while self.next_char == Some('\n') {
+        if self.current_char == Some('\n') {
+            while self.current_char == Some('\n') {
                 self.advance();
             }
             Token::Linebreak
@@ -103,23 +104,58 @@ impl<'a> Tokeniser<'a> {
         Token::Whitespace
     }
 
+    fn handle_delimiter(&mut self, kind: Delimit) -> Token<'a> {
+        /*
+        //TODO: Seperate tokens for open and closing
+        //FIXME: Unwrap
+        if self
+            .next_char
+            .is_some_and(|n| n == self.current_char.unwrap())
+        {
+            let i1 = self.current_index;
+            self.advance();
+            self.advance();
+            let i2 = self.current_index;
+            return Token::Word(&self.input[i1..i2]);
+        }
+
+        let token = if self.next_char.is_some_and(|c| !c.is_whitespace()) {
+            // Opening delimiter
+            Token::Delimiter(kind)
+        //TODO: Use stack of 'pending tokens' instead of tracking last char?
+        } else if self.last_char.is_some_and(|c| !c.is_whitespace()) {
+            // Closing delimiter
+            Token::Delimiter(kind)
+        } else {
+            //TODO: if we allow delimiters in words as long as they are not
+            // at the end of the word, we can just call handle_word here...
+            Token::Word(&self.input[self.current_index..self.next_index])
+        };
+        */
+
+        self.advance();
+        Token::Delimiter(kind)
+    }
+
     fn handle_word(&mut self) -> Token<'a> {
         let word = self.eat_word();
         Token::Word(word)
     }
 
     fn eat_whitespace(&mut self) {
-        self.advance_while_next(char::is_whitespace)
+        self.advance_while_current(char::is_whitespace)
     }
 
     fn eat_word(&mut self) -> &'a str {
         let i1 = self.current_index;
-        self.advance_while_next(char_usable_in_word);
-        let i2 = self.next_index;
+        self.advance_while_current(char_usable_in_word);
+        let i2 = self.current_index;
         &self.input[i1..i2]
     }
 
+    //TODO: Do we actually need the lookahead?
     fn advance(&mut self) {
+        self.last_char = self.current_char;
         self.current_char = self.next_char;
         self.current_index = self.next_index;
 
@@ -132,8 +168,8 @@ impl<'a> Tokeniser<'a> {
         }
     }
 
-    fn advance_while_next(&mut self, predicate: fn(char) -> bool) {
-        while self.next_char.is_some_and(predicate) {
+    fn advance_while_current(&mut self, predicate: fn(char) -> bool) {
+        while self.current_char.is_some_and(predicate) {
             self.advance();
         }
     }
@@ -293,7 +329,7 @@ mod test {
     }
 
     #[test]
-    fn raw_word() {
+    fn raw_word_with_punctuation() {
         let input = "Cat `technology`!";
 
         let expected = vec![
@@ -308,6 +344,46 @@ mod test {
         let actual = tokenise(input);
         assert_eq!(actual, expected);
     }
+
+    #[test]
+    #[ignore]
+    fn empty_delimiter_treated_as_word() {
+        let input = "**";
+
+        let expected = vec![Token::Word("**")];
+
+        let actual = tokenise(input);
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    #[ignore]
+    fn tripple_delimiter_treated_as_word() {
+        let input = "***";
+
+        let expected = vec![Token::Word("***")];
+
+        let actual = tokenise(input);
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    #[ignore]
+    fn mixed_triple_delimiter_treated_as_delimited() {
+        let input = "*_*";
+
+        let expected = vec![
+            Token::Delimiter(Delimit::Bold),
+            Token::Word("_"),
+            Token::Delimiter(Delimit::Bold),
+        ];
+
+        let actual = tokenise(input);
+        assert_eq!(actual, expected);
+    }
+
+    //TODO: More evils: _``_, `*`*
+    //TODO: Foo_bar_baz vs foobar_baz
 
     //TODO: References
 }
