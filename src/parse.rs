@@ -45,12 +45,12 @@ fn parse(input: &str) -> Result<Document, ParseError> {
 
     while let Some(token) = tokens.next() {
         match token {
-            Token::Word(word) => {
+            Token::Text(word) => {
                 let mut words: Vec<&str> = Vec::new();
                 words.push(word);
                 loop {
                     match tokens.peek() {
-                        Some(Token::Word(word)) => words.push(word),
+                        Some(Token::Text(word)) => words.push(word),
                         Some(Token::Whitespace) => (),
                         _ => break,
                     }
@@ -67,7 +67,7 @@ fn parse(input: &str) -> Result<Document, ParseError> {
 
                 loop {
                     match tokens.next() {
-                        Some(Token::Word(word)) => words.push(word),
+                        Some(Token::Text(word)) => words.push(word),
                         Some(Token::Whitespace) => (),
                         Some(Token::Delimiter(d2)) if d1 == d2 => break,
                         Some(_) => panic!("unexpected token"),

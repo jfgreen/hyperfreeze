@@ -11,7 +11,7 @@ const DELIM_RAW: char = '`';
 #[derive(PartialEq, Eq, Debug)]
 pub enum Token<'a> {
     Linebreak,
-    Word(&'a str),
+    Text(&'a str),
     Whitespace,
     Delimiter(Delimit),
 }
@@ -34,7 +34,7 @@ pub struct Tokeniser<'a> {
     next_index: usize,
 }
 
-fn char_usable_in_word(c: char) -> bool {
+fn char_usable_in_text(c: char) -> bool {
     // TODO: Is there a more efficent way to do this?
     // Maybe by treating char as an int
     !(c == DELIM_BOLD
@@ -55,8 +55,8 @@ impl<'a> Iterator for Tokeniser<'a> {
             Some(DELIM_STRIKE) => Some(self.handle_delimiter(Delimit::Strikethrough)),
             Some(DELIM_RAW) => Some(self.handle_delimiter(Delimit::Raw)),
             Some(c) if c.is_whitespace() => Some(self.handle_whitespace()),
-            //TODO: Do we really want any unicode char in a word?
-            Some(_) => Some(self.handle_word()),
+            //TODO: Do we really want any unicode char in a text?
+            Some(_) => Some(self.handle_text()),
             _ => None,
         }
     }
@@ -116,7 +116,7 @@ impl<'a> Tokeniser<'a> {
             self.advance();
             self.advance();
             let i2 = self.current_index;
-            return Token::Word(&self.input[i1..i2]);
+            return Token::text(&self.input[i1..i2]);
         }
 
         let token = if self.next_char.is_some_and(|c| !c.is_whitespace()) {
@@ -127,9 +127,9 @@ impl<'a> Tokeniser<'a> {
             // Closing delimiter
             Token::Delimiter(kind)
         } else {
-            //TODO: if we allow delimiters in words as long as they are not
-            // at the end of the word, we can just call handle_word here...
-            Token::Word(&self.input[self.current_index..self.next_index])
+            //TODO: if we allow delimiters in texts as long as they are not
+            // at the end of the text, we can just call handle_text here...
+            Token::text(&self.input[self.current_index..self.next_index])
         };
         */
 
@@ -137,18 +137,18 @@ impl<'a> Tokeniser<'a> {
         Token::Delimiter(kind)
     }
 
-    fn handle_word(&mut self) -> Token<'a> {
-        let word = self.eat_word();
-        Token::Word(word)
+    fn handle_text(&mut self) -> Token<'a> {
+        let text = self.eat_text();
+        Token::Text(text)
     }
 
     fn eat_whitespace(&mut self) {
         self.advance_while_current(char::is_whitespace)
     }
 
-    fn eat_word(&mut self) -> &'a str {
+    fn eat_text(&mut self) -> &'a str {
         let i1 = self.current_index;
-        self.advance_while_current(char_usable_in_word);
+        self.advance_while_current(char_usable_in_text);
         let i2 = self.current_index;
         &self.input[i1..i2]
     }
@@ -189,23 +189,23 @@ mod test {
         let input = "The nice little cat pounced over the silly fox";
 
         let expected = vec![
-            Token::Word("The"),
+            Token::Text("The"),
             Token::Whitespace,
-            Token::Word("nice"),
+            Token::Text("nice"),
             Token::Whitespace,
-            Token::Word("little"),
+            Token::Text("little"),
             Token::Whitespace,
-            Token::Word("cat"),
+            Token::Text("cat"),
             Token::Whitespace,
-            Token::Word("pounced"),
+            Token::Text("pounced"),
             Token::Whitespace,
-            Token::Word("over"),
+            Token::Text("over"),
             Token::Whitespace,
-            Token::Word("the"),
+            Token::Text("the"),
             Token::Whitespace,
-            Token::Word("silly"),
+            Token::Text("silly"),
             Token::Whitespace,
-            Token::Word("fox"),
+            Token::Text("fox"),
         ];
 
         let actual = tokenise(input);
@@ -217,9 +217,9 @@ mod test {
         let input = "Nice  kitty!";
 
         let expected = vec![
-            Token::Word("Nice"),
+            Token::Text("Nice"),
             Token::Whitespace,
-            Token::Word("kitty!"),
+            Token::Text("kitty!"),
         ];
 
         let actual = tokenise(input);
@@ -231,9 +231,9 @@ mod test {
         let input = "Cats\nwhiskers";
 
         let expected = vec![
-            Token::Word("Cats"),
+            Token::Text("Cats"),
             Token::Whitespace,
-            Token::Word("whiskers"),
+            Token::Text("whiskers"),
         ];
 
         let actual = tokenise(input);
@@ -245,9 +245,9 @@ mod test {
         let input = "Cats\n\nwhiskers";
 
         let expected = vec![
-            Token::Word("Cats"),
+            Token::Text("Cats"),
             Token::Linebreak,
-            Token::Word("whiskers"),
+            Token::Text("whiskers"),
         ];
 
         let actual = tokenise(input);
@@ -259,9 +259,9 @@ mod test {
         let input = "Cats\n\n\nwhiskers";
 
         let expected = vec![
-            Token::Word("Cats"),
+            Token::Text("Cats"),
             Token::Linebreak,
-            Token::Word("whiskers"),
+            Token::Text("whiskers"),
         ];
 
         let actual = tokenise(input);
@@ -269,19 +269,19 @@ mod test {
     }
 
     #[test]
-    fn bold_word() {
+    fn bold_text() {
         let input = "Cats are *really* cute";
 
         let expected = vec![
-            Token::Word("Cats"),
+            Token::Text("Cats"),
             Token::Whitespace,
-            Token::Word("are"),
+            Token::Text("are"),
             Token::Whitespace,
             Token::Delimiter(Delimit::Bold),
-            Token::Word("really"),
+            Token::Text("really"),
             Token::Delimiter(Delimit::Bold),
             Token::Whitespace,
-            Token::Word("cute"),
+            Token::Text("cute"),
         ];
 
         let actual = tokenise(input);
@@ -289,19 +289,19 @@ mod test {
     }
 
     #[test]
-    fn emphasis_word() {
+    fn emphasis_text() {
         let input = "Cats are _super_ smart";
 
         let expected = vec![
-            Token::Word("Cats"),
+            Token::Text("Cats"),
             Token::Whitespace,
-            Token::Word("are"),
+            Token::Text("are"),
             Token::Whitespace,
             Token::Delimiter(Delimit::Emphasis),
-            Token::Word("super"),
+            Token::Text("super"),
             Token::Delimiter(Delimit::Emphasis),
             Token::Whitespace,
-            Token::Word("smart"),
+            Token::Text("smart"),
         ];
 
         let actual = tokenise(input);
@@ -313,15 +313,15 @@ mod test {
         let input = "Learn ~forbiden~ cat secrets";
 
         let expected = vec![
-            Token::Word("Learn"),
+            Token::Text("Learn"),
             Token::Whitespace,
             Token::Delimiter(Delimit::Strikethrough),
-            Token::Word("forbiden"),
+            Token::Text("forbiden"),
             Token::Delimiter(Delimit::Strikethrough),
             Token::Whitespace,
-            Token::Word("cat"),
+            Token::Text("cat"),
             Token::Whitespace,
-            Token::Word("secrets"),
+            Token::Text("secrets"),
         ];
 
         let actual = tokenise(input);
@@ -329,16 +329,16 @@ mod test {
     }
 
     #[test]
-    fn raw_word_with_punctuation() {
+    fn raw_text_with_punctuation() {
         let input = "Cat `technology`!";
 
         let expected = vec![
-            Token::Word("Cat"),
+            Token::Text("Cat"),
             Token::Whitespace,
             Token::Delimiter(Delimit::Raw),
-            Token::Word("technology"),
+            Token::Text("technology"),
             Token::Delimiter(Delimit::Raw),
-            Token::Word("!"),
+            Token::Text("!"),
         ];
 
         let actual = tokenise(input);
@@ -347,10 +347,10 @@ mod test {
 
     #[test]
     #[ignore]
-    fn empty_delimiter_treated_as_word() {
+    fn empty_delimiter_treated_as_text() {
         let input = "**";
 
-        let expected = vec![Token::Word("**")];
+        let expected = vec![Token::Text("**")];
 
         let actual = tokenise(input);
         assert_eq!(actual, expected);
@@ -358,10 +358,10 @@ mod test {
 
     #[test]
     #[ignore]
-    fn tripple_delimiter_treated_as_word() {
+    fn tripple_delimiter_treated_as_text() {
         let input = "***";
 
-        let expected = vec![Token::Word("***")];
+        let expected = vec![Token::Text("***")];
 
         let actual = tokenise(input);
         assert_eq!(actual, expected);
@@ -374,7 +374,7 @@ mod test {
 
         let expected = vec![
             Token::Delimiter(Delimit::Bold),
-            Token::Word("_"),
+            Token::Text("_"),
             Token::Delimiter(Delimit::Bold),
         ];
 
