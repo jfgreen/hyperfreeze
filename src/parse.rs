@@ -1,30 +1,46 @@
 use crate::tokenise::{Delimit, Token, Tokeniser};
 
-#[derive(PartialEq, Eq, Debug)]
-struct Document<'a> {
-    nodes: Box<[Node<'a>]>,
-}
-
-// We create a document tree, not a token stream, so that:
-// - Its easy to generate a table of contents
-// - Links dont have to be defined up front
-// - The types model the overall semantic structure of a doc
-// - It is clear as to which combinations of nodes can be nested
-//
-// If we didnt do these here, then HTML generation would have to build
-// its own tree, or make more than one pass of the token stream.
-
-//TODO: Is there a more efficent way of representing a document tree?
+//TODO: Reflect one if this document model is better than a higher level token stream?
+// Lots of structure and indirection...
+// So, is there a more efficent way of representing a document tree?
+// Code up an alternative and compare?
+// Token stream of text, space, start format, end format?
+// Think about what will be easy to emit HTML for?
 // Think: Flatter, all pre-allocated, contigious
 // Think: Copy words runs into string fragments?
+// Try the below struct, then...
+// Mad idea, use unicode private use area and have whole doc a one string...
+// But might not work nicely if we need numeric values?
+// Could work just for paragraph / markup type?
+//enum SemanticToken {
+//    DelimiterStart(Delimit)
+//    DelimiterEnd(Delimit)
+//    Char(char),
+//}
 
 #[derive(PartialEq, Eq, Debug)]
-enum Node<'a> {
-    Words(Box<[&'a str]>),
-    EmphasisedWords(Box<[&'a str]>),
-    BoldWords(Box<[&'a str]>),
-    StrikethroughWords(Box<[&'a str]>),
-    RawWords(Box<[&'a str]>),
+struct Document {
+    blocks: Box<[Block]>,
+}
+
+#[derive(PartialEq, Eq, Debug)]
+enum Block {
+    Paragraph(Box<[TextRun]>),
+}
+
+#[derive(PartialEq, Eq, Debug)]
+struct TextRun {
+    text: String,
+    format: Format,
+}
+
+#[derive(PartialEq, Eq, Debug)]
+enum Format {
+    None,
+    Bold,
+    Emphasis,
+    Strikethrough,
+    Raw,
 }
 
 #[derive(Debug)]
@@ -33,66 +49,83 @@ enum ParseError {}
 // TODO: Propper error handling, replace calls to panic!
 
 fn parse(input: &str) -> Result<Document, ParseError> {
-    //TODO: Pre allocate a sensible vec capacity
-    let mut nodes = Vec::new();
+    //TODO: Pre allocate a sensible vec capacity?
+    let mut text_runs = Vec::new();
 
     let tokeniser = Tokeniser::new(input);
     let mut tokens = tokeniser.into_iter().peekable();
 
     //TODO: Explictly look for an Eof token?
-
-    //TODO: Try a simmilar pattern to tokeniser?
+    //TODO: Try the same pattern to tokeniser?
+    //TODO: Strip leading whitespace from para
 
     while let Some(token) = tokens.next() {
         match token {
-            Token::Text(word) => {
-                let mut words: Vec<&str> = Vec::new();
-                words.push(word);
+            //TODO: Reduce duplication
+            Token::Whitespace => {
+                let mut run = String::new();
+                run.push_str(" ");
+
                 loop {
                     match tokens.peek() {
-                        Some(Token::Text(word)) => words.push(word),
-                        Some(Token::Whitespace) => (),
+                        Some(Token::Text(word)) => run.push_str(word),
+                        Some(Token::Whitespace) => run.push_str(" "),
                         _ => break,
                     }
                     tokens.next();
                 }
 
-                let text = words.into_boxed_slice();
-
-                nodes.push(Node::Words(text));
+                text_runs.push(TextRun {
+                    text: run,
+                    format: Format::None,
+                });
             }
-            Token::Delimiter(d1) => {
-                let mut words: Vec<&str> = Vec::new();
-                dbg!(&d1);
+            Token::Text(word) => {
+                let mut run = String::new();
+                run.push_str(word);
 
                 loop {
+                    match tokens.peek() {
+                        Some(Token::Text(word)) => run.push_str(word),
+                        Some(Token::Whitespace) => run.push_str(" "),
+                        _ => break,
+                    }
+                    tokens.next();
+                }
+
+                text_runs.push(TextRun {
+                    text: run,
+                    format: Format::None,
+                });
+            }
+            Token::Delimiter(d1) => {
+                let mut run = String::new();
+                loop {
                     match tokens.next() {
-                        Some(Token::Text(word)) => words.push(word),
-                        Some(Token::Whitespace) => (),
+                        Some(Token::Text(word)) => run.push_str(word),
+                        Some(Token::Whitespace) => run.push_str(" "),
                         Some(Token::Delimiter(d2)) if d1 == d2 => break,
+                        //TODO: We probably actualy want to handle EOF gracefully
                         Some(_) => panic!("unexpected token"),
                         None => panic!("unexpected eof"),
                     }
                 }
 
-                let text = words.into_boxed_slice();
-
-                let node = match d1 {
-                    Delimit::Emphasis => Node::EmphasisedWords(text),
-                    Delimit::Bold => Node::BoldWords(text),
-                    Delimit::Strikethrough => Node::StrikethroughWords(text),
-                    Delimit::Raw => Node::RawWords(text),
+                let format = match d1 {
+                    Delimit::Emphasis => Format::Emphasis,
+                    Delimit::Bold => Format::Bold,
+                    Delimit::Strikethrough => Format::Strikethrough,
+                    Delimit::Raw => Format::Raw,
                 };
 
-                nodes.push(node);
+                text_runs.push(TextRun { text: run, format });
             }
-            Token::Whitespace => (),
             _ => panic!("unexpected token"),
         }
     }
 
     Ok(Document {
-        nodes: nodes.into_boxed_slice(),
+        blocks: Box::new([Block::Paragraph(text_runs.into_boxed_slice())]),
     })
 }
 
@@ -100,14 +133,30 @@ fn parse(input: &str) -> Result<Document, ParseError> {
 mod test {
     use super::*;
 
+    //TODO: Make unclosed delimiters illegal
+
+    //TODO: More evils: _``_, `*`*
+    //TODO: Foo_bar_baz vs foobar_baz
+    //TODO: References
+
+    //TODO: Test leading whitespace in a paragraph is ignored
+    //TODO: Add test for bold mid word
+    //TODO: Test newlines
+    //TODO: Macros to make building test cases less painful
+
     #[test]
     fn one_line_paragraph() {
         let input = "We like cats very much";
 
+        let run = TextRun {
+            text: String::from("We like cats very much"),
+            format: Format::None,
+        };
+
+        let text = Box::new([run]);
+
         let expected = Document {
-            nodes: Box::new([Node::Words(Box::new([
-                "We", "like", "cats", "very", "much",
-            ]))]),
+            blocks: Box::new([Block::Paragraph(text)]),
         };
 
         let actual = parse(input).unwrap();
@@ -119,12 +168,25 @@ mod test {
     fn emphasised_words() {
         let input = "We _totally adore_ them";
 
+        let run1 = TextRun {
+            text: String::from("We "),
+            format: Format::None,
+        };
+
+        let run2 = TextRun {
+            text: String::from("totally adore"),
+            format: Format::Emphasis,
+        };
+
+        let run3 = TextRun {
+            text: String::from(" them"),
+            format: Format::None,
+        };
+
+        let text = Box::new([run1, run2, run3]);
+
         let expected = Document {
-            nodes: Box::new([
-                Node::Words(Box::new(["We"])),
-                Node::EmphasisedWords(Box::new(["totally", "adore"])),
-                Node::Words(Box::new(["them"])),
-            ]),
+            blocks: Box::new([Block::Paragraph(text)]),
         };
 
         let actual = parse(input).unwrap();
@@ -136,12 +198,25 @@ mod test {
     fn bold_words() {
         let input = "I *need to pet that cat* right away.";
 
+        let run1 = TextRun {
+            text: String::from("I "),
+            format: Format::None,
+        };
+
+        let run2 = TextRun {
+            text: String::from("need to pet that cat"),
+            format: Format::Bold,
+        };
+
+        let run3 = TextRun {
+            text: String::from(" right away."),
+            format: Format::None,
+        };
+
+        let text = Box::new([run1, run2, run3]);
+
         let expected = Document {
-            nodes: Box::new([
-                Node::Words(Box::new(["I"])),
-                Node::BoldWords(Box::new(["need", "to", "pet", "that", "cat"])),
-                Node::Words(Box::new(["right", "away."])),
-            ]),
+            blocks: Box::new([Block::Paragraph(text)]),
         };
 
         let actual = parse(input).unwrap();
@@ -153,12 +228,25 @@ mod test {
     fn strikethrough_words() {
         let input = "Cats are ~ok i guess~ magnificant";
 
+        let run1 = TextRun {
+            text: String::from("Cats are "),
+            format: Format::None,
+        };
+
+        let run2 = TextRun {
+            text: String::from("ok i guess"),
+            format: Format::Strikethrough,
+        };
+
+        let run3 = TextRun {
+            text: String::from(" magnificant"),
+            format: Format::None,
+        };
+
+        let text = Box::new([run1, run2, run3]);
+
         let expected = Document {
-            nodes: Box::new([
-                Node::Words(Box::new(["Cats", "are"])),
-                Node::StrikethroughWords(Box::new(["ok", "i", "guess"])),
-                Node::Words(Box::new(["magnificant"])),
-            ]),
+            blocks: Box::new([Block::Paragraph(text)]),
         };
 
         let actual = parse(input).unwrap();
@@ -170,12 +258,25 @@ mod test {
     fn raw_words() {
         let input = "Robot cat says `bleep bloop`!";
 
+        let run1 = TextRun {
+            text: String::from("Robot cat says "),
+            format: Format::None,
+        };
+
+        let run2 = TextRun {
+            text: String::from("bleep bloop"),
+            format: Format::Raw,
+        };
+
+        let run3 = TextRun {
+            text: String::from("!"),
+            format: Format::None,
+        };
+
+        let text = Box::new([run1, run2, run3]);
+
         let expected = Document {
-            nodes: Box::new([
-                Node::Words(Box::new(["Robot", "cat", "says"])),
-                Node::RawWords(Box::new(["bleep", "bloop"])),
-                Node::Words(Box::new(["!"])),
-            ]),
+            blocks: Box::new([Block::Paragraph(text)]),
         };
 
         let actual = parse(input).unwrap();
@@ -184,20 +285,46 @@ mod test {
     }
 
     #[test]
-    #[ignore]
-    fn empty_emphasis() {
-        let input = "Rules cats must follow: __.";
+    fn standalone_dash() {
+        let input = "Felines - fantastic!";
+
+        let run1 = TextRun {
+            text: String::from("Felines - fantastic!"),
+            format: Format::None,
+        };
+
+        let text = Box::new([run1]);
 
         let expected = Document {
-            nodes: Box::new([Node::Words(Box::new([
-                "Rules", "cats", "must", "follow:", "__", ".",
-            ]))]),
+            blocks: Box::new([Block::Paragraph(text)]),
         };
 
         let actual = parse(input).unwrap();
 
         assert_eq!(actual, expected);
     }
+
+    #[test]
+    #[ignore] // FIXME: we probably want to make this illegal
+    fn empty_emphasis() {
+        let input = "Rules cats must follow: __.";
+
+        let run1 = TextRun {
+            text: String::from("Rules cats must follow: __."),
+            format: Format::None,
+        };
+
+        let text = Box::new([run1]);
+
+        let expected = Document {
+            blocks: Box::new([Block::Paragraph(text)]),
+        };
+
+        let actual = parse(input).unwrap();
+
+        assert_eq!(actual, expected);
+    }
+    /*
 
     //TODO: Revisit the following cases, is this actually realistic?
     // Think: Cant enforce that formating needs whitespace due to punctuation.
@@ -242,7 +369,6 @@ mod test {
     }
 
     // TODO: Maybe bring this back as individual tests?
-    /*
     #[ignore]
     #[test]
     fn invalid_strikethroughs() {
@@ -299,22 +425,9 @@ mod test {
             ]),
         };
     }
-    */
 
-    #[ignore]
-    #[test]
-    fn standalone_dash() {
-        let input = "Felines - fantastic!";
-
-        let expected = Document {
-            nodes: Box::new([Node::Words(Box::new(["Felines", "-", "fantastic!"]))]),
-        };
-
-        let actual = parse(input).unwrap();
-
-        assert_eq!(actual, expected);
-    }
 
     //TODO: Test: -foo\nbar- <- Valid?
     //TODO: Test: -foo\n\nbar- <- Invalid?
+    */
 }

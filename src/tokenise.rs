@@ -105,34 +105,6 @@ impl<'a> Tokeniser<'a> {
     }
 
     fn handle_delimiter(&mut self, kind: Delimit) -> Token<'a> {
-        /*
-        //TODO: Seperate tokens for open and closing
-        //FIXME: Unwrap
-        if self
-            .next_char
-            .is_some_and(|n| n == self.current_char.unwrap())
-        {
-            let i1 = self.current_index;
-            self.advance();
-            self.advance();
-            let i2 = self.current_index;
-            return Token::text(&self.input[i1..i2]);
-        }
-
-        let token = if self.next_char.is_some_and(|c| !c.is_whitespace()) {
-            // Opening delimiter
-            Token::Delimiter(kind)
-        //TODO: Use stack of 'pending tokens' instead of tracking last char?
-        } else if self.last_char.is_some_and(|c| !c.is_whitespace()) {
-            // Closing delimiter
-            Token::Delimiter(kind)
-        } else {
-            //TODO: if we allow delimiters in texts as long as they are not
-            // at the end of the text, we can just call handle_text here...
-            Token::text(&self.input[self.current_index..self.next_index])
-        };
-        */
-
         self.advance();
         Token::Delimiter(kind)
     }
@@ -344,46 +316,4 @@ mod test {
         let actual = tokenise(input);
         assert_eq!(actual, expected);
     }
-
-    #[test]
-    #[ignore]
-    fn empty_delimiter_treated_as_text() {
-        let input = "**";
-
-        let expected = vec![Token::Text("**")];
-
-        let actual = tokenise(input);
-        assert_eq!(actual, expected);
-    }
-
-    #[test]
-    #[ignore]
-    fn tripple_delimiter_treated_as_text() {
-        let input = "***";
-
-        let expected = vec![Token::Text("***")];
-
-        let actual = tokenise(input);
-        assert_eq!(actual, expected);
-    }
-
-    #[test]
-    #[ignore]
-    fn mixed_triple_delimiter_treated_as_delimited() {
-        let input = "*_*";
-
-        let expected = vec![
-            Token::Delimiter(Delimit::Bold),
-            Token::Text("_"),
-            Token::Delimiter(Delimit::Bold),
-        ];
-
-        let actual = tokenise(input);
-        assert_eq!(actual, expected);
-    }
-
-    //TODO: More evils: _``_, `*`*
-    //TODO: Foo_bar_baz vs foobar_baz
-
-    //TODO: References
 }
