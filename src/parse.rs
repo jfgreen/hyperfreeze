@@ -43,8 +43,10 @@ enum Format {
     Raw,
 }
 
-#[derive(Debug)]
-enum ParseError {}
+#[derive(PartialEq, Eq, Debug)]
+enum ParseError {
+    EmptyDelimitedText,
+}
 
 // TODO: Propper error handling, replace calls to panic!
 
@@ -68,7 +70,7 @@ fn parse(input: &str) -> Result<Document, ParseError> {
 
                 loop {
                     match tokens.peek() {
-                        Some(Token::Text(word)) => run.push_str(word),
+                        Some(Token::Text(text)) => run.push_str(text),
                         Some(Token::Whitespace) => run.push_str(" "),
                         _ => break,
                     }
@@ -86,7 +88,7 @@ fn parse(input: &str) -> Result<Document, ParseError> {
 
                 loop {
                     match tokens.peek() {
-                        Some(Token::Text(word)) => run.push_str(word),
+                        Some(Token::Text(text)) => run.push_str(text),
                         Some(Token::Whitespace) => run.push_str(" "),
                         _ => break,
                     }
@@ -100,9 +102,15 @@ fn parse(input: &str) -> Result<Document, ParseError> {
             }
             Token::Delimiter(d1) => {
                 let mut run = String::new();
+                //TODO: Something more elegant?
+                if let Some(Token::Delimiter(d2)) = tokens.peek() {
+                    if d1 == *d2 {
+                        return Err(ParseError::EmptyDelimitedText);
+                    }
+                }
                 loop {
                     match tokens.next() {
-                        Some(Token::Text(word)) => run.push_str(word),
+                        Some(Token::Text(text)) => run.push_str(text),
                         Some(Token::Whitespace) => run.push_str(" "),
                         Some(Token::Delimiter(d2)) if d1 == d2 => break,
                         //TODO: We probably actualy want to handle EOF gracefully
@@ -136,8 +144,12 @@ mod test {
     //TODO: Make unclosed delimiters illegal
 
     //TODO: More evils: _``_, `*`*
+    //TODO: Test: -foo\nbar- <- Valid?
+    //TODO: Test: -foo\n\nbar- <- Invalid?
     //TODO: Foo_bar_baz vs foobar_baz
     //TODO: References
+    //TODO: Decide on if we want to enforce "tight" delimiters
+    //TODO: Bold and emph are ok mid word, but what about raw?
 
     //TODO: Test leading whitespace in a paragraph is ignored
     //TODO: Add test for bold mid word
@@ -305,16 +317,36 @@ mod test {
     }
 
     #[test]
-    #[ignore] // FIXME: we probably want to make this illegal
     fn empty_emphasis() {
         let input = "Rules cats must follow: __.";
 
+        let expected = Err(ParseError::EmptyDelimitedText);
+
+        let actual = parse(input);
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn underscore_in_awkward_places() {
+        let input = "Cat cat_cat cat_ cat.";
+
         let run1 = TextRun {
-            text: String::from("Rules cats must follow: __."),
+            text: String::from("Cat cat"),
             format: Format::None,
         };
 
-        let text = Box::new([run1]);
+        let run2 = TextRun {
+            text: String::from("cat cat"),
+            format: Format::Emphasis,
+        };
+
+        let run3 = TextRun {
+            text: String::from(" cat."),
+            format: Format::None,
+        };
+
+        let text = Box::new([run1, run2, run3]);
 
         let expected = Document {
             blocks: Box::new([Block::Paragraph(text)]),
@@ -324,110 +356,4 @@ mod test {
 
         assert_eq!(actual, expected);
     }
-    /*
-
-    //TODO: Revisit the following cases, is this actually realistic?
-    // Think: Cant enforce that formating needs whitespace due to punctuation.
-    // E.g Cats are *great*. <- The '.' would get pulled into the word.
-
-    // DJOT says: "A _ or * can open emphasis only if it is not directly
-    // followed by whitespace. It can close emphasis only if it is not
-    // directly preceded by whitespace, and only if there are some
-    // characters besides the delimiter character between the opener and
-    // the closer."
-
-    #[ignore]
-    #[test]
-    fn underscore_in_awkward_places() {
-        let input = "Cat cat_cat cat_ cat.";
-
-        let expected = Document {
-            nodes: Box::new([Node::Words(Box::new(["Cat", "cat_cat", "cat_", "cat."]))]),
-        };
-
-        let actual = parse(input).unwrap();
-
-        assert_eq!(actual, expected);
-    }
-
-    #[ignore]
-    #[test]
-    fn multi_dash_mid_word() {
-        let input = "Visit Catville-on-sea today!";
-
-        let expected = Document {
-            nodes: Box::new([Node::Words(Box::new([
-                "Visit",
-                "Catville-on-sea",
-                "today!",
-            ]))]),
-        };
-
-        let actual = parse(input).unwrap();
-
-        assert_eq!(actual, expected);
-    }
-
-    // TODO: Maybe bring this back as individual tests?
-    #[ignore]
-    #[test]
-    fn invalid_strikethroughs() {
-        let input = concat!(
-            "Cat -cat cat- cat.\n",   // 1
-            "Cat -cat cat - cat.\n",  // 2
-            "Cat - cat cat- cat.\n",  // 3
-            "Cat - cat cat - cat.\n", // 4
-            "Cat- cat cat- cat.\n",   // 5
-            "Cat -cat cat -cat.\n",   // 6
-            "Cat- cat cat -cat.\n"    // 7
-        );
-
-        let expected = Document {
-            nodes: Box::new([
-                // Line 1
-                "Cat",
-                Node::StrikethroughWords(Box::new(["cat", "cat"])),
-                "cat.",
-                // Line 2
-                "Cat",
-                "-cat",
-                "cat",
-                "-",
-                "cat.",
-                // Line 3
-                "Cat",
-                "-",
-                "cat",
-                "cat-",
-                "cat.",
-                // Line 4
-                "Cat",
-                "-",
-                "cat",
-                "cat",
-                "-",
-                "cat.",
-                // Line 5
-                "Cat-",
-                "cat",
-                "cat-",
-                "cat.",
-                // Line 6
-                "Cat",
-                "-cat",
-                "cat",
-                "-cat.",
-                // Line 7
-                "Cat-",
-                "cat",
-                "cat",
-                "-cat.",
-            ]),
-        };
-    }
-
-
-    //TODO: Test: -foo\nbar- <- Valid?
-    //TODO: Test: -foo\n\nbar- <- Invalid?
-    */
 }
