@@ -45,6 +45,7 @@ enum Format {
 
 #[derive(PartialEq, Eq, Debug)]
 enum ParseError {
+    UnmatchedDelimiter,
     EmptyDelimitedText,
 }
 
@@ -113,9 +114,7 @@ fn parse(input: &str) -> Result<Document, ParseError> {
                         Some(Token::Text(text)) => run.push_str(text),
                         Some(Token::Whitespace) => run.push_str(" "),
                         Some(Token::Delimiter(d2)) if d1 == d2 => break,
-                        //TODO: We probably actualy want to handle EOF gracefully
-                        Some(_) => panic!("unexpected token"),
-                        None => panic!("unexpected eof"),
+                        _ => return Err(ParseError::UnmatchedDelimiter),
                     }
                 }
 
@@ -317,17 +316,6 @@ mod test {
     }
 
     #[test]
-    fn empty_emphasis() {
-        let input = "Rules cats must follow: __.";
-
-        let expected = Err(ParseError::EmptyDelimitedText);
-
-        let actual = parse(input);
-
-        assert_eq!(actual, expected);
-    }
-
-    #[test]
     fn underscore_in_awkward_places() {
         let input = "Cat cat_cat cat_ cat.";
 
@@ -353,6 +341,50 @@ mod test {
         };
 
         let actual = parse(input).unwrap();
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn empty_emphasis() {
+        let input = "Rules cats must follow: __.";
+
+        let expected = Err(ParseError::EmptyDelimitedText);
+
+        let actual = parse(input);
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn unmatched_emphasis_1() {
+        let input = "_.";
+
+        let expected = Err(ParseError::UnmatchedDelimiter);
+
+        let actual = parse(input);
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn unmatched_emphasis_2() {
+        let input = "meow _meow.";
+
+        let expected = Err(ParseError::UnmatchedDelimiter);
+
+        let actual = parse(input);
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn unmatched_emphasis_3() {
+        let input = "meow meow_";
+
+        let expected = Err(ParseError::UnmatchedDelimiter);
+
+        let actual = parse(input);
 
         assert_eq!(actual, expected);
     }
