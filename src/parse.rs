@@ -1,4 +1,5 @@
 use crate::tokenise::{Delimit, Token, Tokeniser};
+use std::iter::Peekable;
 
 //TODO: Reflect one if this document model is better than a higher level token stream?
 // Lots of structure and indirection...
@@ -50,90 +51,97 @@ enum ParseError {
 }
 
 // TODO: Propper error handling, replace calls to panic!
+// TODO: Pre allocate sensible vec capacities?
+// TODO: This all gets easier if we fold tokensier into parse?
 
 fn parse(input: &str) -> Result<Document, ParseError> {
-    //TODO: Pre allocate a sensible vec capacity?
-    let mut text_runs = Vec::new();
-
     let tokeniser = Tokeniser::new(input);
     let mut tokens = tokeniser.into_iter().peekable();
+    let mut blocks = Vec::new();
 
     //TODO: Explictly look for an Eof token?
     //TODO: Try the same pattern to tokeniser?
     //TODO: Strip leading whitespace from para
 
-    while let Some(token) = tokens.next() {
+    while let Some(_) = tokens.peek() {
+        let para = parse_paragraph(&mut tokens)?;
+        blocks.push(para);
+    }
+
+    Ok(Document {
+        blocks: blocks.into_boxed_slice(),
+    })
+}
+
+fn parse_paragraph<'a>(tokens: &mut Peekable<Tokeniser<'a>>) -> Result<Block, ParseError> {
+    let mut text_runs = Vec::new();
+
+    //TODO; All a bit rough
+    while let Some(token) = tokens.peek() {
         match token {
-            //TODO: Reduce duplication
-            Token::Whitespace => {
-                let mut run = String::new();
-                run.push_str(" ");
-
-                loop {
-                    match tokens.peek() {
-                        Some(Token::Text(text)) => run.push_str(text),
-                        Some(Token::Whitespace) => run.push_str(" "),
-                        _ => break,
-                    }
-                    tokens.next();
-                }
-
-                text_runs.push(TextRun {
-                    text: run,
-                    format: Format::None,
-                });
-            }
-            Token::Text(word) => {
-                let mut run = String::new();
-                run.push_str(word);
-
-                loop {
-                    match tokens.peek() {
-                        Some(Token::Text(text)) => run.push_str(text),
-                        Some(Token::Whitespace) => run.push_str(" "),
-                        _ => break,
-                    }
-                    tokens.next();
-                }
-
-                text_runs.push(TextRun {
-                    text: run,
-                    format: Format::None,
-                });
-            }
-            Token::Delimiter(d1) => {
-                let mut run = String::new();
-                //TODO: Something more elegant?
-                if let Some(Token::Delimiter(d2)) = tokens.peek() {
-                    if d1 == *d2 {
-                        return Err(ParseError::EmptyDelimitedText);
-                    }
-                }
-                loop {
-                    match tokens.next() {
-                        Some(Token::Text(text)) => run.push_str(text),
-                        Some(Token::Whitespace) => run.push_str(" "),
-                        Some(Token::Delimiter(d2)) if d1 == d2 => break,
-                        _ => return Err(ParseError::UnmatchedDelimiter),
-                    }
-                }
-
-                let format = match d1 {
-                    Delimit::Emphasis => Format::Emphasis,
-                    Delimit::Bold => Format::Bold,
-                    Delimit::Strikethrough => Format::Strikethrough,
-                    Delimit::Raw => Format::Raw,
-                };
-
-                text_runs.push(TextRun { text: run, format });
+            Token::Whitespace | Token::Text(_) => text_runs.push(parse_plain_text(tokens)?),
+            Token::Delimiter(d) => text_runs.push(parse_delimited_text(*d, tokens)?),
+            Token::Linebreak => {
+                tokens.next();
+                break;
             }
             _ => panic!("unexpected token"),
         }
     }
 
-    Ok(Document {
-        blocks: Box::new([Block::Paragraph(text_runs.into_boxed_slice())]),
+    Ok(Block::Paragraph(text_runs.into_boxed_slice()))
+}
+
+fn parse_plain_text<'a>(tokens: &mut Peekable<Tokeniser<'a>>) -> Result<TextRun, ParseError> {
+    let mut run = String::new();
+    loop {
+        //TODO: Is peek needed here?
+        match tokens.peek() {
+            Some(Token::Text(text)) => run.push_str(text),
+            Some(Token::Whitespace) => run.push_str(" "),
+            _ => break,
+        }
+        tokens.next();
+    }
+
+    Ok(TextRun {
+        text: run,
+        format: Format::None,
     })
+}
+fn parse_delimited_text<'a>(
+    d1: Delimit,
+    tokens: &mut Peekable<Tokeniser<'a>>,
+) -> Result<TextRun, ParseError> {
+    // Passing in d1 and calling this feels clumsy
+    // TODO: Easier if we dont use token stream...
+    // ...just direct access to our custom char iter.
+    tokens.next();
+
+    let mut run = String::new();
+    //TODO: Something more elegant?
+    if let Some(Token::Delimiter(d2)) = tokens.peek() {
+        if d1 == *d2 {
+            return Err(ParseError::EmptyDelimitedText);
+        }
+    }
+    loop {
+        match tokens.next() {
+            Some(Token::Text(text)) => run.push_str(text),
+            Some(Token::Whitespace) => run.push_str(" "),
+            Some(Token::Delimiter(d2)) if d1 == d2 => break,
+            _ => return Err(ParseError::UnmatchedDelimiter),
+        }
+    }
+
+    let format = match d1 {
+        Delimit::Emphasis => Format::Emphasis,
+        Delimit::Bold => Format::Bold,
+        Delimit::Strikethrough => Format::Strikethrough,
+        Delimit::Raw => Format::Raw,
+    };
+
+    Ok(TextRun { text: run, format })
 }
 
 #[cfg(test)]
@@ -168,6 +176,73 @@ mod test {
 
         let expected = Document {
             blocks: Box::new([Block::Paragraph(text)]),
+        };
+
+        let actual = parse(input).unwrap();
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn double_space() {
+        let input = "Nice  kitty!";
+
+        let run = TextRun {
+            text: String::from("Nice kitty!"),
+            format: Format::None,
+        };
+
+        let text = Box::new([run]);
+
+        let expected = Document {
+            blocks: Box::new([Block::Paragraph(text)]),
+        };
+
+        let actual = parse(input).unwrap();
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn new_line_becomes_whitespace() {
+        let input = "Cats\nwhiskers";
+
+        let run = TextRun {
+            text: String::from("Cats whiskers"),
+            format: Format::None,
+        };
+
+        let text = Box::new([run]);
+
+        let expected = Document {
+            blocks: Box::new([Block::Paragraph(text)]),
+        };
+
+        let actual = parse(input).unwrap();
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+
+    fn two_new_lines_becomes_whitespace() {
+        let input = "Cats\n\nwhiskers";
+
+        let run1 = TextRun {
+            text: String::from("Cats"),
+            format: Format::None,
+        };
+
+        let run2 = TextRun {
+            text: String::from("whiskers"),
+            format: Format::None,
+        };
+
+        let text1 = Box::new([run1]);
+        let text2 = Box::new([run2]);
+
+        let expected = Document {
+            blocks: Box::new([Block::Paragraph(text1), Block::Paragraph(text2)]),
         };
 
         let actual = parse(input).unwrap();
@@ -388,4 +463,13 @@ mod test {
 
         assert_eq!(actual, expected);
     }
+
+    //TODO: Maybe mixture of bold/emph/strike is ok? Use bit mask?
+
+    //TODO: Raw is a bit different as it can contain other delimiters...
+    // but must treat them as text.
+    //TODO: We probably want to have the tokeniser understand that a
+    //'*' inside raw text is not a delimiter
+    // But... it does not make sense that a tokeniser _and_ the parser keep track of state
+    // Is the seperation of the two actually not that helpful?!
 }

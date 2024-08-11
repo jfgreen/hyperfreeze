@@ -16,7 +16,11 @@ pub enum Token<'a> {
     Delimiter(Delimit),
 }
 
-#[derive(PartialEq, Eq, Debug)]
+//TODO: Delimiters...
+// Does the tokeniser actually know its a delimiter... what if
+// it is in raw text. Do we return "MaybeDelimit",
+// or would that not work?
+#[derive(PartialEq, Eq, Debug, Clone, Copy)]
 pub enum Delimit {
     Bold,
     Emphasis,
@@ -154,76 +158,6 @@ mod test {
     fn tokenise(input: &str) -> Vec<Token> {
         let tokeniser = Tokeniser::new(input);
         tokeniser.into_iter().collect()
-    }
-
-    #[test]
-    fn simple_sentence() {
-        let input = "The nice little cat pounced over the silly fox";
-
-        let expected = vec![
-            Token::Text("The"),
-            Token::Whitespace,
-            Token::Text("nice"),
-            Token::Whitespace,
-            Token::Text("little"),
-            Token::Whitespace,
-            Token::Text("cat"),
-            Token::Whitespace,
-            Token::Text("pounced"),
-            Token::Whitespace,
-            Token::Text("over"),
-            Token::Whitespace,
-            Token::Text("the"),
-            Token::Whitespace,
-            Token::Text("silly"),
-            Token::Whitespace,
-            Token::Text("fox"),
-        ];
-
-        let actual = tokenise(input);
-        assert_eq!(actual, expected);
-    }
-
-    #[test]
-    fn double_space() {
-        let input = "Nice  kitty!";
-
-        let expected = vec![
-            Token::Text("Nice"),
-            Token::Whitespace,
-            Token::Text("kitty!"),
-        ];
-
-        let actual = tokenise(input);
-        assert_eq!(actual, expected);
-    }
-
-    #[test]
-    fn new_line_becomes_whitespace() {
-        let input = "Cats\nwhiskers";
-
-        let expected = vec![
-            Token::Text("Cats"),
-            Token::Whitespace,
-            Token::Text("whiskers"),
-        ];
-
-        let actual = tokenise(input);
-        assert_eq!(actual, expected);
-    }
-
-    #[test]
-    fn two_new_lines_becomes_linebreak() {
-        let input = "Cats\n\nwhiskers";
-
-        let expected = vec![
-            Token::Text("Cats"),
-            Token::Linebreak,
-            Token::Text("whiskers"),
-        ];
-
-        let actual = tokenise(input);
-        assert_eq!(actual, expected);
     }
 
     #[test]
