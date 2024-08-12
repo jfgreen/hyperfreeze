@@ -396,6 +396,58 @@ mod test {
     }
 
     #[test]
+    #[ignore]
+    fn underscore_in_raw() {
+        let input = "Set `PURR_LOUDLY` to true";
+
+        let run1 = TextRun {
+            text: String::from("Set "),
+            format: Format::None,
+        };
+
+        let run2 = TextRun {
+            text: String::from("PURR_LOUDLY"),
+            format: Format::Raw,
+        };
+
+        let run3 = TextRun {
+            text: String::from(" to true"),
+            format: Format::None,
+        };
+
+        let text = Box::new([run1, run2, run3]);
+
+        let expected = Document {
+            blocks: Box::new([Block::Paragraph(text)]),
+        };
+
+        let actual = parse(input).unwrap();
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    #[ignore]
+    fn extra_spaces_in_raw() {
+        let input = "`Keep your       distance`";
+
+        let run = TextRun {
+            text: String::from("Keep your       distance"),
+            format: Format::Raw,
+        };
+
+        let text = Box::new([run]);
+
+        let expected = Document {
+            blocks: Box::new([Block::Paragraph(text)]),
+        };
+
+        let actual = parse(input).unwrap();
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
     fn standalone_dash() {
         let input = "Felines - fantastic!";
 

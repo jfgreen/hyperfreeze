@@ -19,7 +19,14 @@ pub enum Token<'a> {
 //TODO: Delimiters...
 // Does the tokeniser actually know its a delimiter... what if
 // it is in raw text. Do we return "MaybeDelimit",
-// or would that not work?
+// or would that not work?w
+
+// Options:
+// Return a MaybeDelimit - meh
+// Put statefullness into the tokeniser - meh
+// Parser tells tokeniser the kind of tokenisation to do...?
+// an "expect" based api?
+
 #[derive(PartialEq, Eq, Debug, Clone, Copy)]
 pub enum Delimit {
     Bold,
