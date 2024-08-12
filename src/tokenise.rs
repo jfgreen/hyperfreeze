@@ -14,6 +14,7 @@ pub enum Token<'a> {
     Text(&'a str),
     Whitespace,
     Delimiter(Delimit),
+    Eof,
 }
 
 //TODO: Delimiters...
@@ -38,8 +39,10 @@ pub enum Delimit {
 pub struct Tokeniser<'a> {
     input: &'a str,
     chars: CharIndices<'a>,
+    //TODO: Can we remove Option for current_char?
     current_char: Option<char>,
     current_index: usize,
+    pub current_token: Token<'a>,
 }
 
 fn char_usable_in_text(c: char) -> bool {
@@ -52,35 +55,36 @@ fn char_usable_in_text(c: char) -> bool {
         || c.is_whitespace())
 }
 
-impl<'a> Iterator for Tokeniser<'a> {
-    type Item = Token<'a>;
-
-    fn next(&mut self) -> Option<Token<'a>> {
-        match self.current_char {
-            Some('\n') => Some(self.handle_new_line()),
-            Some(DELIM_BOLD) => Some(self.handle_delimiter(Delimit::Bold)),
-            Some(DELIM_EMPH) => Some(self.handle_delimiter(Delimit::Emphasis)),
-            Some(DELIM_STRIKE) => Some(self.handle_delimiter(Delimit::Strikethrough)),
-            Some(DELIM_RAW) => Some(self.handle_delimiter(Delimit::Raw)),
-            Some(c) if c.is_whitespace() => Some(self.handle_whitespace()),
+impl<'a> Tokeniser<'a> {
+    //TODO: Rename to advance?
+    pub fn next(&mut self) {
+        self.current_token = match self.current_char {
+            Some('\n') => self.handle_new_line(),
+            Some(DELIM_BOLD) => self.handle_delimiter(Delimit::Bold),
+            Some(DELIM_EMPH) => self.handle_delimiter(Delimit::Emphasis),
+            Some(DELIM_STRIKE) => self.handle_delimiter(Delimit::Strikethrough),
+            Some(DELIM_RAW) => self.handle_delimiter(Delimit::Raw),
+            Some(c) if c.is_whitespace() => self.handle_whitespace(),
             //TODO: Do we really want any unicode char in a text?
-            Some(_) => Some(self.handle_text()),
-            _ => None,
+            Some(_) => self.handle_text(),
+            _ => Token::Eof,
         }
     }
-}
 
-impl<'a> Tokeniser<'a> {
     pub fn new(input: &'a str) -> Self {
         let mut tokeniser = Self {
             input,
             chars: input.char_indices(),
             current_char: None,
             current_index: 0,
+            current_token: Token::Eof,
         };
 
         // Advance the tokeniser once to place the first char of the input into `current_char`
         tokeniser.advance();
+
+        // Then parse the first token
+        tokeniser.next();
 
         tokeniser
     }
