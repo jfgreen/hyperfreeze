@@ -52,7 +52,7 @@ enum ParseError {
 
 // TODO: Propper error handling, replace calls to panic!
 // TODO: Pre allocate sensible vec capacities?
-// TODO: This all gets easier if we fold tokensier into parse?
+// TODO: This all gets easier if we fold tokensier into parser?
 
 fn parse(input: &str) -> Result<Document, ParseError> {
     let tokeniser = Tokeniser::new(input);

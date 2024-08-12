@@ -31,11 +31,8 @@ pub enum Delimit {
 pub struct Tokeniser<'a> {
     input: &'a str,
     chars: CharIndices<'a>,
-    last_char: Option<char>,
     current_char: Option<char>,
     current_index: usize,
-    next_char: Option<char>,
-    next_index: usize,
 }
 
 fn char_usable_in_text(c: char) -> bool {
@@ -71,18 +68,11 @@ impl<'a> Tokeniser<'a> {
         let mut tokeniser = Self {
             input,
             chars: input.char_indices(),
-            last_char: None,
             current_char: None,
             current_index: 0,
-            next_char: None,
-            next_index: 0,
         };
 
-        // Advance the tokeniser once to establish peek ahead, placing the start
-        // of input string into 'next_char', assuming it has at least once char
-        tokeniser.advance();
-
-        // Then again, to place the first char of the input into `current_char`
+        // Advance the tokeniser once to place the first char of the input into `current_char`
         tokeniser.advance();
 
         tokeniser
@@ -129,18 +119,13 @@ impl<'a> Tokeniser<'a> {
         &self.input[i1..i2]
     }
 
-    //TODO: Do we actually need the lookahead?
     fn advance(&mut self) {
-        self.last_char = self.current_char;
-        self.current_char = self.next_char;
-        self.current_index = self.next_index;
-
         if let Some((i, c)) = self.chars.next() {
-            self.next_char = Some(c);
-            self.next_index = i;
+            self.current_char = Some(c);
+            self.current_index = i;
         } else {
-            self.next_char = None;
-            self.next_index = self.input.len();
+            self.current_char = None;
+            self.current_index = self.input.len();
         }
     }
 
