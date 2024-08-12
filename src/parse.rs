@@ -224,9 +224,34 @@ mod test {
     }
 
     #[test]
-
     fn two_new_lines_becomes_whitespace() {
         let input = "Cats\n\nwhiskers";
+
+        let run1 = TextRun {
+            text: String::from("Cats"),
+            format: Format::None,
+        };
+
+        let run2 = TextRun {
+            text: String::from("whiskers"),
+            format: Format::None,
+        };
+
+        let text1 = Box::new([run1]);
+        let text2 = Box::new([run2]);
+
+        let expected = Document {
+            blocks: Box::new([Block::Paragraph(text1), Block::Paragraph(text2)]),
+        };
+
+        let actual = parse(input).unwrap();
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn three_new_lines_becomes_whitespace() {
+        let input = "Cats\n\n\nwhiskers";
 
         let run1 = TextRun {
             text: String::from("Cats"),
