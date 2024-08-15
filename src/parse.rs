@@ -57,7 +57,6 @@ fn parse(input: &str) -> Result<Document, ParseError> {
     let mut tokeniser = Tokeniser::new(input);
     let mut blocks = Vec::new();
 
-    //TODO: Explictly look for an Eof token?
     //TODO: Try the same pattern to tokeniser?
     //TODO: Strip leading whitespace from para
 
@@ -79,8 +78,7 @@ fn parse_paragraph<'a>(tokeniser: &mut Tokeniser) -> Result<Block, ParseError> {
     loop {
         let run = match tokeniser.current_token {
             Token::Whitespace | Token::Text(_) => parse_plain_text(tokeniser)?,
-            //TODO: unpack different delimited formats here
-            Token::Delimiter(_) => parse_delimited_text(tokeniser)?,
+            Token::Delimiter(d) => parse_delimited_text(tokeniser, d)?,
             //TODO: Should this be pulled up as all blocks are seperated with a line break?
             Token::Linebreak => {
                 tokeniser.next();
@@ -112,33 +110,30 @@ fn parse_plain_text<'a>(tokeniser: &mut Tokeniser) -> Result<TextRun, ParseError
         format: Format::None,
     })
 }
-fn parse_delimited_text<'a>(tokeniser: &mut Tokeniser) -> Result<TextRun, ParseError> {
-    let d1 = match tokeniser.current_token {
-        Token::Delimiter(d) => d,
-        _ => panic!("Expected delimted text to start with delimiter"),
-    };
-
+fn parse_delimited_text<'a>(
+    tokeniser: &mut Tokeniser,
+    run_delimiter: Delimit,
+) -> Result<TextRun, ParseError> {
+    // Skip initial delimiter
     tokeniser.next();
 
     let mut run = String::new();
 
-    if let Token::Delimiter(d2) = tokeniser.current_token {
-        if d1 == d2 {
-            return Err(ParseError::EmptyDelimitedText);
-        }
+    if tokeniser.current_token == Token::Delimiter(run_delimiter) {
+        return Err(ParseError::EmptyDelimitedText);
     }
 
     loop {
         match tokeniser.current_token {
             Token::Text(text) => run.push_str(text),
             Token::Whitespace => run.push_str(" "),
-            Token::Delimiter(d2) if d1 == d2 => break,
+            Token::Delimiter(d) if d == run_delimiter => break,
             _ => return Err(ParseError::UnmatchedDelimiter),
         }
         tokeniser.next()
     }
 
-    let format = match d1 {
+    let format = match run_delimiter {
         Delimit::Emphasis => Format::Emphasis,
         Delimit::Bold => Format::Bold,
         Delimit::Strikethrough => Format::Strikethrough,
