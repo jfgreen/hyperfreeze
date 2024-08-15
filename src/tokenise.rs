@@ -12,6 +12,7 @@ const DELIM_RAW: char = '`';
 pub enum Token<'a> {
     Linebreak,
     Text(&'a str),
+    RawText(&'a str),
     Whitespace,
     Delimiter(Delimit),
     Eof,
@@ -33,7 +34,6 @@ pub enum Delimit {
     Bold,
     Emphasis,
     Strikethrough,
-    Raw,
 }
 
 pub struct Tokeniser<'a> {
@@ -63,7 +63,7 @@ impl<'a> Tokeniser<'a> {
             Some(DELIM_BOLD) => self.handle_delimiter(Delimit::Bold),
             Some(DELIM_EMPH) => self.handle_delimiter(Delimit::Emphasis),
             Some(DELIM_STRIKE) => self.handle_delimiter(Delimit::Strikethrough),
-            Some(DELIM_RAW) => self.handle_delimiter(Delimit::Raw),
+            Some(DELIM_RAW) => self.handle_raw_text(),
             Some(c) if c.is_whitespace() => self.handle_whitespace(),
             //TODO: Do we really want any unicode char in a text?
             Some(_) => self.handle_text(),
@@ -115,19 +115,25 @@ impl<'a> Tokeniser<'a> {
     }
 
     fn handle_text(&mut self) -> Token<'a> {
-        let text = self.eat_text();
+        let i1 = self.current_index;
+        self.advance_while_current(char_usable_in_text);
+        let i2 = self.current_index;
+        let text = &self.input[i1..i2];
         Token::Text(text)
+    }
+
+    fn handle_raw_text(&mut self) -> Token<'a> {
+        self.advance(); // over opening delimiter
+        let i1 = self.current_index;
+        self.advance_while_current(|c| c != DELIM_RAW);
+        let i2 = self.current_index;
+        let text = &self.input[i1..i2];
+        self.advance(); // over closing delimiter
+        Token::RawText(text)
     }
 
     fn eat_whitespace(&mut self) {
         self.advance_while_current(char::is_whitespace)
-    }
-
-    fn eat_text(&mut self) -> &'a str {
-        let i1 = self.current_index;
-        self.advance_while_current(char_usable_in_text);
-        let i2 = self.current_index;
-        &self.input[i1..i2]
     }
 
     fn advance(&mut self) {

@@ -79,6 +79,7 @@ fn parse_paragraph<'a>(tokeniser: &mut Tokeniser) -> Result<Block, ParseError> {
         let run = match tokeniser.current_token {
             Token::Whitespace | Token::Text(_) => parse_plain_text(tokeniser)?,
             Token::Delimiter(d) => parse_delimited_text(tokeniser, d)?,
+            Token::RawText(t) => parse_raw_text(tokeniser, t)?,
             //TODO: Should this be pulled up as all blocks are seperated with a line break?
             Token::Linebreak => {
                 tokeniser.next();
@@ -110,6 +111,15 @@ fn parse_plain_text<'a>(tokeniser: &mut Tokeniser) -> Result<TextRun, ParseError
         format: Format::None,
     })
 }
+
+fn parse_raw_text<'a>(tokeniser: &mut Tokeniser, text: &str) -> Result<TextRun, ParseError> {
+    tokeniser.next();
+    Ok(TextRun {
+        text: text.to_string(),
+        format: Format::Raw,
+    })
+}
+
 fn parse_delimited_text<'a>(
     tokeniser: &mut Tokeniser,
     run_delimiter: Delimit,
@@ -137,7 +147,6 @@ fn parse_delimited_text<'a>(
         Delimit::Emphasis => Format::Emphasis,
         Delimit::Bold => Format::Bold,
         Delimit::Strikethrough => Format::Strikethrough,
-        Delimit::Raw => Format::Raw,
     };
 
     tokeniser.next();
@@ -395,7 +404,6 @@ mod test {
     }
 
     #[test]
-    #[ignore]
     fn underscore_in_raw() {
         let input = "Set `PURR_LOUDLY` to true";
 
@@ -426,7 +434,6 @@ mod test {
     }
 
     #[test]
-    #[ignore]
     fn extra_spaces_in_raw() {
         let input = "`Keep your       distance`";
 
@@ -445,6 +452,8 @@ mod test {
 
         assert_eq!(actual, expected);
     }
+
+    //TODO: Figure out what to do with newlines in raw text
 
     #[test]
     fn standalone_dash() {
