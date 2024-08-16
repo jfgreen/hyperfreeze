@@ -1,6 +1,6 @@
 use crate::tokenise::{Format, Token, Tokeniser};
 
-//TODO: Reflect one if this document model is better than a higher level token stream?
+//TODO: Reflect on if this document model is better than a higher level token stream?
 // Lots of structure and indirection...
 // So, is there a more efficent way of representing a document tree?
 // Code up an alternative and compare?
@@ -167,8 +167,8 @@ mod test {
     //TODO: Bold and emph are ok mid word, but what about raw?
 
     //TODO: Test leading whitespace in a paragraph is ignored
-    //TODO: Add test for bold mid word
     //TODO: Test newlines
+    //TODO: Figure out what to do with newlines in raw text
     //TODO: Macros to make building test cases less painful
 
     #[test]
@@ -344,6 +344,36 @@ mod test {
     }
 
     #[test]
+    fn bold_mid_word() {
+        let input = "I said: mee*ooOOo*ww!";
+
+        let run1 = TextRun {
+            text: String::from("I said: mee"),
+            style: Style::None,
+        };
+
+        let run2 = TextRun {
+            text: String::from("ooOOo"),
+            style: Style::Bold,
+        };
+
+        let run3 = TextRun {
+            text: String::from("ww!"),
+            style: Style::None,
+        };
+
+        let text = Box::new([run1, run2, run3]);
+
+        let expected = Document {
+            blocks: Box::new([Block::Paragraph(text)]),
+        };
+
+        let actual = parse(input).unwrap();
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
     fn strikethrough_words() {
         let input = "Cats are ~ok i guess~ magnificant";
 
@@ -452,8 +482,6 @@ mod test {
 
         assert_eq!(actual, expected);
     }
-
-    //TODO: Figure out what to do with newlines in raw text
 
     #[test]
     fn standalone_dash() {
