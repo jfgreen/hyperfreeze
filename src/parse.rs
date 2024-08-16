@@ -176,9 +176,6 @@ mod test {
     //TODO: Figure out what to do with newlines in raw text
     //      djot just uses same whitespace rules as normal text runs
 
-    //TODO: Bold and emph are ok mid word, but what about raw?
-    //      djot allows it - we should test we can do the same
-
     //TODO: Macros to make building test cases less painful?
 
     #[test]
@@ -429,6 +426,36 @@ mod test {
 
         let run3 = TextRun {
             text: String::from("!"),
+            style: Style::None,
+        };
+
+        let text = Box::new([run1, run2, run3]);
+
+        let expected = Document {
+            blocks: Box::new([Block::Paragraph(text)]),
+        };
+
+        let actual = parse(input).unwrap();
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn raw_mid_word() {
+        let input = "Bl`ee`p!";
+
+        let run1 = TextRun {
+            text: String::from("Bl"),
+            style: Style::None,
+        };
+
+        let run2 = TextRun {
+            text: String::from("ee"),
+            style: Style::Raw,
+        };
+
+        let run3 = TextRun {
+            text: String::from("p!"),
             style: Style::None,
         };
 
