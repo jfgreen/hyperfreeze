@@ -14,23 +14,12 @@ pub enum Token<'a> {
     Text(&'a str),
     RawText(&'a str),
     Whitespace,
-    Delimiter(Delimit),
+    FormatDelimiter(Format),
     Eof,
 }
 
-//TODO: Delimiters...
-// Does the tokeniser actually know its a delimiter... what if
-// it is in raw text. Do we return "MaybeDelimit",
-// or would that not work?w
-
-// Options:
-// Return a MaybeDelimit - meh
-// Put statefullness into the tokeniser - meh
-// Parser tells tokeniser the kind of tokenisation to do...?
-// an "expect" based api?
-
 #[derive(PartialEq, Eq, Debug, Clone, Copy)]
-pub enum Delimit {
+pub enum Format {
     Bold,
     Emphasis,
     Strikethrough,
@@ -39,7 +28,6 @@ pub enum Delimit {
 pub struct Tokeniser<'a> {
     input: &'a str,
     chars: CharIndices<'a>,
-    //TODO: Can we remove Option for current_char?
     current_char: Option<char>,
     current_index: usize,
     pub current_token: Token<'a>,
@@ -56,18 +44,16 @@ fn char_usable_in_text(c: char) -> bool {
 }
 
 impl<'a> Tokeniser<'a> {
-    //TODO: Rename to advance?
-    pub fn next(&mut self) {
+    pub fn advance(&mut self) {
         self.current_token = match self.current_char {
             Some('\n') => self.handle_new_line(),
-            Some(DELIM_BOLD) => self.handle_delimiter(Delimit::Bold),
-            Some(DELIM_EMPH) => self.handle_delimiter(Delimit::Emphasis),
-            Some(DELIM_STRIKE) => self.handle_delimiter(Delimit::Strikethrough),
+            Some(DELIM_BOLD) => self.handle_delimiter(Format::Bold),
+            Some(DELIM_EMPH) => self.handle_delimiter(Format::Emphasis),
+            Some(DELIM_STRIKE) => self.handle_delimiter(Format::Strikethrough),
             Some(DELIM_RAW) => self.handle_raw_text(),
             Some(c) if c.is_whitespace() => self.handle_whitespace(),
-            //TODO: Do we really want any unicode char in a text?
             Some(_) => self.handle_text(),
-            _ => Token::Eof,
+            None => Token::Eof,
         }
     }
 
@@ -80,23 +66,23 @@ impl<'a> Tokeniser<'a> {
             current_token: Token::Eof,
         };
 
-        // Advance the tokeniser once to place the first char of the input into `current_char`
-        tokeniser.advance();
+        // Place the first char of the input into `current_char`
+        tokeniser.read_next_char();
 
-        // Then parse the first token
-        tokeniser.next();
+        // Then parse the first token into `current_token`
+        tokeniser.advance();
 
         tokeniser
     }
 
     fn handle_new_line(&mut self) -> Token<'a> {
-        self.advance();
+        self.read_next_char();
 
         // New lines are usually treated as whitespace. However, if there is
         // more than one in a row, they are all treated as a single line break
         if self.current_char == Some('\n') {
             while self.current_char == Some('\n') {
-                self.advance();
+                self.read_next_char();
             }
             Token::Linebreak
         } else {
@@ -109,9 +95,9 @@ impl<'a> Tokeniser<'a> {
         Token::Whitespace
     }
 
-    fn handle_delimiter(&mut self, kind: Delimit) -> Token<'a> {
-        self.advance();
-        Token::Delimiter(kind)
+    fn handle_delimiter(&mut self, kind: Format) -> Token<'a> {
+        self.read_next_char();
+        Token::FormatDelimiter(kind)
     }
 
     fn handle_text(&mut self) -> Token<'a> {
@@ -123,12 +109,12 @@ impl<'a> Tokeniser<'a> {
     }
 
     fn handle_raw_text(&mut self) -> Token<'a> {
-        self.advance(); // over opening delimiter
+        self.read_next_char(); // over opening delimiter
         let i1 = self.current_index;
         self.advance_while_current(|c| c != DELIM_RAW);
         let i2 = self.current_index;
         let text = &self.input[i1..i2];
-        self.advance(); // over closing delimiter
+        self.read_next_char(); // over closing delimiter
         Token::RawText(text)
     }
 
@@ -136,7 +122,7 @@ impl<'a> Tokeniser<'a> {
         self.advance_while_current(char::is_whitespace)
     }
 
-    fn advance(&mut self) {
+    fn read_next_char(&mut self) {
         if let Some((i, c)) = self.chars.next() {
             self.current_char = Some(c);
             self.current_index = i;
@@ -148,7 +134,7 @@ impl<'a> Tokeniser<'a> {
 
     fn advance_while_current(&mut self, predicate: fn(char) -> bool) {
         while self.current_char.is_some_and(predicate) {
-            self.advance();
+            self.read_next_char();
         }
     }
 }

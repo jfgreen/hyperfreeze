@@ -1,4 +1,4 @@
-use crate::tokenise::{Delimit, Token, Tokeniser};
+use crate::tokenise::{Format, Token, Tokeniser};
 
 //TODO: Reflect one if this document model is better than a higher level token stream?
 // Lots of structure and indirection...
@@ -31,11 +31,11 @@ enum Block {
 #[derive(PartialEq, Eq, Debug)]
 struct TextRun {
     text: String,
-    format: Format,
+    style: Style,
 }
 
 #[derive(PartialEq, Eq, Debug)]
-enum Format {
+enum Style {
     None,
     Bold,
     Emphasis,
@@ -78,11 +78,11 @@ fn parse_paragraph<'a>(tokeniser: &mut Tokeniser) -> Result<Block, ParseError> {
     loop {
         let run = match tokeniser.current_token {
             Token::Whitespace | Token::Text(_) => parse_plain_text(tokeniser)?,
-            Token::Delimiter(d) => parse_delimited_text(tokeniser, d)?,
+            Token::FormatDelimiter(d) => parse_delimited_text(tokeniser, d)?,
             Token::RawText(t) => parse_raw_text(tokeniser, t)?,
             //TODO: Should this be pulled up as all blocks are seperated with a line break?
             Token::Linebreak => {
-                tokeniser.next();
+                tokeniser.advance();
                 break;
             }
             Token::Eof => {
@@ -103,33 +103,33 @@ fn parse_plain_text<'a>(tokeniser: &mut Tokeniser) -> Result<TextRun, ParseError
             Token::Whitespace => run.push_str(" "),
             _ => break,
         }
-        tokeniser.next();
+        tokeniser.advance();
     }
 
     Ok(TextRun {
         text: run,
-        format: Format::None,
+        style: Style::None,
     })
 }
 
 fn parse_raw_text<'a>(tokeniser: &mut Tokeniser, text: &str) -> Result<TextRun, ParseError> {
-    tokeniser.next();
+    tokeniser.advance();
     Ok(TextRun {
         text: text.to_string(),
-        format: Format::Raw,
+        style: Style::Raw,
     })
 }
 
 fn parse_delimited_text<'a>(
     tokeniser: &mut Tokeniser,
-    run_delimiter: Delimit,
+    run_delimiter: Format,
 ) -> Result<TextRun, ParseError> {
     // Skip initial delimiter
-    tokeniser.next();
+    tokeniser.advance();
 
     let mut run = String::new();
 
-    if tokeniser.current_token == Token::Delimiter(run_delimiter) {
+    if tokeniser.current_token == Token::FormatDelimiter(run_delimiter) {
         return Err(ParseError::EmptyDelimitedText);
     }
 
@@ -137,21 +137,21 @@ fn parse_delimited_text<'a>(
         match tokeniser.current_token {
             Token::Text(text) => run.push_str(text),
             Token::Whitespace => run.push_str(" "),
-            Token::Delimiter(d) if d == run_delimiter => break,
+            Token::FormatDelimiter(d) if d == run_delimiter => break,
             _ => return Err(ParseError::UnmatchedDelimiter),
         }
-        tokeniser.next()
+        tokeniser.advance()
     }
 
-    let format = match run_delimiter {
-        Delimit::Emphasis => Format::Emphasis,
-        Delimit::Bold => Format::Bold,
-        Delimit::Strikethrough => Format::Strikethrough,
+    let style = match run_delimiter {
+        Format::Emphasis => Style::Emphasis,
+        Format::Bold => Style::Bold,
+        Format::Strikethrough => Style::Strikethrough,
     };
 
-    tokeniser.next();
+    tokeniser.advance();
 
-    Ok(TextRun { text: run, format })
+    Ok(TextRun { text: run, style })
 }
 
 #[cfg(test)]
@@ -177,7 +177,7 @@ mod test {
 
         let run = TextRun {
             text: String::from("We like cats very much"),
-            format: Format::None,
+            style: Style::None,
         };
 
         let text = Box::new([run]);
@@ -197,7 +197,7 @@ mod test {
 
         let run = TextRun {
             text: String::from("Nice kitty!"),
-            format: Format::None,
+            style: Style::None,
         };
 
         let text = Box::new([run]);
@@ -217,7 +217,7 @@ mod test {
 
         let run = TextRun {
             text: String::from("Cats whiskers"),
-            format: Format::None,
+            style: Style::None,
         };
 
         let text = Box::new([run]);
@@ -237,12 +237,12 @@ mod test {
 
         let run1 = TextRun {
             text: String::from("Cats"),
-            format: Format::None,
+            style: Style::None,
         };
 
         let run2 = TextRun {
             text: String::from("whiskers"),
-            format: Format::None,
+            style: Style::None,
         };
 
         let text1 = Box::new([run1]);
@@ -263,12 +263,12 @@ mod test {
 
         let run1 = TextRun {
             text: String::from("Cats"),
-            format: Format::None,
+            style: Style::None,
         };
 
         let run2 = TextRun {
             text: String::from("whiskers"),
-            format: Format::None,
+            style: Style::None,
         };
 
         let text1 = Box::new([run1]);
@@ -289,17 +289,17 @@ mod test {
 
         let run1 = TextRun {
             text: String::from("We "),
-            format: Format::None,
+            style: Style::None,
         };
 
         let run2 = TextRun {
             text: String::from("totally adore"),
-            format: Format::Emphasis,
+            style: Style::Emphasis,
         };
 
         let run3 = TextRun {
             text: String::from(" them"),
-            format: Format::None,
+            style: Style::None,
         };
 
         let text = Box::new([run1, run2, run3]);
@@ -319,17 +319,17 @@ mod test {
 
         let run1 = TextRun {
             text: String::from("I "),
-            format: Format::None,
+            style: Style::None,
         };
 
         let run2 = TextRun {
             text: String::from("need to pet that cat"),
-            format: Format::Bold,
+            style: Style::Bold,
         };
 
         let run3 = TextRun {
             text: String::from(" right away."),
-            format: Format::None,
+            style: Style::None,
         };
 
         let text = Box::new([run1, run2, run3]);
@@ -349,17 +349,17 @@ mod test {
 
         let run1 = TextRun {
             text: String::from("Cats are "),
-            format: Format::None,
+            style: Style::None,
         };
 
         let run2 = TextRun {
             text: String::from("ok i guess"),
-            format: Format::Strikethrough,
+            style: Style::Strikethrough,
         };
 
         let run3 = TextRun {
             text: String::from(" magnificant"),
-            format: Format::None,
+            style: Style::None,
         };
 
         let text = Box::new([run1, run2, run3]);
@@ -379,17 +379,17 @@ mod test {
 
         let run1 = TextRun {
             text: String::from("Robot cat says "),
-            format: Format::None,
+            style: Style::None,
         };
 
         let run2 = TextRun {
             text: String::from("bleep bloop"),
-            format: Format::Raw,
+            style: Style::Raw,
         };
 
         let run3 = TextRun {
             text: String::from("!"),
-            format: Format::None,
+            style: Style::None,
         };
 
         let text = Box::new([run1, run2, run3]);
@@ -409,17 +409,17 @@ mod test {
 
         let run1 = TextRun {
             text: String::from("Set "),
-            format: Format::None,
+            style: Style::None,
         };
 
         let run2 = TextRun {
             text: String::from("PURR_LOUDLY"),
-            format: Format::Raw,
+            style: Style::Raw,
         };
 
         let run3 = TextRun {
             text: String::from(" to true"),
-            format: Format::None,
+            style: Style::None,
         };
 
         let text = Box::new([run1, run2, run3]);
@@ -439,7 +439,7 @@ mod test {
 
         let run = TextRun {
             text: String::from("Keep your       distance"),
-            format: Format::Raw,
+            style: Style::Raw,
         };
 
         let text = Box::new([run]);
@@ -461,7 +461,7 @@ mod test {
 
         let run1 = TextRun {
             text: String::from("Felines - fantastic!"),
-            format: Format::None,
+            style: Style::None,
         };
 
         let text = Box::new([run1]);
@@ -481,17 +481,17 @@ mod test {
 
         let run1 = TextRun {
             text: String::from("Cat cat"),
-            format: Format::None,
+            style: Style::None,
         };
 
         let run2 = TextRun {
             text: String::from("cat cat"),
-            format: Format::Emphasis,
+            style: Style::Emphasis,
         };
 
         let run3 = TextRun {
             text: String::from(" cat."),
-            format: Format::None,
+            style: Style::None,
         };
 
         let text = Box::new([run1, run2, run3]);
