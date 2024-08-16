@@ -46,6 +46,7 @@ enum Style {
 #[derive(PartialEq, Eq, Debug)]
 enum ParseError {
     UnmatchedDelimiter,
+    LooseDelimiter,
     EmptyDelimitedText,
 }
 
@@ -127,11 +128,11 @@ fn parse_delimited_text<'a>(
     // Skip initial delimiter
     tokeniser.advance();
 
-    let mut run = String::new();
-
     if tokeniser.current_token == Token::FormatDelimiter(run_delimiter) {
         return Err(ParseError::EmptyDelimitedText);
     }
+
+    let mut run = String::new();
 
     loop {
         match tokeniser.current_token {
@@ -141,6 +142,10 @@ fn parse_delimited_text<'a>(
             _ => return Err(ParseError::UnmatchedDelimiter),
         }
         tokeniser.advance()
+    }
+
+    if run.starts_with(" ") || run.ends_with(" ") {
+        return Err(ParseError::LooseDelimiter);
     }
 
     let style = match run_delimiter {
@@ -158,18 +163,23 @@ fn parse_delimited_text<'a>(
 mod test {
     use super::*;
 
+    //TODO: Maybe mixture of bold/emph/strike is ok? Use bit mask?
     //TODO: More evils: _``_, `*`*
     //TODO: Test: -foo\nbar- <- Valid?
     //TODO: Test: -foo\n\nbar- <- Invalid?
     //TODO: Foo_bar_baz vs foobar_baz
     //TODO: References
-    //TODO: Decide on if we want to enforce "tight" delimiters
-    //TODO: Bold and emph are ok mid word, but what about raw?
 
     //TODO: Test leading whitespace in a paragraph is ignored
     //TODO: Test newlines
+
     //TODO: Figure out what to do with newlines in raw text
-    //TODO: Macros to make building test cases less painful
+    //      djot just uses same whitespace rules as normal text runs
+
+    //TODO: Bold and emph are ok mid word, but what about raw?
+    //      djot allows it - we should test we can do the same
+
+    //TODO: Macros to make building test cases less painful?
 
     #[test]
     fn one_line_paragraph() {
@@ -577,12 +587,25 @@ mod test {
         assert_eq!(actual, expected);
     }
 
-    //TODO: Maybe mixture of bold/emph/strike is ok? Use bit mask?
+    #[test]
+    fn loose_bold_delimiter_start() {
+        let input = "* meow meow*";
 
-    //TODO: Raw is a bit different as it can contain other delimiters...
-    // but must treat them as text.
-    //TODO: We probably want to have the tokeniser understand that a
-    //'*' inside raw text is not a delimiter
-    // But... it does not make sense that a tokeniser _and_ the parser keep track of state
-    // Is the seperation of the two actually not that helpful?!
+        let expected = Err(ParseError::LooseDelimiter);
+
+        let actual = parse(input);
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn loose_bold_delimiter_end() {
+        let input = "*meow meow *";
+
+        let expected = Err(ParseError::LooseDelimiter);
+
+        let actual = parse(input);
+
+        assert_eq!(actual, expected);
+    }
 }
