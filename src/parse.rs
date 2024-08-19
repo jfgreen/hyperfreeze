@@ -80,7 +80,7 @@ fn parse_paragraph<'a>(tokeniser: &mut Tokeniser) -> Result<Block, ParseError> {
         let run = match tokeniser.current_token {
             Token::Whitespace | Token::Text(_) => parse_plain_text(tokeniser)?,
             Token::FormatDelimiter(d) => parse_delimited_text(tokeniser, d)?,
-            Token::RawText(t) => parse_raw_text(tokeniser, t)?,
+            Token::RawDelimiter => parse_raw_text(tokeniser)?,
             //TODO: Should this be pulled up as all blocks are seperated with a line break?
             Token::Linebreak => {
                 tokeniser.advance();
@@ -113,10 +113,30 @@ fn parse_plain_text<'a>(tokeniser: &mut Tokeniser) -> Result<TextRun, ParseError
     })
 }
 
-fn parse_raw_text<'a>(tokeniser: &mut Tokeniser, text: &str) -> Result<TextRun, ParseError> {
+fn parse_raw_text<'a>(tokeniser: &mut Tokeniser) -> Result<TextRun, ParseError> {
+    tokeniser.advance_raw();
+
+    // TODO: Add test for empty delimited text
+    if tokeniser.current_token == Token::RawDelimiter {
+        return Err(ParseError::EmptyDelimitedText);
+    }
+
+    let mut run = String::new();
+
+    loop {
+        match tokeniser.current_token {
+            Token::Text(text) => run.push_str(text),
+            Token::Whitespace => run.push_str(" "),
+            Token::RawDelimiter => break,
+            _ => return Err(ParseError::UnmatchedDelimiter),
+        }
+        tokeniser.advance_raw();
+    }
+
     tokeniser.advance();
+
     Ok(TextRun {
-        text: text.to_string(),
+        text: run.to_string(),
         style: Style::Raw,
     })
 }
@@ -506,6 +526,46 @@ mod test {
 
         let run = TextRun {
             text: String::from("Keep your       distance"),
+            style: Style::Raw,
+        };
+
+        let text = Box::new([run]);
+
+        let expected = Document {
+            blocks: Box::new([Block::Paragraph(text)]),
+        };
+
+        let actual = parse(input).unwrap();
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn raw_over_two_lines() {
+        let input = "`Great\ncats`";
+
+        let run = TextRun {
+            text: String::from("Great cats"),
+            style: Style::Raw,
+        };
+
+        let text = Box::new([run]);
+
+        let expected = Document {
+            blocks: Box::new([Block::Paragraph(text)]),
+        };
+
+        let actual = parse(input).unwrap();
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn raw_over_three_lines() {
+        let input = "`Great\ncats\nassemble!`";
+
+        let run = TextRun {
+            text: String::from("Great cats assemble!"),
             style: Style::Raw,
         };
 
