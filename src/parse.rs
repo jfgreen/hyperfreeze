@@ -116,7 +116,7 @@ fn parse_plain_text<'a>(tokeniser: &mut Tokeniser) -> Result<TextRun, ParseError
 }
 
 fn parse_raw_text<'a>(tokeniser: &mut Tokeniser) -> Result<TextRun, ParseError> {
-    expect(tokeniser, Token::RawDelimiter)?;
+    expect_raw_delimiter(tokeniser)?;
 
     // TODO: Add test for empty delimited text
     if tokeniser.current_token == Token::RawDelimiter {
@@ -185,6 +185,15 @@ fn expect(tokeniser: &mut Tokeniser, token: Token) -> Result<(), ParseError> {
         Err(ParseError::UnexpectedToken)
     } else {
         tokeniser.advance();
+        Ok(())
+    }
+}
+
+fn expect_raw_delimiter(tokeniser: &mut Tokeniser) -> Result<(), ParseError> {
+    if tokeniser.current_token != Token::RawDelimiter {
+        Err(ParseError::UnexpectedToken)
+    } else {
+        tokeniser.advance_raw();
         Ok(())
     }
 }
