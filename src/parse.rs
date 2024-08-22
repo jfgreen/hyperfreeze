@@ -45,6 +45,7 @@ enum Style {
 
 #[derive(PartialEq, Eq, Debug)]
 enum ParseError {
+    UnexpectedToken,
     UnmatchedDelimiter,
     LooseDelimiter,
     EmptyDelimitedText,
@@ -54,6 +55,7 @@ enum ParseError {
 // TODO: Pre allocate sensible vec capacities?
 // TODO: This all gets easier if we fold tokensier into parser?
 
+// TODO: Allow parsing over buffered input stream
 fn parse(input: &str) -> Result<Document, ParseError> {
     let mut tokeniser = Tokeniser::new(input);
     let mut blocks = Vec::new();
@@ -114,7 +116,7 @@ fn parse_plain_text<'a>(tokeniser: &mut Tokeniser) -> Result<TextRun, ParseError
 }
 
 fn parse_raw_text<'a>(tokeniser: &mut Tokeniser) -> Result<TextRun, ParseError> {
-    tokeniser.advance_raw();
+    expect(tokeniser, Token::RawDelimiter)?;
 
     // TODO: Add test for empty delimited text
     if tokeniser.current_token == Token::RawDelimiter {
@@ -145,8 +147,7 @@ fn parse_delimited_text<'a>(
     tokeniser: &mut Tokeniser,
     run_delimiter: Format,
 ) -> Result<TextRun, ParseError> {
-    // Skip initial delimiter
-    tokeniser.advance();
+    expect(tokeniser, Token::FormatDelimiter(run_delimiter))?;
 
     if tokeniser.current_token == Token::FormatDelimiter(run_delimiter) {
         return Err(ParseError::EmptyDelimitedText);
@@ -179,6 +180,15 @@ fn parse_delimited_text<'a>(
     Ok(TextRun { text: run, style })
 }
 
+fn expect(tokeniser: &mut Tokeniser, token: Token) -> Result<(), ParseError> {
+    if tokeniser.current_token != token {
+        Err(ParseError::UnexpectedToken)
+    } else {
+        tokeniser.advance();
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
@@ -189,6 +199,7 @@ mod test {
     //TODO: Test: -foo\n\nbar- <- Invalid?
     //TODO: Foo_bar_baz vs foobar_baz
     //TODO: References
+    //TODO: Escaped chars
 
     //TODO: Test leading whitespace in a paragraph is ignored
     //TODO: Test newlines
