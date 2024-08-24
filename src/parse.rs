@@ -19,23 +19,24 @@ use crate::tokenise::{Format, Token, Tokeniser};
 //}
 
 #[derive(PartialEq, Eq, Debug)]
-struct Document {
-    blocks: Box<[Block]>,
+pub struct Document {
+    pub blocks: Box<[Block]>,
 }
 
 #[derive(PartialEq, Eq, Debug)]
-enum Block {
+pub enum Block {
     Paragraph(Box<[TextRun]>),
 }
 
 #[derive(PartialEq, Eq, Debug)]
-struct TextRun {
-    text: String,
-    style: Style,
+pub struct TextRun {
+    pub text: String,
+    pub style: Style,
 }
 
 #[derive(PartialEq, Eq, Debug)]
-enum Style {
+//TODO 'Strong' instead of bold?
+pub enum Style {
     None,
     Bold,
     Emphasis,
@@ -44,7 +45,7 @@ enum Style {
 }
 
 #[derive(PartialEq, Eq, Debug)]
-enum ParseError {
+pub enum ParseError {
     UnexpectedToken,
     UnmatchedDelimiter,
     LooseDelimiter,
@@ -56,7 +57,7 @@ enum ParseError {
 // TODO: This all gets easier if we fold tokensier into parser?
 
 // TODO: Allow parsing over buffered input stream
-fn parse(input: &str) -> Result<Document, ParseError> {
+pub fn parse_str(input: &str) -> Result<Document, ParseError> {
     let mut tokeniser = Tokeniser::new(input);
     let mut blocks = Vec::new();
 
@@ -233,7 +234,7 @@ mod test {
             blocks: Box::new([Block::Paragraph(text)]),
         };
 
-        let actual = parse(input).unwrap();
+        let actual = parse_str(input).unwrap();
 
         assert_eq!(actual, expected);
     }
@@ -253,7 +254,7 @@ mod test {
             blocks: Box::new([Block::Paragraph(text)]),
         };
 
-        let actual = parse(input).unwrap();
+        let actual = parse_str(input).unwrap();
 
         assert_eq!(actual, expected);
     }
@@ -273,7 +274,7 @@ mod test {
             blocks: Box::new([Block::Paragraph(text)]),
         };
 
-        let actual = parse(input).unwrap();
+        let actual = parse_str(input).unwrap();
 
         assert_eq!(actual, expected);
     }
@@ -299,7 +300,7 @@ mod test {
             blocks: Box::new([Block::Paragraph(text1), Block::Paragraph(text2)]),
         };
 
-        let actual = parse(input).unwrap();
+        let actual = parse_str(input).unwrap();
 
         assert_eq!(actual, expected);
     }
@@ -325,7 +326,7 @@ mod test {
             blocks: Box::new([Block::Paragraph(text1), Block::Paragraph(text2)]),
         };
 
-        let actual = parse(input).unwrap();
+        let actual = parse_str(input).unwrap();
 
         assert_eq!(actual, expected);
     }
@@ -355,7 +356,7 @@ mod test {
             blocks: Box::new([Block::Paragraph(text)]),
         };
 
-        let actual = parse(input).unwrap();
+        let actual = parse_str(input).unwrap();
 
         assert_eq!(actual, expected);
     }
@@ -385,7 +386,7 @@ mod test {
             blocks: Box::new([Block::Paragraph(text)]),
         };
 
-        let actual = parse(input).unwrap();
+        let actual = parse_str(input).unwrap();
 
         assert_eq!(actual, expected);
     }
@@ -415,7 +416,7 @@ mod test {
             blocks: Box::new([Block::Paragraph(text)]),
         };
 
-        let actual = parse(input).unwrap();
+        let actual = parse_str(input).unwrap();
 
         assert_eq!(actual, expected);
     }
@@ -445,7 +446,7 @@ mod test {
             blocks: Box::new([Block::Paragraph(text)]),
         };
 
-        let actual = parse(input).unwrap();
+        let actual = parse_str(input).unwrap();
 
         assert_eq!(actual, expected);
     }
@@ -475,7 +476,7 @@ mod test {
             blocks: Box::new([Block::Paragraph(text)]),
         };
 
-        let actual = parse(input).unwrap();
+        let actual = parse_str(input).unwrap();
 
         assert_eq!(actual, expected);
     }
@@ -505,7 +506,7 @@ mod test {
             blocks: Box::new([Block::Paragraph(text)]),
         };
 
-        let actual = parse(input).unwrap();
+        let actual = parse_str(input).unwrap();
 
         assert_eq!(actual, expected);
     }
@@ -535,7 +536,7 @@ mod test {
             blocks: Box::new([Block::Paragraph(text)]),
         };
 
-        let actual = parse(input).unwrap();
+        let actual = parse_str(input).unwrap();
 
         assert_eq!(actual, expected);
     }
@@ -555,7 +556,7 @@ mod test {
             blocks: Box::new([Block::Paragraph(text)]),
         };
 
-        let actual = parse(input).unwrap();
+        let actual = parse_str(input).unwrap();
 
         assert_eq!(actual, expected);
     }
@@ -575,7 +576,7 @@ mod test {
             blocks: Box::new([Block::Paragraph(text)]),
         };
 
-        let actual = parse(input).unwrap();
+        let actual = parse_str(input).unwrap();
 
         assert_eq!(actual, expected);
     }
@@ -595,7 +596,7 @@ mod test {
             blocks: Box::new([Block::Paragraph(text)]),
         };
 
-        let actual = parse(input).unwrap();
+        let actual = parse_str(input).unwrap();
 
         assert_eq!(actual, expected);
     }
@@ -615,7 +616,7 @@ mod test {
             blocks: Box::new([Block::Paragraph(text)]),
         };
 
-        let actual = parse(input).unwrap();
+        let actual = parse_str(input).unwrap();
 
         assert_eq!(actual, expected);
     }
@@ -645,7 +646,7 @@ mod test {
             blocks: Box::new([Block::Paragraph(text)]),
         };
 
-        let actual = parse(input).unwrap();
+        let actual = parse_str(input).unwrap();
 
         assert_eq!(actual, expected);
     }
@@ -656,7 +657,7 @@ mod test {
 
         let expected = Err(ParseError::EmptyDelimitedText);
 
-        let actual = parse(input);
+        let actual = parse_str(input);
 
         assert_eq!(actual, expected);
     }
@@ -667,7 +668,7 @@ mod test {
 
         let expected = Err(ParseError::UnmatchedDelimiter);
 
-        let actual = parse(input);
+        let actual = parse_str(input);
 
         assert_eq!(actual, expected);
     }
@@ -678,7 +679,7 @@ mod test {
 
         let expected = Err(ParseError::UnmatchedDelimiter);
 
-        let actual = parse(input);
+        let actual = parse_str(input);
 
         assert_eq!(actual, expected);
     }
@@ -689,7 +690,7 @@ mod test {
 
         let expected = Err(ParseError::UnmatchedDelimiter);
 
-        let actual = parse(input);
+        let actual = parse_str(input);
 
         assert_eq!(actual, expected);
     }
@@ -700,7 +701,7 @@ mod test {
 
         let expected = Err(ParseError::LooseDelimiter);
 
-        let actual = parse(input);
+        let actual = parse_str(input);
 
         assert_eq!(actual, expected);
     }
@@ -711,7 +712,7 @@ mod test {
 
         let expected = Err(ParseError::LooseDelimiter);
 
-        let actual = parse(input);
+        let actual = parse_str(input);
 
         assert_eq!(actual, expected);
     }
