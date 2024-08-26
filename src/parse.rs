@@ -1,3 +1,5 @@
+use std::fmt::Display;
+
 use crate::tokenise::{Format, Token, Tokeniser};
 
 //TODO: Reflect on if this document model is better than a higher level token stream?
@@ -50,6 +52,17 @@ pub enum ParseError {
     UnmatchedDelimiter,
     LooseDelimiter,
     EmptyDelimitedText,
+}
+
+impl Display for ParseError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ParseError::UnexpectedToken => write!(f, "unexpected token"),
+            ParseError::UnmatchedDelimiter => write!(f, "unmatched delimiter"),
+            ParseError::LooseDelimiter => write!(f, "loose delimiter"),
+            ParseError::EmptyDelimitedText => write!(f, "empty delimited text"),
+        }
+    }
 }
 
 // TODO: Propper error handling, replace calls to panic!
