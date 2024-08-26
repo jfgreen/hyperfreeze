@@ -6,5 +6,6 @@
     rustc
     rust-analyzer
     rustfmt
+    static-web-server
   ];
 }
