@@ -84,7 +84,7 @@ fn char_usable_in_raw(c: char) -> bool {
     !(c == DELIM_RAW || c == '\n')
 }
 
-//TODO: Tokeniser Result alias
+type TokeniserResult<T> = Result<T, TokeniserError>;
 
 //TODO: Remove "advance" funcs and move to expect based parseing where
 // we can return an error if there are no valid ways to construct a token
@@ -114,7 +114,7 @@ impl<'a> Tokeniser<'a> {
         }
     }
 
-    pub fn assert_at_meteadata_block_start(&self) -> Result<(), TokeniserError> {
+    pub fn assert_at_meteadata_block_start(&self) -> TokeniserResult<()> {
         if self.current_token != Token::BlockStart(BlockType::Metadata) {
             Err(TokeniserError::UnexpectedToken)
         } else {
@@ -122,7 +122,7 @@ impl<'a> Tokeniser<'a> {
         }
     }
 
-    pub fn expect_linebreak(&mut self) -> Result<(), TokeniserError> {
+    pub fn expect_linebreak(&mut self) -> TokeniserResult<()> {
         if self.current_char == Some('\n') {
             self.read_next_char();
             Ok(())
@@ -131,7 +131,7 @@ impl<'a> Tokeniser<'a> {
         }
     }
 
-    pub fn expect_data_key(&mut self) -> Result<&'a str, TokeniserError> {
+    pub fn expect_data_key(&mut self) -> TokeniserResult<&'a str> {
         //FIXME: If the following was the public interface... then we dont need the ctx module?
         self.assert_current_char_is(char::is_alphabetic)?;
         let text = self.eat_chars_while(char::is_alphabetic);
@@ -141,14 +141,14 @@ impl<'a> Tokeniser<'a> {
         Ok(text)
     }
 
-    pub fn expect_data_value(&mut self) -> Result<&'a str, TokeniserError> {
+    pub fn expect_data_value(&mut self) -> TokeniserResult<&'a str> {
         //TODO: Normalise the value whitespace?
         self.assert_current_char_is(|c| c != '\n')?;
         let text = self.eat_chars_while(|c| c != '\n');
         Ok(text)
     }
 
-    pub fn expect_end_of_key_value(&mut self) -> Result<ctx::EndOfKV, TokeniserError> {
+    pub fn expect_end_of_key_value(&mut self) -> TokeniserResult<ctx::EndOfKV> {
         match self.current_char {
             Some('\n') => {
                 self.read_next_char();
@@ -244,7 +244,7 @@ impl<'a> Tokeniser<'a> {
         Token::Text(text)
     }
 
-    fn eat_char(&mut self, c: char) -> Result<(), TokeniserError> {
+    fn eat_char(&mut self, c: char) -> TokeniserResult<()> {
         if self.current_char == Some(c) {
             self.read_next_char();
             Ok(())
@@ -265,7 +265,7 @@ impl<'a> Tokeniser<'a> {
         self.advance_while_current(char::is_whitespace)
     }
 
-    fn assert_current_char_is(&self, predicate: fn(char) -> bool) -> Result<(), TokeniserError> {
+    fn assert_current_char_is(&self, predicate: fn(char) -> bool) -> TokeniserResult<()> {
         if self.current_char.is_some_and(predicate) {
             Ok(())
         } else {
