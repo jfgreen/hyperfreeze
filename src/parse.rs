@@ -133,8 +133,7 @@ fn parse_metadata<'a>(
     tokeniser: &mut Tokeniser,
     metadata: &mut Metadata,
 ) -> Result<State, ParseError> {
-    //TODO: Specialise to 'assert_at_start_of_metadata'
-    tokeniser.assert_current_token_eq(Token::BlockStart(BlockType::Metadata))?;
+    tokeniser.assert_at_meteadata_block_start()?;
     tokeniser.expect_linebreak()?;
 
     let result = loop {

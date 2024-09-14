@@ -114,8 +114,8 @@ impl<'a> Tokeniser<'a> {
         }
     }
 
-    pub fn assert_current_token_eq(&self, token: Token) -> Result<(), TokeniserError> {
-        if self.current_token != token {
+    pub fn assert_at_meteadata_block_start(&self) -> Result<(), TokeniserError> {
+        if self.current_token != Token::BlockStart(BlockType::Metadata) {
             Err(TokeniserError::UnexpectedToken)
         } else {
             Ok(())
@@ -149,7 +149,6 @@ impl<'a> Tokeniser<'a> {
     }
 
     pub fn expect_end_of_key_value(&mut self) -> Result<ctx::EndOfKV, TokeniserError> {
-        dbg!(self.current_char);
         match self.current_char {
             Some('\n') => {
                 self.read_next_char();
