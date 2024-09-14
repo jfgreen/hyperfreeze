@@ -1,6 +1,6 @@
-use std::fmt::Display;
+use std::fmt::{Display, Write};
 
-use crate::tokenise::{Format, Token, Tokeniser};
+use crate::tokenise::{ctx, BlockType, Format, Token, Tokeniser, TokeniserError};
 
 //TODO: Reflect on if this document model is better than a higher level token stream?
 // Lots of structure and indirection...
@@ -22,7 +22,17 @@ use crate::tokenise::{Format, Token, Tokeniser};
 
 #[derive(PartialEq, Eq, Debug)]
 pub struct Document {
+    pub metadata: Metadata,
     pub blocks: Box<[Block]>,
+}
+
+// TODO: Pick a system for IDs, e.g J Decimal, then use newtype or alias
+// TODO: Enforce basic metadata?
+
+#[derive(PartialEq, Eq, Debug, Default)]
+pub struct Metadata {
+    pub id: String,
+    pub title: String,
 }
 
 #[derive(PartialEq, Eq, Debug)]
@@ -48,24 +58,38 @@ pub enum Style {
 
 #[derive(PartialEq, Eq, Debug)]
 pub enum ParseError {
-    UnexpectedToken,
+    TokeniserError(TokeniserError),
+    UnexpectedToken, //TODO: Remove this, replaced by TokeniserError?
     UnmatchedDelimiter,
     LooseDelimiter,
     EmptyDelimitedText,
+    UnknownMetadata,
+}
+
+enum State {
+    ExpectingBlock,
+    Eof,
 }
 
 impl Display for ParseError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            ParseError::TokeniserError(e) => write!(f, "{}", e),
             ParseError::UnexpectedToken => write!(f, "unexpected token"),
             ParseError::UnmatchedDelimiter => write!(f, "unmatched delimiter"),
             ParseError::LooseDelimiter => write!(f, "loose delimiter"),
             ParseError::EmptyDelimitedText => write!(f, "empty delimited text"),
+            ParseError::UnknownMetadata => write!(f, "unknown metadata"),
         }
     }
 }
 
-// TODO: Propper error handling, replace calls to panic!
+impl From<TokeniserError> for ParseError {
+    fn from(error: TokeniserError) -> Self {
+        ParseError::TokeniserError(error)
+    }
+}
+
 // TODO: Pre allocate sensible vec capacities?
 // TODO: This all gets easier if we fold tokensier into parser?
 
@@ -74,19 +98,64 @@ pub fn parse_str(input: &str) -> Result<Document, ParseError> {
     let mut tokeniser = Tokeniser::new(input);
     let mut blocks = Vec::new();
 
-    //TODO: Try the same pattern to tokeniser?
+    let mut metadata = Metadata::default();
+
     //TODO: Strip leading whitespace from para
 
     // We either expect the start of a block or EOF
 
     while tokeniser.current_token != Token::Eof {
-        let para = parse_paragraph(&mut tokeniser)?;
-        blocks.push(para);
+        match tokeniser.current_token {
+            Token::BlockStart(BlockType::Metadata) => {
+                parse_metadata(&mut tokeniser, &mut metadata)?;
+            }
+
+            //TODO: Would "markup token be a useful concept"
+            // If we get markup, then we assume paragraph
+            Token::Text(_)
+            | Token::Whitespace
+            | Token::RawDelimiter
+            | Token::FormatDelimiter(_) => {
+                let para = parse_paragraph(&mut tokeniser)?;
+                blocks.push(para);
+            }
+            _ => return Err(ParseError::UnexpectedToken),
+        }
     }
 
     Ok(Document {
         blocks: blocks.into_boxed_slice(),
+        metadata,
     })
+}
+
+fn parse_metadata<'a>(
+    tokeniser: &mut Tokeniser,
+    metadata: &mut Metadata,
+) -> Result<State, ParseError> {
+    //TODO: Specialise to 'assert_at_start_of_metadata'
+    tokeniser.assert_current_token_eq(Token::BlockStart(BlockType::Metadata))?;
+    tokeniser.expect_linebreak()?;
+
+    let result = loop {
+        let key = tokeniser.expect_data_key()?;
+        let value = tokeniser.expect_data_value()?;
+
+        match key {
+            "id" => metadata.id.push_str(value),
+            "title" => metadata.title.push_str(value),
+            _ => return Err(ParseError::UnknownMetadata),
+        };
+
+        match tokeniser.expect_end_of_key_value()? {
+            ctx::EndOfKV::Linebreak => continue,
+            ctx::EndOfKV::Eof => break Ok(State::Eof),
+            ctx::EndOfKV::Blockbreak => break Ok(State::ExpectingBlock),
+        }
+    };
+
+    tokeniser.advance();
+    result
 }
 
 fn parse_paragraph<'a>(tokeniser: &mut Tokeniser) -> Result<Block, ParseError> {
@@ -98,13 +167,14 @@ fn parse_paragraph<'a>(tokeniser: &mut Tokeniser) -> Result<Block, ParseError> {
             Token::FormatDelimiter(d) => parse_delimited_text(tokeniser, d)?,
             Token::RawDelimiter => parse_raw_text(tokeniser)?,
             //TODO: Should this be pulled up as all blocks are seperated with a line break?
-            Token::Linebreak => {
+            Token::Blockbreak => {
                 tokeniser.advance();
                 break;
             }
             Token::Eof => {
                 break;
             }
+            _ => return Err(ParseError::UnexpectedToken),
         };
         text_runs.push(run);
     }
@@ -130,7 +200,8 @@ fn parse_plain_text<'a>(tokeniser: &mut Tokeniser) -> Result<TextRun, ParseError
 }
 
 fn parse_raw_text<'a>(tokeniser: &mut Tokeniser) -> Result<TextRun, ParseError> {
-    expect_raw_delimiter(tokeniser)?;
+    expect(tokeniser, Token::RawDelimiter)?;
+    tokeniser.advance();
 
     // TODO: Add test for empty delimited text
     if tokeniser.current_token == Token::RawDelimiter {
@@ -142,6 +213,7 @@ fn parse_raw_text<'a>(tokeniser: &mut Tokeniser) -> Result<TextRun, ParseError> 
     loop {
         match tokeniser.current_token {
             Token::Text(text) => run.push_str(text),
+            //TODO: Is it clear where this whitespace comes from? (new lines?)
             Token::Whitespace => run.push_str(" "),
             Token::RawDelimiter => break,
             _ => return Err(ParseError::UnmatchedDelimiter),
@@ -162,6 +234,7 @@ fn parse_delimited_text<'a>(
     run_delimiter: Format,
 ) -> Result<TextRun, ParseError> {
     expect(tokeniser, Token::FormatDelimiter(run_delimiter))?;
+    tokeniser.advance();
 
     if tokeniser.current_token == Token::FormatDelimiter(run_delimiter) {
         return Err(ParseError::EmptyDelimitedText);
@@ -194,20 +267,12 @@ fn parse_delimited_text<'a>(
     Ok(TextRun { text: run, style })
 }
 
+//TODO: Push this into tokeniser?
+//TODO: Make an expect api that advances?
 fn expect(tokeniser: &mut Tokeniser, token: Token) -> Result<(), ParseError> {
     if tokeniser.current_token != token {
         Err(ParseError::UnexpectedToken)
     } else {
-        tokeniser.advance();
-        Ok(())
-    }
-}
-
-fn expect_raw_delimiter(tokeniser: &mut Tokeniser) -> Result<(), ParseError> {
-    if tokeniser.current_token != Token::RawDelimiter {
-        Err(ParseError::UnexpectedToken)
-    } else {
-        tokeniser.advance_raw();
         Ok(())
     }
 }
@@ -215,6 +280,8 @@ fn expect_raw_delimiter(tokeniser: &mut Tokeniser) -> Result<(), ParseError> {
 #[cfg(test)]
 mod test {
     use super::*;
+
+    //TODO: Enforce that `foo\n\nbar` is invalid
 
     //TODO: Maybe mixture of bold/emph/strike is ok? Use bit mask?
     //TODO: More evils: _``_, `*`*
@@ -244,6 +311,7 @@ mod test {
         let text = Box::new([run]);
 
         let expected = Document {
+            metadata: Metadata::default(),
             blocks: Box::new([Block::Paragraph(text)]),
         };
 
@@ -264,6 +332,7 @@ mod test {
         let text = Box::new([run]);
 
         let expected = Document {
+            metadata: Metadata::default(),
             blocks: Box::new([Block::Paragraph(text)]),
         };
 
@@ -284,6 +353,7 @@ mod test {
         let text = Box::new([run]);
 
         let expected = Document {
+            metadata: Metadata::default(),
             blocks: Box::new([Block::Paragraph(text)]),
         };
 
@@ -310,6 +380,7 @@ mod test {
         let text2 = Box::new([run2]);
 
         let expected = Document {
+            metadata: Metadata::default(),
             blocks: Box::new([Block::Paragraph(text1), Block::Paragraph(text2)]),
         };
 
@@ -336,6 +407,7 @@ mod test {
         let text2 = Box::new([run2]);
 
         let expected = Document {
+            metadata: Metadata::default(),
             blocks: Box::new([Block::Paragraph(text1), Block::Paragraph(text2)]),
         };
 
@@ -366,6 +438,7 @@ mod test {
         let text = Box::new([run1, run2, run3]);
 
         let expected = Document {
+            metadata: Metadata::default(),
             blocks: Box::new([Block::Paragraph(text)]),
         };
 
@@ -396,6 +469,7 @@ mod test {
         let text = Box::new([run1, run2, run3]);
 
         let expected = Document {
+            metadata: Metadata::default(),
             blocks: Box::new([Block::Paragraph(text)]),
         };
 
@@ -426,6 +500,7 @@ mod test {
         let text = Box::new([run1, run2, run3]);
 
         let expected = Document {
+            metadata: Metadata::default(),
             blocks: Box::new([Block::Paragraph(text)]),
         };
 
@@ -456,6 +531,7 @@ mod test {
         let text = Box::new([run1, run2, run3]);
 
         let expected = Document {
+            metadata: Metadata::default(),
             blocks: Box::new([Block::Paragraph(text)]),
         };
 
@@ -486,6 +562,7 @@ mod test {
         let text = Box::new([run1, run2, run3]);
 
         let expected = Document {
+            metadata: Metadata::default(),
             blocks: Box::new([Block::Paragraph(text)]),
         };
 
@@ -516,6 +593,7 @@ mod test {
         let text = Box::new([run1, run2, run3]);
 
         let expected = Document {
+            metadata: Metadata::default(),
             blocks: Box::new([Block::Paragraph(text)]),
         };
 
@@ -546,6 +624,7 @@ mod test {
         let text = Box::new([run1, run2, run3]);
 
         let expected = Document {
+            metadata: Metadata::default(),
             blocks: Box::new([Block::Paragraph(text)]),
         };
 
@@ -566,6 +645,7 @@ mod test {
         let text = Box::new([run]);
 
         let expected = Document {
+            metadata: Metadata::default(),
             blocks: Box::new([Block::Paragraph(text)]),
         };
 
@@ -586,6 +666,7 @@ mod test {
         let text = Box::new([run]);
 
         let expected = Document {
+            metadata: Metadata::default(),
             blocks: Box::new([Block::Paragraph(text)]),
         };
 
@@ -606,6 +687,7 @@ mod test {
         let text = Box::new([run]);
 
         let expected = Document {
+            metadata: Metadata::default(),
             blocks: Box::new([Block::Paragraph(text)]),
         };
 
@@ -626,6 +708,7 @@ mod test {
         let text = Box::new([run1]);
 
         let expected = Document {
+            metadata: Metadata::default(),
             blocks: Box::new([Block::Paragraph(text)]),
         };
 
@@ -656,6 +739,7 @@ mod test {
         let text = Box::new([run1, run2, run3]);
 
         let expected = Document {
+            metadata: Metadata::default(),
             blocks: Box::new([Block::Paragraph(text)]),
         };
 
@@ -726,6 +810,27 @@ mod test {
         let expected = Err(ParseError::LooseDelimiter);
 
         let actual = parse_str(input);
+
+        assert_eq!(actual, expected);
+    }
+
+    //TODO: Test for variable whitespace in key/value arg
+    //TODO: Test doc with both metadata and paragraph
+    #[test]
+    fn doc_metadata() {
+        let input = concat!(
+            "#metadata\n",
+            "id: 01.23\n",
+            "title: Practical espionage for felines\n",
+        );
+
+        let expected = Metadata {
+            id: String::from("01.23"),
+            title: String::from("Practical espionage for felines"),
+        };
+
+        let parsed = parse_str(input).unwrap();
+        let actual = parsed.metadata;
 
         assert_eq!(actual, expected);
     }
