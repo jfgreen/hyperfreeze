@@ -7,7 +7,7 @@ use crate::render::render_html;
 
 mod parse;
 mod render;
-mod tokenise;
+mod scan;
 
 #[derive(Debug)]
 enum Error {

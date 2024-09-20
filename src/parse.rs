@@ -1,8 +1,11 @@
 use std::fmt::Display;
 
-use crate::tokenise::{ctx, BlockType, Format, Token, Tokeniser, TokeniserError};
+use crate::scanner::{Scanner, ScannerError};
 
-//TODO: Reflect on if this document model is better than a higher level token stream?
+// TODO: Pick a system for IDs, e.g J Decimal, then use newtype or alias
+// TODO: Enforce basic metadata?
+
+// TODO: Reflect on if this document model is better than a token stream?
 // Lots of structure and indirection...
 // So, is there a more efficent way of representing a document tree?
 // Code up an alternative and compare?
@@ -14,20 +17,14 @@ use crate::tokenise::{ctx, BlockType, Format, Token, Tokeniser, TokeniserError};
 // Mad idea, use unicode private use area and have whole doc a one string...
 // But might not work nicely if we need numeric values?
 // Could work just for paragraph / markup type?
-//enum SemanticToken {
-//    DelimiterStart(Delimit)
-//    DelimiterEnd(Delimit)
-//    Char(char),
-//}
+//
+// We could start by having a parse state
 
 #[derive(PartialEq, Eq, Debug)]
 pub struct Document {
     pub metadata: Metadata,
     pub blocks: Box<[Block]>,
 }
-
-// TODO: Pick a system for IDs, e.g J Decimal, then use newtype or alias
-// TODO: Enforce basic metadata?
 
 #[derive(PartialEq, Eq, Debug, Default)]
 pub struct Metadata {
@@ -58,44 +55,42 @@ pub enum Style {
 
 #[derive(PartialEq, Eq, Debug)]
 pub enum ParseError {
-    TokeniserError(TokeniserError),
-    UnexpectedToken, //TODO: Remove this, replaced by TokeniserError?
-    UnmatchedDelimiter,
-    LooseDelimiter,
-    EmptyDelimitedText,
+    ScannerError(ScannerError),
+    //UnexpectedToken,
+    //UnmatchedDelimiter,
+    //LooseDelimiter,
+    //EmptyDelimitedText,
     UnknownMetadata,
-}
-
-enum State {
-    ExpectingBlock,
-    Eof,
 }
 
 impl Display for ParseError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            ParseError::TokeniserError(e) => write!(f, "{}", e),
-            ParseError::UnexpectedToken => write!(f, "unexpected token"),
-            ParseError::UnmatchedDelimiter => write!(f, "unmatched delimiter"),
-            ParseError::LooseDelimiter => write!(f, "loose delimiter"),
-            ParseError::EmptyDelimitedText => write!(f, "empty delimited text"),
+            ParseError::ScannerError(e) => write!(f, "{}", e),
+            //ParseError::UnexpectedToken => write!(f, "unexpected token"),
+            //ParseError::UnmatchedDelimiter => write!(f, "unmatched delimiter"),
+            //ParseError::LooseDelimiter => write!(f, "loose delimiter"),
+            //ParseError::EmptyDelimitedText => write!(f, "empty delimited text"),
             ParseError::UnknownMetadata => write!(f, "unknown metadata"),
         }
     }
 }
 
-impl From<TokeniserError> for ParseError {
-    fn from(error: TokeniserError) -> Self {
-        ParseError::TokeniserError(error)
+type ParseResult<T> = Result<T, ParseError>;
+
+impl From<ScannerError> for ParseError {
+    fn from(error: ScannerError) -> Self {
+        ParseError::ScannerError(error)
     }
 }
 
 // TODO: Pre allocate sensible vec capacities?
-// TODO: This all gets easier if we fold tokensier into parser?
+
+// TODO: Helpful macros, expecially for checking current token is expected
 
 // TODO: Allow parsing over buffered input stream
-pub fn parse_str(input: &str) -> Result<Document, ParseError> {
-    let mut tokeniser = Tokeniser::new(input);
+pub fn parse_str(input: &str) -> ParseResult<Document> {
+    let mut scanner = Scanner::new(input);
     let mut blocks = Vec::new();
 
     let mut metadata = Metadata::default();
@@ -104,22 +99,24 @@ pub fn parse_str(input: &str) -> Result<Document, ParseError> {
 
     // We either expect the start of a block or EOF
 
-    while tokeniser.current_token != Token::Eof {
-        match tokeniser.current_token {
-            Token::BlockStart(BlockType::Metadata) => {
-                parse_metadata(&mut tokeniser, &mut metadata)?;
-            }
+    while scanner.has_input_remaining() {
+        if scanner.current_char_is("#") {
+            scanner.eat_char('#')?;
+            let block_name = scanner.eat_identifier()?;
 
-            //TODO: Would "markup token be a useful concept"
-            // If we get markup, then we assume paragraph
-            Token::Text(_)
-            | Token::Whitespace
-            | Token::RawDelimiter
-            | Token::FormatDelimiter(_) => {
-                let para = parse_paragraph(&mut tokeniser)?;
-                blocks.push(para);
+            match block_name {
+                "metadata" => {
+                    parse_metadata(&mut scanner, &mut metadata)?;
+                }
+                "paragraph" => {
+                    let para = parse_paragraph(&mut scanner)?;
+                    blocks.push(para);
+                }
             }
-            _ => return Err(ParseError::UnexpectedToken),
+        } else {
+            // As a syntactic sugar, the default block type is paragraph
+            let para = parse_paragraph(&mut scanner)?;
+            blocks.push(para);
         }
     }
 
@@ -129,16 +126,19 @@ pub fn parse_str(input: &str) -> Result<Document, ParseError> {
     })
 }
 
-fn parse_metadata<'a>(
-    tokeniser: &mut Tokeniser,
-    metadata: &mut Metadata,
-) -> Result<State, ParseError> {
-    tokeniser.assert_at_meteadata_block_start()?;
-    tokeniser.expect_linebreak()?;
+fn parse_metadata<'a>(scanner: &mut Scanner, metadata: &mut Metadata) -> ParseResult<()> {
+    scanner.eat_linebreak()?;
 
-    let result = loop {
-        let key = tokeniser.expect_data_key()?;
-        let value = tokeniser.expect_data_value()?;
+    loop {
+        let key = scanner.eat_identifier()?;
+        scanner.eat_char(":")?;
+        scanner.eat_optional_whitespace()?;
+
+        // For now, the value is just everything untill the end of line
+        // This might get more complicated in the future
+        // e.g treating value as int, bool, list, etc?
+
+        let value = scanner.eat_untill_newline()?;
 
         match key {
             "id" => metadata.id.push_str(value),
@@ -146,15 +146,19 @@ fn parse_metadata<'a>(
             _ => return Err(ParseError::UnknownMetadata),
         };
 
-        match tokeniser.expect_end_of_key_value()? {
-            ctx::EndOfKV::Linebreak => continue,
-            ctx::EndOfKV::Eof => break Ok(State::Eof),
-            ctx::EndOfKV::Blockbreak => break Ok(State::ExpectingBlock),
-        }
-    };
+        scanner.eat_newline()?;
 
-    tokeniser.advance();
-    result
+        if scanner.has_no_input_remaining() {
+            break;
+        }
+
+        if scanner.current_char_is('\n') {
+            scanner.eat_newline()?;
+            break;
+        }
+    }
+
+    Ok(())
 }
 
 fn parse_paragraph<'a>(tokeniser: &mut Tokeniser) -> Result<Block, ParseError> {
@@ -199,8 +203,7 @@ fn parse_plain_text<'a>(tokeniser: &mut Tokeniser) -> Result<TextRun, ParseError
 }
 
 fn parse_raw_text<'a>(tokeniser: &mut Tokeniser) -> Result<TextRun, ParseError> {
-    expect(tokeniser, Token::RawDelimiter)?;
-    tokeniser.advance();
+    tokeniser.expect_raw_delimiter()?;
 
     // TODO: Add test for empty delimited text
     if tokeniser.current_token == Token::RawDelimiter {
@@ -217,7 +220,7 @@ fn parse_raw_text<'a>(tokeniser: &mut Tokeniser) -> Result<TextRun, ParseError> 
             Token::RawDelimiter => break,
             _ => return Err(ParseError::UnmatchedDelimiter),
         }
-        tokeniser.advance_raw();
+        tokeniser.advance_inline_raw();
     }
 
     tokeniser.advance();
@@ -264,16 +267,6 @@ fn parse_delimited_text<'a>(
     tokeniser.advance();
 
     Ok(TextRun { text: run, style })
-}
-
-//TODO: Push this into tokeniser?
-//TODO: Make an expect api that advances?
-fn expect(tokeniser: &mut Tokeniser, token: Token) -> Result<(), ParseError> {
-    if tokeniser.current_token != token {
-        Err(ParseError::UnexpectedToken)
-    } else {
-        Ok(())
-    }
 }
 
 #[cfg(test)]
