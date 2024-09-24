@@ -1,6 +1,7 @@
 use std::fmt::Display;
 
-use crate::scanner::{Scanner, ScannerError};
+//TODO: Try using Peek:*
+use crate::scan::{Peek, Scanner, ScannerError};
 
 // TODO: Pick a system for IDs, e.g J Decimal, then use newtype or alias
 // TODO: Enforce basic metadata?
@@ -53,25 +54,28 @@ pub enum Style {
     Raw,
 }
 
+// TODO: We need much better context in errors!
 #[derive(PartialEq, Eq, Debug)]
 pub enum ParseError {
     ScannerError(ScannerError),
-    //UnexpectedToken,
-    //UnmatchedDelimiter,
-    //LooseDelimiter,
-    //EmptyDelimitedText,
+    UnexpectedInput,
+    UnmatchedDelimiter,
+    LooseDelimiter,
+    EmptyDelimitedText,
     UnknownMetadata,
+    UnknownBlock,
 }
 
 impl Display for ParseError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             ParseError::ScannerError(e) => write!(f, "{}", e),
-            //ParseError::UnexpectedToken => write!(f, "unexpected token"),
-            //ParseError::UnmatchedDelimiter => write!(f, "unmatched delimiter"),
-            //ParseError::LooseDelimiter => write!(f, "loose delimiter"),
-            //ParseError::EmptyDelimitedText => write!(f, "empty delimited text"),
+            ParseError::UnexpectedInput => write!(f, "unexpected input"),
+            ParseError::UnmatchedDelimiter => write!(f, "unmatched delimiter"),
+            ParseError::LooseDelimiter => write!(f, "loose delimiter"),
+            ParseError::EmptyDelimitedText => write!(f, "empty delimited text"),
             ParseError::UnknownMetadata => write!(f, "unknown metadata"),
+            ParseError::UnknownBlock => write!(f, "unknown block"),
         }
     }
 }
@@ -99,25 +103,37 @@ pub fn parse_str(input: &str) -> ParseResult<Document> {
 
     // We either expect the start of a block or EOF
 
-    while scanner.has_input_remaining() {
-        if scanner.current_char_is("#") {
-            scanner.eat_char('#')?;
-            let block_name = scanner.eat_identifier()?;
+    //TODO: Revisit per context peek enums
 
-            match block_name {
-                "metadata" => {
-                    parse_metadata(&mut scanner, &mut metadata)?;
-                }
-                "paragraph" => {
-                    let para = parse_paragraph(&mut scanner)?;
-                    blocks.push(para);
+    loop {
+        match scanner.peek_start_of_block() {
+            Peek::Hash => {
+                scanner.eat_hash()?;
+                let block_name = scanner.eat_identifier()?;
+                scanner.eat_linebreak()?;
+
+                match block_name {
+                    "metadata" => {
+                        parse_metadata(&mut scanner, &mut metadata)?;
+                    }
+                    "paragraph" => {
+                        let para = parse_paragraph(&mut scanner)?;
+                        blocks.push(para);
+                    }
+                    _ => return Err(ParseError::UnknownBlock),
                 }
             }
-        } else {
-            // As a syntactic sugar, the default block type is paragraph
-            let para = parse_paragraph(&mut scanner)?;
-            blocks.push(para);
+
+            Peek::Text => {
+                // As a syntactic sugar, the default block type is paragraph
+                let para = parse_paragraph(&mut scanner)?;
+                blocks.push(para);
+            }
+            Peek::EndOfFile => break,
+            _ => return Err(ParseError::UnexpectedInput),
         }
+
+        scanner.eat_blockbreak()?;
     }
 
     Ok(Document {
@@ -127,18 +143,16 @@ pub fn parse_str(input: &str) -> ParseResult<Document> {
 }
 
 fn parse_metadata<'a>(scanner: &mut Scanner, metadata: &mut Metadata) -> ParseResult<()> {
-    scanner.eat_linebreak()?;
-
     loop {
         let key = scanner.eat_identifier()?;
-        scanner.eat_char(":")?;
-        scanner.eat_optional_whitespace()?;
+        scanner.eat_colon()?;
+        scanner.eat_optional_whitespace();
 
         // For now, the value is just everything untill the end of line
         // This might get more complicated in the future
         // e.g treating value as int, bool, list, etc?
 
-        let value = scanner.eat_untill_newline()?;
+        let value = scanner.eat_until_linebreak()?;
 
         match key {
             "id" => metadata.id.push_str(value),
@@ -146,38 +160,26 @@ fn parse_metadata<'a>(scanner: &mut Scanner, metadata: &mut Metadata) -> ParseRe
             _ => return Err(ParseError::UnknownMetadata),
         };
 
-        scanner.eat_newline()?;
-
-        if scanner.has_no_input_remaining() {
-            break;
-        }
-
-        if scanner.current_char_is('\n') {
-            scanner.eat_newline()?;
-            break;
+        match scanner.peek_end_of_meta_line() {
+            Peek::EndOfFile | Peek::Blockbreak => break,
+            Peek::Linebreak => continue,
+            _ => return Err(ParseError::UnexpectedInput),
         }
     }
 
     Ok(())
 }
 
-fn parse_paragraph<'a>(tokeniser: &mut Tokeniser) -> Result<Block, ParseError> {
+fn parse_paragraph<'a>(scanner: &mut Scanner) -> ParseResult<Block> {
     let mut text_runs = Vec::new();
 
     loop {
-        let run = match tokeniser.current_token {
-            Token::Whitespace | Token::Text(_) => parse_plain_text(tokeniser)?,
-            Token::FormatDelimiter(d) => parse_delimited_text(tokeniser, d)?,
-            Token::RawDelimiter => parse_raw_text(tokeniser)?,
-            //TODO: Should this be pulled up as all blocks are seperated with a line break?
-            Token::Blockbreak => {
-                tokeniser.advance();
-                break;
-            }
-            Token::Eof => {
-                break;
-            }
-            _ => return Err(ParseError::UnexpectedToken),
+        let run = match scanner.peek_markup() {
+            Peek::Whitespace | Peek::Text => parse_plain_text(scanner)?,
+            Peek::Asterisk => parse_bold_text(scanner)?,
+            Peek::Backtick => parse_raw_text(scanner)?,
+            Peek::EndOfFile | Peek::Blockbreak => break,
+            _ => return Err(ParseError::UnexpectedInput),
         };
         text_runs.push(run);
     }
@@ -185,15 +187,20 @@ fn parse_paragraph<'a>(tokeniser: &mut Tokeniser) -> Result<Block, ParseError> {
     Ok(Block::Paragraph(text_runs.into_boxed_slice()))
 }
 
-fn parse_plain_text<'a>(tokeniser: &mut Tokeniser) -> Result<TextRun, ParseError> {
+fn parse_plain_text<'a>(scanner: &mut Scanner) -> ParseResult<TextRun> {
     let mut run = String::new();
     loop {
-        match tokeniser.current_token {
-            Token::Text(text) => run.push_str(text),
-            Token::Whitespace => run.push_str(" "),
+        match scanner.peek_markup() {
+            Peek::Whitespace | Peek::Linebreak => {
+                scanner.eat_whitespace();
+                run.push_str(" ");
+            }
+            Peek::Text => {
+                let word = scanner.eat_word()?;
+                run.push_str(word);
+            }
             _ => break,
         }
-        tokeniser.advance();
     }
 
     Ok(TextRun {
@@ -202,28 +209,37 @@ fn parse_plain_text<'a>(tokeniser: &mut Tokeniser) -> Result<TextRun, ParseError
     })
 }
 
-fn parse_raw_text<'a>(tokeniser: &mut Tokeniser) -> Result<TextRun, ParseError> {
-    tokeniser.expect_raw_delimiter()?;
+fn parse_raw_text<'a>(scanner: &mut Scanner) -> ParseResult<TextRun> {
+    scanner.eat_backtick()?;
 
-    // TODO: Add test for empty delimited text
-    if tokeniser.current_token == Token::RawDelimiter {
-        return Err(ParseError::EmptyDelimitedText);
-    }
+    // TODO: Add test for empty raw text
+    //if tokeniser.current_token == Token::RawDelimiter {
+    //    return Err(ParseError::EmptyDelimitedText);
+    //}
 
     let mut run = String::new();
 
     loop {
-        match tokeniser.current_token {
-            Token::Text(text) => run.push_str(text),
-            //TODO: Is it clear where this whitespace comes from? (new lines?)
-            Token::Whitespace => run.push_str(" "),
-            Token::RawDelimiter => break,
-            _ => return Err(ParseError::UnmatchedDelimiter),
-        }
-        tokeniser.advance_inline_raw();
-    }
+        let raw_fragment = scanner.eat_raw_fragment()?;
+        run.push_str(raw_fragment);
 
-    tokeniser.advance();
+        match scanner.peek_inline_raw() {
+            Peek::Linebreak => {
+                scanner.eat_linebreak()?;
+                run.push_str(" ");
+            }
+            Peek::Backtick => {
+                scanner.eat_backtick()?;
+                break;
+            }
+            Peek::Text => {
+                continue;
+            }
+            _ => {
+                return Err(ParseError::UnmatchedDelimiter);
+            }
+        }
+    }
 
     Ok(TextRun {
         text: run.to_string(),
@@ -231,42 +247,38 @@ fn parse_raw_text<'a>(tokeniser: &mut Tokeniser) -> Result<TextRun, ParseError> 
     })
 }
 
-fn parse_delimited_text<'a>(
-    tokeniser: &mut Tokeniser,
-    run_delimiter: Format,
-) -> Result<TextRun, ParseError> {
-    expect(tokeniser, Token::FormatDelimiter(run_delimiter))?;
-    tokeniser.advance();
-
-    if tokeniser.current_token == Token::FormatDelimiter(run_delimiter) {
-        return Err(ParseError::EmptyDelimitedText);
-    }
+fn parse_bold_text<'a>(scanner: &mut Scanner) -> ParseResult<TextRun> {
+    scanner.eat_asterisk()?;
 
     let mut run = String::new();
 
     loop {
-        match tokeniser.current_token {
-            Token::Text(text) => run.push_str(text),
-            Token::Whitespace => run.push_str(" "),
-            Token::FormatDelimiter(d) if d == run_delimiter => break,
+        match scanner.peek_markup() {
+            Peek::Text => {
+                let word = scanner.eat_word()?;
+                run.push_str(word)
+            }
+            Peek::Whitespace | Peek::Linebreak => {
+                scanner.eat_whitespace();
+                run.push_str(" ");
+            }
+            Peek::Asterisk => break,
             _ => return Err(ParseError::UnmatchedDelimiter),
         }
-        tokeniser.advance()
     }
 
     if run.starts_with(" ") || run.ends_with(" ") {
         return Err(ParseError::LooseDelimiter);
     }
 
-    let style = match run_delimiter {
-        Format::Emphasis => Style::Emphasis,
-        Format::Bold => Style::Bold,
-        Format::Strikethrough => Style::Strikethrough,
-    };
+    if run.len() == 0 {
+        return Err(ParseError::EmptyDelimitedText);
+    }
 
-    tokeniser.advance();
-
-    Ok(TextRun { text: run, style })
+    Ok(TextRun {
+        text: run,
+        style: Style::Emphasis,
+    })
 }
 
 #[cfg(test)]
@@ -282,6 +294,11 @@ mod test {
     //TODO: Foo_bar_baz vs foobar_baz
     //TODO: References
     //TODO: Escaped chars
+
+    //TODO: Blocks that end without trailing single newline
+    //TODO: Blocks that end without trailing double newline
+
+    //TODO: Test we strip leading and trailing whitespace from paragraphs
 
     //TODO: Test leading whitespace in a paragraph is ignored
     //TODO: Test newlines
