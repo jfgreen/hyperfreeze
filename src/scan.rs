@@ -1,6 +1,7 @@
 use std::fmt::{Display, Write};
 use std::str::CharIndices;
 
+//TODO: Are these semantic knowledge we dont want here...
 const DELIM_BOLD: char = '*';
 const DELIM_EMPH: char = '_';
 const DELIM_STRIKE: char = '~';
@@ -8,6 +9,7 @@ const DELIM_RAW: char = '`';
 
 //TODO: Support windows style newlines
 
+#[derive(Debug)]
 pub enum Peek {
     Hash,
     Text,
@@ -15,15 +17,10 @@ pub enum Peek {
     Linebreak,
     Whitespace,
     Asterisk,
+    Underscore,
+    Tilde,
     Backtick,
     EndOfFile,
-}
-
-pub struct Scanner<'a> {
-    input: &'a str,
-    chars: CharIndices<'a>,
-    current_char: Option<char>,
-    current_index: usize,
 }
 
 // TODO: Peek only needs to look at a couple of chars to make a decision
@@ -71,6 +68,14 @@ fn char_usable_in_raw(c: char) -> bool {
 }
 
 //TODO: Cache the peek?
+pub struct Scanner<'a> {
+    input: &'a str,
+    chars: CharIndices<'a>,
+    current_char: Option<char>,
+    current_index: usize,
+    next_char: Option<char>,
+    next_index: usize,
+}
 
 impl<'a> Scanner<'a> {
     pub fn new(input: &'a str) -> Self {
@@ -79,11 +84,13 @@ impl<'a> Scanner<'a> {
             chars: input.char_indices(),
             current_char: None,
             current_index: 0,
+            next_char: None,
+            next_index: 0,
         };
 
-        //TODO: Peek will need a +1 lookahead to detect blockbreak
-
-        // Place the first char of the input into `current_char`
+        // Place the first char of the input into `next_char`
+        // Then propigate it into `current_char`
+        scanner.read_next_char();
         scanner.read_next_char();
 
         scanner
@@ -92,19 +99,47 @@ impl<'a> Scanner<'a> {
     //TODO: Have one peek function with a hint param
 
     pub fn peek_start_of_block(&self) -> Peek {
-        todo!()
+        match self.current_char {
+            Some('#') => Peek::Hash,
+            _ => self.peek(),
+        }
     }
 
     pub fn peek_end_of_meta_line(&self) -> Peek {
-        todo!()
+        self.peek()
     }
 
     pub fn peek_markup(&self) -> Peek {
-        todo!()
+        self.peek()
     }
 
     pub fn peek_inline_raw(&self) -> Peek {
-        todo!()
+        match self.current_char {
+            Some('\n') if self.next_char == Some('\n') => Peek::Blockbreak,
+            //FIXME: Bit of a hack?
+            Some('\n') if self.next_char.is_none() => Peek::EndOfFile,
+            Some('\n') => Peek::Linebreak,
+            Some(c) if c.is_whitespace() => Peek::Whitespace,
+            Some('`') => Peek::Backtick,
+            Some(_) => Peek::Text,
+            None => Peek::EndOfFile,
+        }
+    }
+
+    pub fn peek(&self) -> Peek {
+        match self.current_char {
+            Some('\n') if self.next_char == Some('\n') => Peek::Blockbreak,
+            //FIXME: Bit of a hack?
+            Some('\n') if self.next_char.is_none() => Peek::EndOfFile,
+            Some('\n') => Peek::Linebreak,
+            Some(c) if c.is_whitespace() => Peek::Whitespace,
+            Some('*') => Peek::Asterisk,
+            Some('`') => Peek::Backtick,
+            Some('~') => Peek::Tilde,
+            Some('_') => Peek::Underscore,
+            Some(_) => Peek::Text,
+            None => Peek::EndOfFile,
+        }
     }
 
     pub fn eat_hash(&mut self) -> ScannerResult<()> {
@@ -123,6 +158,21 @@ impl<'a> Scanner<'a> {
         self.eat_char('*')
     }
 
+    pub fn eat_underscore(&mut self) -> ScannerResult<()> {
+        self.eat_char('_')
+    }
+
+    pub fn eat_tilde(&mut self) -> ScannerResult<()> {
+        self.eat_char('~')
+    }
+
+    //TODO: Something like this?
+    //pub fn eat_delimiter(&mut self, delimiter: Delimiter) -> ScannerResult<()> {
+    //    match delimiter {
+    //        Delimiter::Underscore => self.eat_char('_')
+    //    }
+    //}
+
     //pub fn has_input_remaining(&self) -> bool {
     //    return self.current_char.is_some();
     //}
@@ -140,7 +190,10 @@ impl<'a> Scanner<'a> {
     }
 
     pub fn eat_blockbreak(&mut self) -> ScannerResult<()> {
-        todo!()
+        self.eat_char('\n')?;
+        self.eat_char('\n')?;
+        self.skip_chars_while_current(|c| c == '\n');
+        Ok(())
     }
 
     /*
@@ -178,7 +231,7 @@ impl<'a> Scanner<'a> {
 
     //TODO: Is this too much semantic knowledge?
     pub fn eat_raw_fragment(&mut self) -> ScannerResult<&'a str> {
-        todo!()
+        Ok(self.eat_while(|c| c != '\n' && c != '`'))
     }
 
     pub fn eat_until_linebreak(&mut self) -> ScannerResult<&'a str> {
@@ -198,7 +251,7 @@ impl<'a> Scanner<'a> {
 
     fn eat_char(&mut self, expected: char) -> ScannerResult<()> {
         match self.current_char {
-            Some(expected) => {
+            Some(c) if c == expected => {
                 self.read_next_char();
                 Ok(())
             }
@@ -207,6 +260,8 @@ impl<'a> Scanner<'a> {
         }
     }
 
+    //FIXME: Strictly we should return an error if we hit EOF
+    // Otherwise if we call eat_mango, we dont know if we actually got a mango
     fn eat_while(&mut self, predicate: fn(char) -> bool) -> &'a str {
         let i1 = self.current_index;
         self.skip_chars_while_current(predicate);
@@ -221,12 +276,15 @@ impl<'a> Scanner<'a> {
     }
 
     fn read_next_char(&mut self) {
+        self.current_char = self.next_char;
+        self.current_index = self.next_index;
+
         if let Some((i, c)) = self.chars.next() {
-            self.current_char = Some(c);
-            self.current_index = i;
+            self.next_char = Some(c);
+            self.next_index = i;
         } else {
-            self.current_char = None;
-            self.current_index = self.input.len();
+            self.next_char = None;
+            self.next_index = self.input.len();
         }
     }
 

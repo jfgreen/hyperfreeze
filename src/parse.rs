@@ -124,16 +124,14 @@ pub fn parse_str(input: &str) -> ParseResult<Document> {
                 }
             }
 
-            Peek::Text => {
+            Peek::EndOfFile => break,
+            //TODO: Might be cleaner to match on known markup tokens
+            _ => {
                 // As a syntactic sugar, the default block type is paragraph
                 let para = parse_paragraph(&mut scanner)?;
                 blocks.push(para);
-            }
-            Peek::EndOfFile => break,
-            _ => return Err(ParseError::UnexpectedInput),
+            } //_ => return Err(ParseError::UnexpectedInput),
         }
-
-        scanner.eat_blockbreak()?;
     }
 
     Ok(Document {
@@ -161,8 +159,15 @@ fn parse_metadata<'a>(scanner: &mut Scanner, metadata: &mut Metadata) -> ParseRe
         };
 
         match scanner.peek_end_of_meta_line() {
-            Peek::EndOfFile | Peek::Blockbreak => break,
-            Peek::Linebreak => continue,
+            Peek::EndOfFile => break,
+            Peek::Blockbreak => {
+                scanner.eat_blockbreak()?;
+                break;
+            }
+            Peek::Linebreak => {
+                scanner.eat_linebreak()?;
+                continue;
+            }
             _ => return Err(ParseError::UnexpectedInput),
         }
     }
@@ -177,8 +182,14 @@ fn parse_paragraph<'a>(scanner: &mut Scanner) -> ParseResult<Block> {
         let run = match scanner.peek_markup() {
             Peek::Whitespace | Peek::Text => parse_plain_text(scanner)?,
             Peek::Asterisk => parse_bold_text(scanner)?,
+            Peek::Underscore => parse_emphasised_text(scanner)?,
+            Peek::Tilde => parse_strikethrough_text(scanner)?,
             Peek::Backtick => parse_raw_text(scanner)?,
-            Peek::EndOfFile | Peek::Blockbreak => break,
+            Peek::EndOfFile => break,
+            Peek::Blockbreak => {
+                scanner.eat_blockbreak()?;
+                break;
+            }
             _ => return Err(ParseError::UnexpectedInput),
         };
         text_runs.push(run);
@@ -232,7 +243,7 @@ fn parse_raw_text<'a>(scanner: &mut Scanner) -> ParseResult<TextRun> {
                 scanner.eat_backtick()?;
                 break;
             }
-            Peek::Text => {
+            Peek::Text | Peek::Whitespace => {
                 continue;
             }
             _ => {
@@ -247,6 +258,7 @@ fn parse_raw_text<'a>(scanner: &mut Scanner) -> ParseResult<TextRun> {
     })
 }
 
+//TODO: Clean up duplication with this and emphasis, strikethrough
 fn parse_bold_text<'a>(scanner: &mut Scanner) -> ParseResult<TextRun> {
     scanner.eat_asterisk()?;
 
@@ -262,7 +274,47 @@ fn parse_bold_text<'a>(scanner: &mut Scanner) -> ParseResult<TextRun> {
                 scanner.eat_whitespace();
                 run.push_str(" ");
             }
-            Peek::Asterisk => break,
+            Peek::Asterisk => {
+                scanner.eat_asterisk()?;
+                break;
+            }
+            _ => return Err(ParseError::UnmatchedDelimiter),
+        }
+    }
+
+    if run.starts_with(" ") || run.ends_with(" ") {
+        return Err(ParseError::LooseDelimiter);
+    }
+
+    if run.len() == 0 {
+        return Err(ParseError::EmptyDelimitedText);
+    }
+
+    Ok(TextRun {
+        text: run,
+        style: Style::Bold,
+    })
+}
+
+fn parse_emphasised_text<'a>(scanner: &mut Scanner) -> ParseResult<TextRun> {
+    scanner.eat_underscore()?;
+
+    let mut run = String::new();
+
+    loop {
+        match scanner.peek_markup() {
+            Peek::Text => {
+                let word = scanner.eat_word()?;
+                run.push_str(word)
+            }
+            Peek::Whitespace | Peek::Linebreak => {
+                scanner.eat_whitespace();
+                run.push_str(" ");
+            }
+            Peek::Underscore => {
+                scanner.eat_underscore()?;
+                break;
+            }
             _ => return Err(ParseError::UnmatchedDelimiter),
         }
     }
@@ -281,6 +333,43 @@ fn parse_bold_text<'a>(scanner: &mut Scanner) -> ParseResult<TextRun> {
     })
 }
 
+fn parse_strikethrough_text<'a>(scanner: &mut Scanner) -> ParseResult<TextRun> {
+    scanner.eat_tilde()?;
+
+    let mut run = String::new();
+
+    loop {
+        match scanner.peek_markup() {
+            Peek::Text => {
+                let word = scanner.eat_word()?;
+                run.push_str(word)
+            }
+            Peek::Whitespace | Peek::Linebreak => {
+                scanner.eat_whitespace();
+                run.push_str(" ");
+            }
+            Peek::Tilde => {
+                scanner.eat_tilde()?;
+                break;
+            }
+            _ => return Err(ParseError::UnmatchedDelimiter),
+        }
+    }
+
+    if run.starts_with(" ") || run.ends_with(" ") {
+        return Err(ParseError::LooseDelimiter);
+    }
+
+    if run.len() == 0 {
+        return Err(ParseError::EmptyDelimitedText);
+    }
+
+    Ok(TextRun {
+        text: run,
+        style: Style::Strikethrough,
+    })
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
@@ -295,8 +384,7 @@ mod test {
     //TODO: References
     //TODO: Escaped chars
 
-    //TODO: Blocks that end without trailing single newline
-    //TODO: Blocks that end without trailing double newline
+    //TODO: Files that end with a trailing single newline
 
     //TODO: Test we strip leading and trailing whitespace from paragraphs
 
@@ -372,7 +460,7 @@ mod test {
     }
 
     #[test]
-    fn two_new_lines_becomes_whitespace() {
+    fn two_new_lines_become_blocks() {
         let input = "Cats\n\nwhiskers";
 
         let run1 = TextRun {
@@ -399,7 +487,7 @@ mod test {
     }
 
     #[test]
-    fn three_new_lines_becomes_whitespace() {
+    fn three_new_lines_becomes_blocks() {
         let input = "Cats\n\n\nwhiskers";
 
         let run1 = TextRun {
