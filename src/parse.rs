@@ -213,11 +213,6 @@ fn parse_plain_text<'a>(scanner: &mut Scanner) -> ParseResult<TextRun> {
 fn parse_raw_text<'a>(scanner: &mut Scanner) -> ParseResult<TextRun> {
     scanner.eat_delimiter(Delimiter::Backtick)?;
 
-    // TODO: Add test for empty raw text
-    //if tokeniser.current_token == Token::RawDelimiter {
-    //    return Err(ParseError::EmptyDelimitedText);
-    //}
-
     let mut run = String::new();
 
     loop {
@@ -240,6 +235,10 @@ fn parse_raw_text<'a>(scanner: &mut Scanner) -> ParseResult<TextRun> {
                 return Err(ParseError::UnmatchedDelimiter);
             }
         }
+    }
+
+    if run.len() == 0 {
+        return Err(ParseError::EmptyDelimitedText);
     }
 
     Ok(TextRun {
@@ -767,6 +766,17 @@ mod test {
     #[test]
     fn empty_emphasis() {
         let input = "Rules cats must follow: __.";
+
+        let expected = Err(ParseError::EmptyDelimitedText);
+
+        let actual = parse_str(input);
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn empty_raw() {
+        let input = "Robot cat says: ``!.";
 
         let expected = Err(ParseError::EmptyDelimitedText);
 
