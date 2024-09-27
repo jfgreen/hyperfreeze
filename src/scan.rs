@@ -1,4 +1,4 @@
-use std::fmt::{Display, Write};
+use std::fmt::Display;
 use std::str::CharIndices;
 
 //TODO: Are these semantic knowledge we dont want here...
@@ -16,11 +16,16 @@ pub enum Peek {
     Blockbreak,
     Linebreak,
     Whitespace,
-    Asterisk,
-    Underscore,
-    Tilde,
-    Backtick,
+    Delimiter(Delimiter),
     EndOfFile,
+}
+
+#[derive(PartialEq, Eq, Debug, Clone, Copy)]
+pub enum Delimiter {
+    Asterisk,
+    Tilde,
+    Underscore,
+    Backtick,
 }
 
 // TODO: Peek only needs to look at a couple of chars to make a decision
@@ -120,7 +125,7 @@ impl<'a> Scanner<'a> {
             Some('\n') if self.next_char.is_none() => Peek::EndOfFile,
             Some('\n') => Peek::Linebreak,
             Some(c) if c.is_whitespace() => Peek::Whitespace,
-            Some('`') => Peek::Backtick,
+            Some('`') => Peek::Delimiter(Delimiter::Backtick),
             Some(_) => Peek::Text,
             None => Peek::EndOfFile,
         }
@@ -133,10 +138,10 @@ impl<'a> Scanner<'a> {
             Some('\n') if self.next_char.is_none() => Peek::EndOfFile,
             Some('\n') => Peek::Linebreak,
             Some(c) if c.is_whitespace() => Peek::Whitespace,
-            Some('*') => Peek::Asterisk,
-            Some('`') => Peek::Backtick,
-            Some('~') => Peek::Tilde,
-            Some('_') => Peek::Underscore,
+            Some('*') => Peek::Delimiter(Delimiter::Asterisk),
+            Some('`') => Peek::Delimiter(Delimiter::Backtick),
+            Some('~') => Peek::Delimiter(Delimiter::Tilde),
+            Some('_') => Peek::Delimiter(Delimiter::Underscore),
             Some(_) => Peek::Text,
             None => Peek::EndOfFile,
         }
@@ -150,28 +155,15 @@ impl<'a> Scanner<'a> {
         self.eat_char(':')
     }
 
-    pub fn eat_backtick(&mut self) -> ScannerResult<()> {
-        self.eat_char('`')
+    pub fn eat_delimiter(&mut self, delimiter: Delimiter) -> ScannerResult<()> {
+        let character = match delimiter {
+            Delimiter::Underscore => '_',
+            Delimiter::Asterisk => '*',
+            Delimiter::Tilde => '~',
+            Delimiter::Backtick => '`',
+        };
+        self.eat_char(character)
     }
-
-    pub fn eat_asterisk(&mut self) -> ScannerResult<()> {
-        self.eat_char('*')
-    }
-
-    pub fn eat_underscore(&mut self) -> ScannerResult<()> {
-        self.eat_char('_')
-    }
-
-    pub fn eat_tilde(&mut self) -> ScannerResult<()> {
-        self.eat_char('~')
-    }
-
-    //TODO: Something like this?
-    //pub fn eat_delimiter(&mut self, delimiter: Delimiter) -> ScannerResult<()> {
-    //    match delimiter {
-    //        Delimiter::Underscore => self.eat_char('_')
-    //    }
-    //}
 
     //pub fn has_input_remaining(&self) -> bool {
     //    return self.current_char.is_some();

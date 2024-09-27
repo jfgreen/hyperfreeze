@@ -1,7 +1,6 @@
 use std::fmt::Display;
 
-//TODO: Try using Peek:*
-use crate::scan::{Peek, Scanner, ScannerError};
+use crate::scan::{Delimiter, Peek, Scanner, ScannerError};
 
 // TODO: Pick a system for IDs, e.g J Decimal, then use newtype or alias
 // TODO: Enforce basic metadata?
@@ -89,9 +88,6 @@ impl From<ScannerError> for ParseError {
 }
 
 // TODO: Pre allocate sensible vec capacities?
-
-// TODO: Helpful macros, expecially for checking current token is expected
-
 // TODO: Allow parsing over buffered input stream
 pub fn parse_str(input: &str) -> ParseResult<Document> {
     let mut scanner = Scanner::new(input);
@@ -99,11 +95,7 @@ pub fn parse_str(input: &str) -> ParseResult<Document> {
 
     let mut metadata = Metadata::default();
 
-    //TODO: Strip leading whitespace from para
-
     // We either expect the start of a block or EOF
-
-    //TODO: Revisit per context peek enums
 
     loop {
         match scanner.peek_start_of_block() {
@@ -181,10 +173,8 @@ fn parse_paragraph<'a>(scanner: &mut Scanner) -> ParseResult<Block> {
     loop {
         let run = match scanner.peek_markup() {
             Peek::Whitespace | Peek::Text => parse_plain_text(scanner)?,
-            Peek::Asterisk => parse_bold_text(scanner)?,
-            Peek::Underscore => parse_emphasised_text(scanner)?,
-            Peek::Tilde => parse_strikethrough_text(scanner)?,
-            Peek::Backtick => parse_raw_text(scanner)?,
+            Peek::Delimiter(Delimiter::Backtick) => parse_raw_text(scanner)?,
+            Peek::Delimiter(d) => parse_delimited_text(scanner, d)?,
             Peek::EndOfFile => break,
             Peek::Blockbreak => {
                 scanner.eat_blockbreak()?;
@@ -221,7 +211,7 @@ fn parse_plain_text<'a>(scanner: &mut Scanner) -> ParseResult<TextRun> {
 }
 
 fn parse_raw_text<'a>(scanner: &mut Scanner) -> ParseResult<TextRun> {
-    scanner.eat_backtick()?;
+    scanner.eat_delimiter(Delimiter::Backtick)?;
 
     // TODO: Add test for empty raw text
     //if tokeniser.current_token == Token::RawDelimiter {
@@ -239,8 +229,8 @@ fn parse_raw_text<'a>(scanner: &mut Scanner) -> ParseResult<TextRun> {
                 scanner.eat_linebreak()?;
                 run.push_str(" ");
             }
-            Peek::Backtick => {
-                scanner.eat_backtick()?;
+            Peek::Delimiter(Delimiter::Backtick) => {
+                scanner.eat_delimiter(Delimiter::Backtick)?;
                 break;
             }
             Peek::Text | Peek::Whitespace => {
@@ -258,9 +248,8 @@ fn parse_raw_text<'a>(scanner: &mut Scanner) -> ParseResult<TextRun> {
     })
 }
 
-//TODO: Clean up duplication with this and emphasis, strikethrough
-fn parse_bold_text<'a>(scanner: &mut Scanner) -> ParseResult<TextRun> {
-    scanner.eat_asterisk()?;
+fn parse_delimited_text<'a>(scanner: &mut Scanner, delimiter: Delimiter) -> ParseResult<TextRun> {
+    scanner.eat_delimiter(delimiter)?;
 
     let mut run = String::new();
 
@@ -274,8 +263,8 @@ fn parse_bold_text<'a>(scanner: &mut Scanner) -> ParseResult<TextRun> {
                 scanner.eat_whitespace();
                 run.push_str(" ");
             }
-            Peek::Asterisk => {
-                scanner.eat_asterisk()?;
+            Peek::Delimiter(d) if d == delimiter => {
+                scanner.eat_delimiter(delimiter)?;
                 break;
             }
             _ => return Err(ParseError::UnmatchedDelimiter),
@@ -290,84 +279,14 @@ fn parse_bold_text<'a>(scanner: &mut Scanner) -> ParseResult<TextRun> {
         return Err(ParseError::EmptyDelimitedText);
     }
 
-    Ok(TextRun {
-        text: run,
-        style: Style::Bold,
-    })
-}
+    let style = match delimiter {
+        Delimiter::Asterisk => Style::Bold,
+        Delimiter::Underscore => Style::Emphasis,
+        Delimiter::Tilde => Style::Strikethrough,
+        _ => Style::None, //TOOD: Could we make raw parsing work for this also?
+    };
 
-fn parse_emphasised_text<'a>(scanner: &mut Scanner) -> ParseResult<TextRun> {
-    scanner.eat_underscore()?;
-
-    let mut run = String::new();
-
-    loop {
-        match scanner.peek_markup() {
-            Peek::Text => {
-                let word = scanner.eat_word()?;
-                run.push_str(word)
-            }
-            Peek::Whitespace | Peek::Linebreak => {
-                scanner.eat_whitespace();
-                run.push_str(" ");
-            }
-            Peek::Underscore => {
-                scanner.eat_underscore()?;
-                break;
-            }
-            _ => return Err(ParseError::UnmatchedDelimiter),
-        }
-    }
-
-    if run.starts_with(" ") || run.ends_with(" ") {
-        return Err(ParseError::LooseDelimiter);
-    }
-
-    if run.len() == 0 {
-        return Err(ParseError::EmptyDelimitedText);
-    }
-
-    Ok(TextRun {
-        text: run,
-        style: Style::Emphasis,
-    })
-}
-
-fn parse_strikethrough_text<'a>(scanner: &mut Scanner) -> ParseResult<TextRun> {
-    scanner.eat_tilde()?;
-
-    let mut run = String::new();
-
-    loop {
-        match scanner.peek_markup() {
-            Peek::Text => {
-                let word = scanner.eat_word()?;
-                run.push_str(word)
-            }
-            Peek::Whitespace | Peek::Linebreak => {
-                scanner.eat_whitespace();
-                run.push_str(" ");
-            }
-            Peek::Tilde => {
-                scanner.eat_tilde()?;
-                break;
-            }
-            _ => return Err(ParseError::UnmatchedDelimiter),
-        }
-    }
-
-    if run.starts_with(" ") || run.ends_with(" ") {
-        return Err(ParseError::LooseDelimiter);
-    }
-
-    if run.len() == 0 {
-        return Err(ParseError::EmptyDelimitedText);
-    }
-
-    Ok(TextRun {
-        text: run,
-        style: Style::Strikethrough,
-    })
+    Ok(TextRun { text: run, style })
 }
 
 #[cfg(test)]
@@ -375,7 +294,7 @@ mod test {
     use super::*;
 
     //TODO: Enforce that `foo\n\nbar` is invalid
-
+    //TODO: Strip leading whitespace from para
     //TODO: Maybe mixture of bold/emph/strike is ok? Use bit mask?
     //TODO: More evils: _``_, `*`*
     //TODO: Test: -foo\nbar- <- Valid?
