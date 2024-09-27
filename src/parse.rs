@@ -116,13 +116,13 @@ pub fn parse_str(input: &str) -> ParseResult<Document> {
                 }
             }
 
-            Peek::EndOfFile => break,
-            //TODO: Might be cleaner to match on known markup tokens
-            _ => {
-                // As a syntactic sugar, the default block type is paragraph
+            // A block header is optional for paragraph blocks
+            Peek::Text | Peek::Delimiter(_) => {
                 let para = parse_paragraph(&mut scanner)?;
                 blocks.push(para);
-            } //_ => return Err(ParseError::UnexpectedInput),
+            }
+            Peek::EndOfFile => break,
+            _ => return Err(ParseError::UnexpectedInput),
         }
     }
 
