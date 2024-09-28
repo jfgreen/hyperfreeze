@@ -56,6 +56,7 @@ type ScannerResult<T> = Result<T, ScannerError>;
 
 //TODO: Type alias for fn(char) -> bool
 
+//TODO: Extension trait for these?j
 fn usable_in_word(c: char) -> bool {
     // TODO: Is there a more efficent way to do this?
     // Maybe by treating char as an int
@@ -64,12 +65,6 @@ fn usable_in_word(c: char) -> bool {
         || c == DELIM_STRIKE
         || c == DELIM_RAW
         || c.is_whitespace())
-}
-
-fn char_usable_in_raw(c: char) -> bool {
-    // TODO: Is there a more efficent way to do this?
-    // Maybe by treating char as an int
-    !(c == DELIM_RAW || c == '\n')
 }
 
 //TODO: Cache the peek?
@@ -102,32 +97,10 @@ impl<'a> Scanner<'a> {
     }
 
     //TODO: Have one peek function with a hint param
-
     pub fn peek_start_of_block(&self) -> Peek {
         match self.current_char {
             Some('#') => Peek::Hash,
             _ => self.peek(),
-        }
-    }
-
-    pub fn peek_end_of_meta_line(&self) -> Peek {
-        self.peek()
-    }
-
-    pub fn peek_markup(&self) -> Peek {
-        self.peek()
-    }
-
-    pub fn peek_inline_raw(&self) -> Peek {
-        match self.current_char {
-            Some('\n') if self.next_char == Some('\n') => Peek::Blockbreak,
-            //FIXME: Bit of a hack?
-            Some('\n') if self.next_char.is_none() => Peek::EndOfFile,
-            Some('\n') => Peek::Linebreak,
-            Some(c) if c.is_whitespace() => Peek::Whitespace,
-            Some('`') => Peek::Delimiter(Delimiter::Backtick),
-            Some(_) => Peek::Text,
-            None => Peek::EndOfFile,
         }
     }
 
@@ -155,14 +128,15 @@ impl<'a> Scanner<'a> {
         self.eat_char(':')
     }
 
-    pub fn eat_delimiter(&mut self, delimiter: Delimiter) -> ScannerResult<()> {
+    pub fn eat_delimiter(&mut self, delimiter: Delimiter) -> ScannerResult<char> {
         let character = match delimiter {
             Delimiter::Underscore => '_',
             Delimiter::Asterisk => '*',
             Delimiter::Tilde => '~',
             Delimiter::Backtick => '`',
         };
-        self.eat_char(character)
+        self.eat_char(character)?;
+        Ok(character)
     }
 
     //pub fn has_input_remaining(&self) -> bool {
@@ -221,20 +195,18 @@ impl<'a> Scanner<'a> {
         }
     }
 
-    //TODO: Is this too much semantic knowledge?
-    pub fn eat_raw_fragment(&mut self) -> ScannerResult<&'a str> {
-        Ok(self.eat_while(|c| c != '\n' && c != '`'))
-    }
-
     pub fn eat_until_linebreak(&mut self) -> ScannerResult<&'a str> {
         //TODO: Should we throw an error if already on newline?
         // If so - drive with test for empty metadata value
         Ok(self.eat_while(|c| c != '\n'))
     }
 
-    pub fn eat_whitespace(&mut self) {
-        //FIXME: Asser there is some whitespace to start with
-        self.skip_chars_while_current(char::is_whitespace)
+    pub fn eat_whitespace(&mut self) -> ScannerResult<&'a str> {
+        match self.current_char {
+            Some(c) if c.is_whitespace() => Ok(self.eat_while(char::is_whitespace)),
+            Some(c) => Err(ScannerError::UnexpectedChar(c)),
+            None => Err(ScannerError::UnexpectedEndOfFile),
+        }
     }
 
     pub fn eat_optional_whitespace(&mut self) {

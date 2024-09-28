@@ -150,7 +150,7 @@ fn parse_metadata<'a>(scanner: &mut Scanner, metadata: &mut Metadata) -> ParseRe
             _ => return Err(ParseError::UnknownMetadata),
         };
 
-        match scanner.peek_end_of_meta_line() {
+        match scanner.peek() {
             Peek::EndOfFile => break,
             Peek::Blockbreak => {
                 scanner.eat_blockbreak()?;
@@ -171,9 +171,8 @@ fn parse_paragraph<'a>(scanner: &mut Scanner) -> ParseResult<Block> {
     let mut text_runs = Vec::new();
 
     loop {
-        let run = match scanner.peek_markup() {
+        let run = match scanner.peek() {
             Peek::Whitespace | Peek::Text => parse_plain_text(scanner)?,
-            Peek::Delimiter(Delimiter::Backtick) => parse_raw_text(scanner)?,
             Peek::Delimiter(d) => parse_delimited_text(scanner, d)?,
             Peek::EndOfFile => break,
             Peek::Blockbreak => {
@@ -191,9 +190,9 @@ fn parse_paragraph<'a>(scanner: &mut Scanner) -> ParseResult<Block> {
 fn parse_plain_text<'a>(scanner: &mut Scanner) -> ParseResult<TextRun> {
     let mut run = String::new();
     loop {
-        match scanner.peek_markup() {
+        match scanner.peek() {
             Peek::Whitespace | Peek::Linebreak => {
-                scanner.eat_whitespace();
+                let _ = scanner.eat_whitespace();
                 run.push_str(" ");
             }
             Peek::Text => {
@@ -210,6 +209,7 @@ fn parse_plain_text<'a>(scanner: &mut Scanner) -> ParseResult<TextRun> {
     })
 }
 
+/*
 fn parse_raw_text<'a>(scanner: &mut Scanner) -> ParseResult<TextRun> {
     scanner.eat_delimiter(Delimiter::Backtick)?;
 
@@ -219,7 +219,7 @@ fn parse_raw_text<'a>(scanner: &mut Scanner) -> ParseResult<TextRun> {
         let raw_fragment = scanner.eat_raw_fragment()?;
         run.push_str(raw_fragment);
 
-        match scanner.peek_inline_raw() {
+        match scanner.peek() {
             Peek::Linebreak => {
                 scanner.eat_linebreak()?;
                 run.push_str(" ");
@@ -246,25 +246,39 @@ fn parse_raw_text<'a>(scanner: &mut Scanner) -> ParseResult<TextRun> {
         style: Style::Raw,
     })
 }
+*/
 
 fn parse_delimited_text<'a>(scanner: &mut Scanner, delimiter: Delimiter) -> ParseResult<TextRun> {
     scanner.eat_delimiter(delimiter)?;
 
     let mut run = String::new();
+    let is_raw = delimiter == Delimiter::Backtick;
 
     loop {
-        match scanner.peek_markup() {
+        match scanner.peek() {
             Peek::Text => {
                 let word = scanner.eat_word()?;
                 run.push_str(word)
             }
-            Peek::Whitespace | Peek::Linebreak => {
-                scanner.eat_whitespace();
+            Peek::Linebreak => {
+                scanner.eat_linebreak()?;
                 run.push_str(" ");
+            }
+            Peek::Whitespace => {
+                let space = scanner.eat_whitespace()?;
+                if is_raw {
+                    run.push_str(space);
+                } else {
+                    run.push_str(" ");
+                }
             }
             Peek::Delimiter(d) if d == delimiter => {
                 scanner.eat_delimiter(delimiter)?;
                 break;
+            }
+            Peek::Delimiter(d) if is_raw => {
+                let c = scanner.eat_delimiter(d)?;
+                run.push(c);
             }
             _ => return Err(ParseError::UnmatchedDelimiter),
         }
@@ -282,7 +296,7 @@ fn parse_delimited_text<'a>(scanner: &mut Scanner, delimiter: Delimiter) -> Pars
         Delimiter::Asterisk => Style::Bold,
         Delimiter::Underscore => Style::Emphasis,
         Delimiter::Tilde => Style::Strikethrough,
-        _ => Style::None, //TOOD: Could we make raw parsing work for this also?
+        Delimiter::Backtick => Style::Raw,
     };
 
     Ok(TextRun { text: run, style })
@@ -513,6 +527,27 @@ mod test {
         };
 
         let text = Box::new([run1, run2, run3]);
+
+        let expected = Document {
+            metadata: Metadata::default(),
+            blocks: Box::new([Block::Paragraph(text)]),
+        };
+
+        let actual = parse_str(input).unwrap();
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn bold_over_two_lines() {
+        let input = "*me\now*";
+
+        let run1 = TextRun {
+            text: String::from("me ow"),
+            style: Style::Bold,
+        };
+
+        let text = Box::new([run1]);
 
         let expected = Document {
             metadata: Metadata::default(),
