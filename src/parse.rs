@@ -98,7 +98,7 @@ pub fn parse_str(input: &str) -> ParseResult<Document> {
     // We either expect the start of a block or EOF
 
     loop {
-        match scanner.peek_start_of_block() {
+        match scanner.peek() {
             Peek::Hash => {
                 scanner.eat_hash()?;
                 let block_name = scanner.eat_identifier()?;
@@ -209,11 +209,11 @@ fn parse_plain_text<'a>(scanner: &mut Scanner) -> ParseResult<TextRun> {
     })
 }
 
-fn parse_delimited_text<'a>(scanner: &mut Scanner, delimiter: Delimiter) -> ParseResult<TextRun> {
-    scanner.eat_delimiter(delimiter)?;
+fn parse_delimited_text<'a>(scanner: &mut Scanner, delim: Delimiter) -> ParseResult<TextRun> {
+    scanner.eat_delimiter(delim)?;
 
     let mut run = String::new();
-    let is_raw = delimiter == Delimiter::Backtick;
+    let is_raw = delim == Delimiter::Backtick;
 
     loop {
         match scanner.peek() {
@@ -233,8 +233,8 @@ fn parse_delimited_text<'a>(scanner: &mut Scanner, delimiter: Delimiter) -> Pars
                     run.push_str(" ");
                 }
             }
-            Peek::Delimiter(d) if d == delimiter => {
-                scanner.eat_delimiter(delimiter)?;
+            Peek::Delimiter(d) if d == delim => {
+                scanner.eat_delimiter(delim)?;
                 break;
             }
             Peek::Delimiter(d) if is_raw => {
@@ -253,7 +253,7 @@ fn parse_delimited_text<'a>(scanner: &mut Scanner, delimiter: Delimiter) -> Pars
         return Err(ParseError::EmptyDelimitedText);
     }
 
-    let style = match delimiter {
+    let style = match delim {
         Delimiter::Asterisk => Style::Bold,
         Delimiter::Underscore => Style::Emphasis,
         Delimiter::Tilde => Style::Strikethrough,
@@ -266,28 +266,20 @@ fn parse_delimited_text<'a>(scanner: &mut Scanner, delimiter: Delimiter) -> Pars
 #[cfg(test)]
 mod test {
     use super::*;
+    //TODO: Things to test
+    // Files that end with a trailing single newline
+    // Enforce that `foo\n\nbar` is invalid
+    // Strip leading whitespace from para
+    // Foo_bar_baz vs foobar_baz
+    // More evils: _``_, `*`*
+    // Test: -foo\nbar- <- Valid?
+    // Test: -foo\n\nbar- <- Invalid?
 
-    //TODO: Enforce that `foo\n\nbar` is invalid
-    //TODO: Strip leading whitespace from para
-    //TODO: Maybe mixture of bold/emph/strike is ok? Use bit mask?
-    //TODO: More evils: _``_, `*`*
-    //TODO: Test: -foo\nbar- <- Valid?
-    //TODO: Test: -foo\n\nbar- <- Invalid?
-    //TODO: Foo_bar_baz vs foobar_baz
-    //TODO: References
-    //TODO: Escaped chars
-
-    //TODO: Files that end with a trailing single newline
-
-    //TODO: Test we strip leading and trailing whitespace from paragraphs
-
-    //TODO: Test leading whitespace in a paragraph is ignored
-    //TODO: Test newlines
-
-    //TODO: Figure out what to do with newlines in raw text
-    //      djot just uses same whitespace rules as normal text runs
-
-    //TODO: Macros to make building test cases less painful?
+    //TODO: Things to add
+    // References
+    // Escaped chars
+    // Maybe mixture of bold/emph/strike is ok? Use bit mask?
+    // Macros to make building test cases less painful?
 
     #[test]
     fn one_line_paragraph() {

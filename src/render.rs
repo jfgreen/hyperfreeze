@@ -4,17 +4,13 @@ use crate::parse::{Block, Document, Style, TextRun};
 
 //TODO: Have some kind of helper for writing HTML, with indent
 pub fn render_html(document: &Document, out: &mut impl io::Write) -> io::Result<()> {
-    let head = concat!(
-        "<!DOCTYPE html>\n",
-        "<html>\n",
-        "  <head>\n",
-        "    <meta charset=\"UTF-8\">\n",
-        "    <title>Page</title>\n",
-        "  </head>\n",
-        "  <body>\n"
-    );
-
-    out.write(head.as_bytes())?;
+    write!(out, "<!DOCTYPE html>\n")?;
+    write!(out, "<html>\n")?;
+    write!(out, "  <head>\n")?;
+    write!(out, "    <meta charset=\"UTF-8\">\n")?;
+    write!(out, "    <title>{}</title>\n", document.metadata.title)?;
+    write!(out, "  </head>\n")?;
+    write!(out, "  <body>\n")?;
 
     for block in document.blocks.iter() {
         match block {

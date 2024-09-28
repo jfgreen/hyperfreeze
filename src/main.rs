@@ -62,7 +62,7 @@ fn parse_args(args: std::env::Args) -> (String, String) {
         (Some(input_path), Some(output_path)) => (input_path, output_path),
         _ => {
             let exec = exec.as_deref().unwrap_or("hyperfreeze");
-            println!("Usage: {exec} [audio-file ...]");
+            println!("Usage: {exec} [input_path] [output_path]");
             std::process::exit(1);
         }
     }

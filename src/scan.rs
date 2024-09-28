@@ -1,13 +1,9 @@
 use std::fmt::Display;
 use std::str::CharIndices;
 
-//TODO: Are these semantic knowledge we dont want here...
-const DELIM_BOLD: char = '*';
-const DELIM_EMPH: char = '_';
-const DELIM_STRIKE: char = '~';
-const DELIM_RAW: char = '`';
-
 //TODO: Support windows style newlines
+//TODO: Support escaping special chars
+//TODO: Better error reporting -> what went wrong, where
 
 #[derive(Debug)]
 pub enum Peek {
@@ -28,15 +24,6 @@ pub enum Delimiter {
     Backtick,
 }
 
-// TODO: Peek only needs to look at a couple of chars to make a decision
-// Therefore it does need to store a token
-
-// TODO: The only thing that feels off about peek_
-// is that it mixes in parsing level knowledge with lexing stuff
-// (i.e its inherant int the name peek_markup, peek_inline_raw etc )
-
-//TODO: Better error reporting -> what went wrong, where
-//TODO: Review if we need an error here?
 #[derive(PartialEq, Eq, Debug)]
 pub enum ScannerError {
     UnexpectedEndOfFile,
@@ -54,20 +41,12 @@ impl Display for ScannerError {
 
 type ScannerResult<T> = Result<T, ScannerError>;
 
-//TODO: Type alias for fn(char) -> bool
+type CharPredicate = fn(char) -> bool;
 
-//TODO: Extension trait for these?j
 fn usable_in_word(c: char) -> bool {
-    // TODO: Is there a more efficent way to do this?
-    // Maybe by treating char as an int
-    !(c == DELIM_BOLD
-        || c == DELIM_EMPH
-        || c == DELIM_STRIKE
-        || c == DELIM_RAW
-        || c.is_whitespace())
+    !(c == '_' || c == '`' || c == '*' || c == '~' || c.is_whitespace())
 }
 
-//TODO: Cache the peek?
 pub struct Scanner<'a> {
     input: &'a str,
     chars: CharIndices<'a>,
@@ -89,25 +68,16 @@ impl<'a> Scanner<'a> {
         };
 
         // Place the first char of the input into `next_char`
-        // Then propigate it into `current_char`
         scanner.read_next_char();
+        // Then propagate it into `current_char`
         scanner.read_next_char();
 
         scanner
     }
 
-    //TODO: Have one peek function with a hint param
-    pub fn peek_start_of_block(&self) -> Peek {
-        match self.current_char {
-            Some('#') => Peek::Hash,
-            _ => self.peek(),
-        }
-    }
-
     pub fn peek(&self) -> Peek {
         match self.current_char {
             Some('\n') if self.next_char == Some('\n') => Peek::Blockbreak,
-            //FIXME: Bit of a hack?
             Some('\n') if self.next_char.is_none() => Peek::EndOfFile,
             Some('\n') => Peek::Linebreak,
             Some(c) if c.is_whitespace() => Peek::Whitespace,
@@ -115,6 +85,7 @@ impl<'a> Scanner<'a> {
             Some('`') => Peek::Delimiter(Delimiter::Backtick),
             Some('~') => Peek::Delimiter(Delimiter::Tilde),
             Some('_') => Peek::Delimiter(Delimiter::Underscore),
+            Some('#') => Peek::Hash,
             Some(_) => Peek::Text,
             None => Peek::EndOfFile,
         }
@@ -167,9 +138,10 @@ impl<'a> Scanner<'a> {
     }
 
     pub fn eat_until_linebreak(&mut self) -> ScannerResult<&'a str> {
-        //TODO: Should we throw an error if already on newline?
-        // If so - drive with test for empty metadata value
-        Ok(self.eat_while(|c| c != '\n'))
+        match self.current_char {
+            Some(_) => Ok(self.eat_while(|c| c != '\n')),
+            None => Err(ScannerError::UnexpectedEndOfFile),
+        }
     }
 
     pub fn eat_whitespace(&mut self) -> ScannerResult<&'a str> {
@@ -195,16 +167,14 @@ impl<'a> Scanner<'a> {
         }
     }
 
-    //FIXME: Strictly we should return an error if we hit EOF
-    // Otherwise if we call eat_mango, we dont know if we actually got a mango
-    fn eat_while(&mut self, predicate: fn(char) -> bool) -> &'a str {
+    fn eat_while(&mut self, predicate: CharPredicate) -> &'a str {
         let i1 = self.current_index;
         self.skip_chars_while_current(predicate);
         let i2 = self.current_index;
         &self.input[i1..i2]
     }
 
-    fn skip_chars_while_current(&mut self, predicate: fn(char) -> bool) {
+    fn skip_chars_while_current(&mut self, predicate: CharPredicate) {
         while self.current_char.is_some_and(predicate) {
             self.read_next_char();
         }
