@@ -209,45 +209,6 @@ fn parse_plain_text<'a>(scanner: &mut Scanner) -> ParseResult<TextRun> {
     })
 }
 
-/*
-fn parse_raw_text<'a>(scanner: &mut Scanner) -> ParseResult<TextRun> {
-    scanner.eat_delimiter(Delimiter::Backtick)?;
-
-    let mut run = String::new();
-
-    loop {
-        let raw_fragment = scanner.eat_raw_fragment()?;
-        run.push_str(raw_fragment);
-
-        match scanner.peek() {
-            Peek::Linebreak => {
-                scanner.eat_linebreak()?;
-                run.push_str(" ");
-            }
-            Peek::Delimiter(Delimiter::Backtick) => {
-                scanner.eat_delimiter(Delimiter::Backtick)?;
-                break;
-            }
-            Peek::Text | Peek::Whitespace => {
-                continue;
-            }
-            _ => {
-                return Err(ParseError::UnmatchedDelimiter);
-            }
-        }
-    }
-
-    if run.len() == 0 {
-        return Err(ParseError::EmptyDelimitedText);
-    }
-
-    Ok(TextRun {
-        text: run.to_string(),
-        style: Style::Raw,
-    })
-}
-*/
-
 fn parse_delimited_text<'a>(scanner: &mut Scanner, delimiter: Delimiter) -> ParseResult<TextRun> {
     scanner.eat_delimiter(delimiter)?;
 
