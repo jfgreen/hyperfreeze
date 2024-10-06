@@ -4,29 +4,29 @@ use crate::parse::{Block, Document, Style, TextRun};
 
 //TODO: Have some kind of helper for writing HTML, with indent
 pub fn render_html(document: &Document, out: &mut impl io::Write) -> io::Result<()> {
-    write!(out, "<!DOCTYPE html>\n")?;
-    write!(out, "<html>\n")?;
-    write!(out, "  <head>\n")?;
-    write!(out, "    <meta charset=\"UTF-8\">\n")?;
-    write!(out, "    <title>{}</title>\n", document.metadata.title)?;
-    write!(out, "  </head>\n")?;
-    write!(out, "  <body>\n")?;
+    writeln!(out, "<!DOCTYPE html>")?;
+    writeln!(out, "<html>")?;
+    writeln!(out, "  <head>")?;
+    writeln!(out, "    <meta charset=\"UTF-8\">")?;
+    writeln!(out, "    <title>{}</title>", document.metadata.title)?;
+    writeln!(out, "  </head>")?;
+    writeln!(out, "  <body>")?;
 
     for block in document.blocks.iter() {
         match block {
-            Block::Paragraph(text_runs) => render_paragraph(&text_runs, out)?,
+            Block::Paragraph(text_runs) => render_paragraph(text_runs, out)?,
         }
     }
 
-    write!(out, "  </body>\n")?;
+    writeln!(out, "  </body>")?;
     write!(out, "</html>")?;
 
     Ok(())
 }
 
 fn render_paragraph(text_runs: &[TextRun], out: &mut impl io::Write) -> io::Result<()> {
-    write!(out, "    <p>\n")?;
-    write!(out, "      ")?;
+    writeln!(out, "    <p>")?;
+    writeln!(out, "      ")?;
     for run in text_runs.iter() {
         match run.style {
             Style::None => (),
@@ -36,7 +36,7 @@ fn render_paragraph(text_runs: &[TextRun], out: &mut impl io::Write) -> io::Resu
             Style::Raw => write!(out, "<code>")?,
         };
 
-        out.write(run.text.as_bytes())?;
+        out.write_all(run.text.as_bytes())?;
 
         match run.style {
             Style::None => (),
@@ -46,6 +46,6 @@ fn render_paragraph(text_runs: &[TextRun], out: &mut impl io::Write) -> io::Resu
             Style::Raw => write!(out, "</code>")?,
         };
     }
-    write!(out, "\n    </p>\n")?;
+    writeln!(out, "    </p>")?;
     Ok(())
 }
