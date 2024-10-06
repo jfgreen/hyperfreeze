@@ -97,6 +97,7 @@ pub fn parse_str(input: &str) -> ParseResult<Document> {
 
     // We either expect the start of a block or EOF
 
+    //TODO: Extract func for getting block_name
     loop {
         match scanner.peek() {
             Peek::Hash => {
@@ -196,8 +197,8 @@ fn parse_plain_text<'a>(scanner: &mut Scanner) -> ParseResult<TextRun> {
                 run.push_str(" ");
             }
             Peek::Text => {
-                let word = scanner.eat_word()?;
-                run.push_str(word);
+                let text = scanner.eat_text_fragment()?;
+                run.push_str(text);
             }
             _ => break,
         }
@@ -212,38 +213,11 @@ fn parse_plain_text<'a>(scanner: &mut Scanner) -> ParseResult<TextRun> {
 fn parse_delimited_text<'a>(scanner: &mut Scanner, delim: Delimiter) -> ParseResult<TextRun> {
     scanner.eat_delimiter(delim)?;
 
-    let mut run = String::new();
-    let is_raw = delim == Delimiter::Backtick;
-
-    loop {
-        match scanner.peek() {
-            Peek::Text => {
-                let word = scanner.eat_word()?;
-                run.push_str(word)
-            }
-            Peek::Linebreak => {
-                scanner.eat_linebreak()?;
-                run.push_str(" ");
-            }
-            Peek::Whitespace => {
-                let space = scanner.eat_whitespace()?;
-                if is_raw {
-                    run.push_str(space);
-                } else {
-                    run.push_str(" ");
-                }
-            }
-            Peek::Delimiter(d) if d == delim => {
-                scanner.eat_delimiter(delim)?;
-                break;
-            }
-            Peek::Delimiter(d) if is_raw => {
-                let c = scanner.eat_delimiter(d)?;
-                run.push(c);
-            }
-            _ => return Err(ParseError::UnmatchedDelimiter),
-        }
-    }
+    let run = if delim == Delimiter::Backtick {
+        parse_raw_text_run(scanner)?
+    } else {
+        parse_styled_text_run(scanner, delim)?
+    };
 
     if run.starts_with(" ") || run.ends_with(" ") {
         return Err(ParseError::LooseDelimiter);
@@ -261,6 +235,56 @@ fn parse_delimited_text<'a>(scanner: &mut Scanner, delim: Delimiter) -> ParseRes
     };
 
     Ok(TextRun { text: run, style })
+}
+
+fn parse_styled_text_run(scanner: &mut Scanner, end: Delimiter) -> ParseResult<String> {
+    let mut run = String::new();
+
+    loop {
+        match scanner.peek() {
+            Peek::Text => {
+                let text = scanner.eat_text_fragment()?;
+                run.push_str(text)
+            }
+            Peek::Whitespace => {
+                scanner.eat_whitespace()?;
+                run.push_str(" ");
+            }
+            Peek::Linebreak => {
+                scanner.eat_linebreak()?;
+                run.push_str(" ");
+            }
+            Peek::Delimiter(d) if d == end => {
+                scanner.eat_delimiter(end)?;
+                return Ok(run);
+            }
+            _ => return Err(ParseError::UnmatchedDelimiter),
+        }
+    }
+}
+
+fn parse_raw_text_run(scanner: &mut Scanner) -> ParseResult<String> {
+    let mut run = String::new();
+
+    loop {
+        // TODO: If we had context sensitive peek there would be a lot less matches?
+        // TODO: We could eat more decicisvely and not have to glue together little fragments
+        match scanner.peek() {
+            Peek::Delimiter(Delimiter::Backtick) => {
+                scanner.eat_delimiter(Delimiter::Backtick)?;
+                return Ok(run);
+            }
+            Peek::Text | Peek::Whitespace | Peek::Delimiter(_) => {
+                let text = scanner.eat_raw_fragment()?;
+                run.push_str(text)
+            }
+            Peek::Linebreak => {
+                scanner.eat_linebreak()?;
+                run.push_str(" ");
+            }
+            _ => return Err(ParseError::UnmatchedDelimiter),
+        }
+    }
 }
 
 #[cfg(test)]
@@ -391,6 +415,28 @@ mod test {
         let expected = Document {
             metadata: Metadata::default(),
             blocks: Box::new([Block::Paragraph(text1), Block::Paragraph(text2)]),
+        };
+
+        let actual = parse_str(input).unwrap();
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    #[ignore]
+    fn hash_in_markup() {
+        let input = "My cat does backflips #coolcat";
+
+        let run = TextRun {
+            text: String::from("My cat does backflips #coolcat"),
+            style: Style::None,
+        };
+
+        let text = Box::new([run]);
+
+        let expected = Document {
+            metadata: Metadata::default(),
+            blocks: Box::new([Block::Paragraph(text)]),
         };
 
         let actual = parse_str(input).unwrap();

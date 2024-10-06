@@ -5,6 +5,9 @@ use std::str::CharIndices;
 //TODO: Support escaping special chars
 //TODO: Better error reporting -> what went wrong, where
 
+//TODO: Can we make peek more basic, therefore less mode or context dependant?
+//TODO: Just chars?
+//TODO: Or a bunch of context sensitive questions
 #[derive(Debug)]
 pub enum Peek {
     Hash,
@@ -45,6 +48,10 @@ type CharPredicate = fn(char) -> bool;
 
 fn usable_in_word(c: char) -> bool {
     !(c == '_' || c == '`' || c == '*' || c == '~' || c.is_whitespace())
+}
+
+fn usable_in_raw(c: char) -> bool {
+    !(c == '\n' || c == '`')
 }
 
 pub struct Scanner<'a> {
@@ -91,6 +98,7 @@ impl<'a> Scanner<'a> {
         }
     }
 
+    //TODO: Are these funcs eating single chars overkill?
     pub fn eat_hash(&mut self) -> ScannerResult<()> {
         self.eat_char('#')
     }
@@ -117,9 +125,11 @@ impl<'a> Scanner<'a> {
     pub fn eat_blockbreak(&mut self) -> ScannerResult<()> {
         self.eat_char('\n')?;
         self.eat_char('\n')?;
-        self.skip_chars_while_current(|c| c == '\n');
+        self.skip_while_current(|c| c == '\n');
         Ok(())
     }
+
+    //TODO: Clear up repetition of these funcs
 
     pub fn eat_identifier(&mut self) -> ScannerResult<&'a str> {
         match self.current_char {
@@ -129,9 +139,17 @@ impl<'a> Scanner<'a> {
         }
     }
 
-    pub fn eat_word(&mut self) -> ScannerResult<&'a str> {
+    pub fn eat_text_fragment(&mut self) -> ScannerResult<&'a str> {
         match self.current_char {
             Some(c) if usable_in_word(c) => Ok(self.eat_while(usable_in_word)),
+            Some(c) => Err(ScannerError::UnexpectedChar(c)),
+            None => Err(ScannerError::UnexpectedEndOfFile),
+        }
+    }
+
+    pub fn eat_raw_fragment(&mut self) -> ScannerResult<&'a str> {
+        match self.current_char {
+            Some(c) if usable_in_raw(c) => Ok(self.eat_while(usable_in_raw)),
             Some(c) => Err(ScannerError::UnexpectedChar(c)),
             None => Err(ScannerError::UnexpectedEndOfFile),
         }
@@ -144,16 +162,16 @@ impl<'a> Scanner<'a> {
         }
     }
 
-    pub fn eat_whitespace(&mut self) -> ScannerResult<&'a str> {
+    pub fn eat_whitespace(&mut self) -> ScannerResult<()> {
         match self.current_char {
-            Some(c) if c.is_whitespace() => Ok(self.eat_while(char::is_whitespace)),
+            Some(c) if c.is_whitespace() => Ok(self.skip_while_current(char::is_whitespace)),
             Some(c) => Err(ScannerError::UnexpectedChar(c)),
             None => Err(ScannerError::UnexpectedEndOfFile),
         }
     }
 
     pub fn eat_optional_whitespace(&mut self) {
-        self.skip_chars_while_current(char::is_whitespace)
+        self.skip_while_current(char::is_whitespace)
     }
 
     fn eat_char(&mut self, expected: char) -> ScannerResult<()> {
@@ -169,12 +187,12 @@ impl<'a> Scanner<'a> {
 
     fn eat_while(&mut self, predicate: CharPredicate) -> &'a str {
         let i1 = self.current_index;
-        self.skip_chars_while_current(predicate);
+        self.skip_while_current(predicate);
         let i2 = self.current_index;
         &self.input[i1..i2]
     }
 
-    fn skip_chars_while_current(&mut self, predicate: CharPredicate) {
+    fn skip_while_current(&mut self, predicate: CharPredicate) {
         while self.current_char.is_some_and(predicate) {
             self.read_next_char();
         }
