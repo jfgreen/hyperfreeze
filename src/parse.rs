@@ -133,7 +133,7 @@ pub fn parse_str(input: &str) -> ParseResult<Document> {
     })
 }
 
-fn parse_metadata<'a>(scanner: &mut Scanner, metadata: &mut Metadata) -> ParseResult<()> {
+fn parse_metadata(scanner: &mut Scanner, metadata: &mut Metadata) -> ParseResult<()> {
     loop {
         let key = scanner.eat_identifier()?;
         scanner.eat_colon()?;
@@ -168,7 +168,7 @@ fn parse_metadata<'a>(scanner: &mut Scanner, metadata: &mut Metadata) -> ParseRe
     Ok(())
 }
 
-fn parse_paragraph<'a>(scanner: &mut Scanner) -> ParseResult<Block> {
+fn parse_paragraph(scanner: &mut Scanner) -> ParseResult<Block> {
     let mut text_runs = Vec::new();
 
     loop {
@@ -188,13 +188,13 @@ fn parse_paragraph<'a>(scanner: &mut Scanner) -> ParseResult<Block> {
     Ok(Block::Paragraph(text_runs.into_boxed_slice()))
 }
 
-fn parse_plain_text<'a>(scanner: &mut Scanner) -> ParseResult<TextRun> {
+fn parse_plain_text(scanner: &mut Scanner) -> ParseResult<TextRun> {
     let mut run = String::new();
     loop {
         match scanner.peek() {
             Peek::Whitespace | Peek::Linebreak => {
                 let _ = scanner.eat_whitespace();
-                run.push_str(" ");
+                run.push(' ');
             }
             Peek::Text => {
                 let text = scanner.eat_text_fragment()?;
@@ -210,7 +210,7 @@ fn parse_plain_text<'a>(scanner: &mut Scanner) -> ParseResult<TextRun> {
     })
 }
 
-fn parse_delimited_text<'a>(scanner: &mut Scanner, delim: Delimiter) -> ParseResult<TextRun> {
+fn parse_delimited_text(scanner: &mut Scanner, delim: Delimiter) -> ParseResult<TextRun> {
     scanner.eat_delimiter(delim)?;
 
     let run = if delim == Delimiter::Backtick {
@@ -219,11 +219,11 @@ fn parse_delimited_text<'a>(scanner: &mut Scanner, delim: Delimiter) -> ParseRes
         parse_styled_text_run(scanner, delim)?
     };
 
-    if run.starts_with(" ") || run.ends_with(" ") {
+    if run.starts_with(' ') || run.ends_with(' ') {
         return Err(ParseError::LooseDelimiter);
     }
 
-    if run.len() == 0 {
+    if run.is_empty() {
         return Err(ParseError::EmptyDelimitedText);
     }
 
@@ -248,11 +248,11 @@ fn parse_styled_text_run(scanner: &mut Scanner, end: Delimiter) -> ParseResult<S
             }
             Peek::Whitespace => {
                 scanner.eat_whitespace()?;
-                run.push_str(" ");
+                run.push(' ');
             }
             Peek::Linebreak => {
                 scanner.eat_linebreak()?;
-                run.push_str(" ");
+                run.push(' ');
             }
             Peek::Delimiter(d) if d == end => {
                 scanner.eat_delimiter(end)?;
@@ -280,7 +280,7 @@ fn parse_raw_text_run(scanner: &mut Scanner) -> ParseResult<String> {
             }
             Peek::Linebreak => {
                 scanner.eat_linebreak()?;
-                run.push_str(" ");
+                run.push(' ');
             }
             _ => return Err(ParseError::UnmatchedDelimiter),
         }

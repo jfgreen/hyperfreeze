@@ -164,7 +164,10 @@ impl<'a> Scanner<'a> {
 
     pub fn eat_whitespace(&mut self) -> ScannerResult<()> {
         match self.current_char {
-            Some(c) if c.is_whitespace() => Ok(self.skip_while_current(char::is_whitespace)),
+            Some(c) if c.is_whitespace() => {
+                self.skip_while_current(char::is_whitespace);
+                Ok(())
+            }
             Some(c) => Err(ScannerError::UnexpectedChar(c)),
             None => Err(ScannerError::UnexpectedEndOfFile),
         }
