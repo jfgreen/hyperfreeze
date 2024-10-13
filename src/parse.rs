@@ -1,6 +1,6 @@
 use std::fmt::Display;
 
-use crate::scan::{Delimiter, Peek, Scanner, ScannerError};
+use crate::scan::{CharExt, Delimiter, Peek, Scanner, ScannerError};
 
 // TODO: Pick a system for IDs, e.g J Decimal, then use newtype or alias
 // TODO: Enforce basic metadata?
@@ -100,7 +100,7 @@ pub fn parse_str(input: &str) -> ParseResult<Document> {
     //TODO: Extract func for getting block_name
     loop {
         match scanner.peek() {
-            Peek::Hash => {
+            Peek::Char('#') => {
                 scanner.eat_hash()?;
                 let block_name = scanner.eat_identifier()?;
                 scanner.eat_linebreak()?;
@@ -118,11 +118,12 @@ pub fn parse_str(input: &str) -> ParseResult<Document> {
             }
 
             // A block header is optional for paragraph blocks
-            Peek::Text | Peek::Delimiter(_) => {
+            Peek::Char(_) => {
                 let para = parse_paragraph(&mut scanner)?;
                 blocks.push(para);
             }
             Peek::EndOfFile => break,
+            //TODO: Ignore linbreak / blockbreak
             _ => return Err(ParseError::UnexpectedInput),
         }
     }
@@ -173,8 +174,8 @@ fn parse_paragraph(scanner: &mut Scanner) -> ParseResult<Block> {
 
     loop {
         let run = match scanner.peek() {
-            Peek::Whitespace | Peek::Text => parse_plain_text(scanner)?,
-            Peek::Delimiter(d) => parse_delimited_text(scanner, d)?,
+            Peek::Char(c) if c.is_delimiter() => parse_delimited_text(scanner, c)?,
+            Peek::Char(_) => parse_plain_text(scanner)?,
             Peek::EndOfFile => break,
             Peek::Blockbreak => {
                 scanner.eat_blockbreak()?;
@@ -192,13 +193,18 @@ fn parse_plain_text(scanner: &mut Scanner) -> ParseResult<TextRun> {
     let mut run = String::new();
     loop {
         match scanner.peek() {
-            Peek::Whitespace | Peek::Linebreak => {
+            //TODO: does rust count linebreak as whitespace?
+            Peek::Char(c) if c.is_whitespace() => {
                 let _ = scanner.eat_whitespace();
                 run.push(' ');
             }
-            Peek::Text => {
+            Peek::Char(c) if c.usable_in_word() => {
                 let text = scanner.eat_text_fragment()?;
                 run.push_str(text);
+            }
+            Peek::Linebreak => {
+                scanner.eat_linebreak()?;
+                run.push(' ');
             }
             _ => break,
         }
@@ -210,13 +216,13 @@ fn parse_plain_text(scanner: &mut Scanner) -> ParseResult<TextRun> {
     })
 }
 
-fn parse_delimited_text(scanner: &mut Scanner, delim: Delimiter) -> ParseResult<TextRun> {
-    scanner.eat_delimiter(delim)?;
+fn parse_delimited_text(scanner: &mut Scanner, end: char) -> ParseResult<TextRun> {
+    let delim = scanner.eat_delimiter()?;
 
     let run = if delim == Delimiter::Backtick {
         parse_raw_text_run(scanner)?
     } else {
-        parse_styled_text_run(scanner, delim)?
+        parse_styled_text_run(scanner, end)?
     };
 
     if run.starts_with(' ') || run.ends_with(' ') {
@@ -237,26 +243,26 @@ fn parse_delimited_text(scanner: &mut Scanner, delim: Delimiter) -> ParseResult<
     Ok(TextRun { text: run, style })
 }
 
-fn parse_styled_text_run(scanner: &mut Scanner, end: Delimiter) -> ParseResult<String> {
+fn parse_styled_text_run(scanner: &mut Scanner, end: char) -> ParseResult<String> {
     let mut run = String::new();
 
     loop {
         match scanner.peek() {
-            Peek::Text => {
-                let text = scanner.eat_text_fragment()?;
-                run.push_str(text)
-            }
-            Peek::Whitespace => {
+            Peek::Char(c) if c.is_whitespace() => {
                 scanner.eat_whitespace()?;
                 run.push(' ');
+            }
+            Peek::Char(c) if c == end => {
+                scanner.eat_char(c)?;
+                return Ok(run);
+            }
+            Peek::Char(_) => {
+                let text = scanner.eat_text_fragment()?;
+                run.push_str(text)
             }
             Peek::Linebreak => {
                 scanner.eat_linebreak()?;
                 run.push(' ');
-            }
-            Peek::Delimiter(d) if d == end => {
-                scanner.eat_delimiter(end)?;
-                return Ok(run);
             }
             _ => return Err(ParseError::UnmatchedDelimiter),
         }
@@ -267,14 +273,12 @@ fn parse_raw_text_run(scanner: &mut Scanner) -> ParseResult<String> {
     let mut run = String::new();
 
     loop {
-        // TODO: If we had context sensitive peek there would be a lot less matches?
-        // TODO: We could eat more decicisvely and not have to glue together little fragments
         match scanner.peek() {
-            Peek::Delimiter(Delimiter::Backtick) => {
-                scanner.eat_delimiter(Delimiter::Backtick)?;
+            Peek::Char('`') => {
+                scanner.eat_char('`')?;
                 return Ok(run);
             }
-            Peek::Text | Peek::Whitespace | Peek::Delimiter(_) => {
+            Peek::Char(_) => {
                 let text = scanner.eat_raw_fragment()?;
                 run.push_str(text)
             }
@@ -291,6 +295,7 @@ fn parse_raw_text_run(scanner: &mut Scanner) -> ParseResult<String> {
 mod test {
     use super::*;
     //TODO: Things to test
+    // Inline raw immediately starting with newline
     // Files that end with a trailing single newline
     // Enforce that `foo\n\nbar` is invalid
     // Strip leading whitespace from para
@@ -423,7 +428,6 @@ mod test {
     }
 
     #[test]
-    #[ignore]
     fn hash_in_markup() {
         let input = "My cat does backflips #coolcat";
 

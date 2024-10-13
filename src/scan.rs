@@ -5,18 +5,32 @@ use std::str::CharIndices;
 //TODO: Support escaping special chars
 //TODO: Better error reporting -> what went wrong, where
 
-//TODO: Can we make peek more basic, therefore less mode or context dependant?
-//TODO: Just chars?
-//TODO: Or a bunch of context sensitive questions
 #[derive(Debug)]
 pub enum Peek {
-    Hash,
-    Text,
+    Char(char),
     Blockbreak,
     Linebreak,
-    Whitespace,
-    Delimiter(Delimiter),
     EndOfFile,
+}
+
+pub trait CharExt {
+    fn usable_in_word(&self) -> bool;
+    fn usable_in_raw(&self) -> bool;
+    fn is_delimiter(&self) -> bool;
+}
+
+impl CharExt for char {
+    fn usable_in_word(&self) -> bool {
+        !(self.is_delimiter() || self.is_whitespace())
+    }
+
+    fn usable_in_raw(&self) -> bool {
+        !(*self == '\n' || *self == '`')
+    }
+
+    fn is_delimiter(&self) -> bool {
+        *self == '_' || *self == '`' || *self == '*' || *self == '~'
+    }
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Copy)]
@@ -45,14 +59,6 @@ impl Display for ScannerError {
 type ScannerResult<T> = Result<T, ScannerError>;
 
 type CharPredicate = fn(char) -> bool;
-
-fn usable_in_word(c: char) -> bool {
-    !(c == '_' || c == '`' || c == '*' || c == '~' || c.is_whitespace())
-}
-
-fn usable_in_raw(c: char) -> bool {
-    !(c == '\n' || c == '`')
-}
 
 pub struct Scanner<'a> {
     input: &'a str,
@@ -86,14 +92,9 @@ impl<'a> Scanner<'a> {
         match self.current_char {
             Some('\n') if self.next_char == Some('\n') => Peek::Blockbreak,
             Some('\n') if self.next_char.is_none() => Peek::EndOfFile,
+            //TODO: do we need linebreak as a peek token?
             Some('\n') => Peek::Linebreak,
-            Some(c) if c.is_whitespace() => Peek::Whitespace,
-            Some('*') => Peek::Delimiter(Delimiter::Asterisk),
-            Some('`') => Peek::Delimiter(Delimiter::Backtick),
-            Some('~') => Peek::Delimiter(Delimiter::Tilde),
-            Some('_') => Peek::Delimiter(Delimiter::Underscore),
-            Some('#') => Peek::Hash,
-            Some(_) => Peek::Text,
+            Some(c) => Peek::Char(c),
             None => Peek::EndOfFile,
         }
     }
@@ -105,17 +106,6 @@ impl<'a> Scanner<'a> {
 
     pub fn eat_colon(&mut self) -> ScannerResult<()> {
         self.eat_char(':')
-    }
-
-    pub fn eat_delimiter(&mut self, delimiter: Delimiter) -> ScannerResult<char> {
-        let character = match delimiter {
-            Delimiter::Underscore => '_',
-            Delimiter::Asterisk => '*',
-            Delimiter::Tilde => '~',
-            Delimiter::Backtick => '`',
-        };
-        self.eat_char(character)?;
-        Ok(character)
     }
 
     pub fn eat_linebreak(&mut self) -> ScannerResult<()> {
@@ -131,6 +121,21 @@ impl<'a> Scanner<'a> {
 
     //TODO: Clear up repetition of these funcs
 
+    pub fn eat_delimiter(&mut self) -> ScannerResult<Delimiter> {
+        let delimiter = match self.current_char {
+            Some('_') => Delimiter::Underscore,
+            Some('*') => Delimiter::Asterisk,
+            Some('~') => Delimiter::Tilde,
+            Some('`') => Delimiter::Backtick,
+            Some(c) => return Err(ScannerError::UnexpectedChar(c)),
+            None => return Err(ScannerError::UnexpectedEndOfFile),
+        };
+
+        self.read_next_char();
+
+        Ok(delimiter)
+    }
+
     pub fn eat_identifier(&mut self) -> ScannerResult<&'a str> {
         match self.current_char {
             Some(c) if c.is_alphabetic() => Ok(self.eat_while(char::is_alphanumeric)),
@@ -141,7 +146,8 @@ impl<'a> Scanner<'a> {
 
     pub fn eat_text_fragment(&mut self) -> ScannerResult<&'a str> {
         match self.current_char {
-            Some(c) if usable_in_word(c) => Ok(self.eat_while(usable_in_word)),
+            //Some(c) if c.usable_in_word() => Ok(self.eat_while(char::usable_in_word)),
+            Some(c) if c.usable_in_word() => Ok(self.eat_while(|c| c.usable_in_word())),
             Some(c) => Err(ScannerError::UnexpectedChar(c)),
             None => Err(ScannerError::UnexpectedEndOfFile),
         }
@@ -149,7 +155,8 @@ impl<'a> Scanner<'a> {
 
     pub fn eat_raw_fragment(&mut self) -> ScannerResult<&'a str> {
         match self.current_char {
-            Some(c) if usable_in_raw(c) => Ok(self.eat_while(usable_in_raw)),
+            // Some(c) if c.usable_in_raw() => Ok(self.eat_while(char::usable_in_raw)),
+            Some(c) if c.usable_in_raw() => Ok(self.eat_while(|c| c.usable_in_raw())),
             Some(c) => Err(ScannerError::UnexpectedChar(c)),
             None => Err(ScannerError::UnexpectedEndOfFile),
         }
@@ -177,7 +184,7 @@ impl<'a> Scanner<'a> {
         self.skip_while_current(char::is_whitespace)
     }
 
-    fn eat_char(&mut self, expected: char) -> ScannerResult<()> {
+    pub fn eat_char(&mut self, expected: char) -> ScannerResult<()> {
         match self.current_char {
             Some(c) if c == expected => {
                 self.read_next_char();
