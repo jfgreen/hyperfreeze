@@ -33,14 +33,6 @@ impl CharExt for char {
     }
 }
 
-#[derive(PartialEq, Eq, Debug, Clone, Copy)]
-pub enum Delimiter {
-    Asterisk,
-    Tilde,
-    Underscore,
-    Backtick,
-}
-
 #[derive(PartialEq, Eq, Debug)]
 pub enum ScannerError {
     UnexpectedEndOfFile,
@@ -107,41 +99,11 @@ impl<'a> Scanner<'a> {
         }
     }
 
-    //TODO: Are these funcs eating single chars overkill?
-    pub fn eat_hash(&mut self) -> ScannerResult<()> {
-        self.eat_char(HASH)
-    }
-
-    pub fn eat_colon(&mut self) -> ScannerResult<()> {
-        self.eat_char(COLON)
-    }
-
-    pub fn eat_linebreak(&mut self) -> ScannerResult<()> {
-        self.eat_char(NEW_LINE)
-    }
-
     pub fn eat_blockbreak(&mut self) -> ScannerResult<()> {
-        self.eat_char(NEW_LINE)?;
-        self.eat_char(NEW_LINE)?;
+        self.eat_expected_char(NEW_LINE)?;
+        self.eat_expected_char(NEW_LINE)?;
         self.skip_while_current(|c| c == NEW_LINE);
         Ok(())
-    }
-
-    //TODO: Clear up repetition of these funcs
-
-    pub fn eat_delimiter(&mut self) -> ScannerResult<Delimiter> {
-        let delimiter = match self.current_char {
-            Some(UNDERSCORE) => Delimiter::Underscore,
-            Some(ASTERISK) => Delimiter::Asterisk,
-            Some(TILDE) => Delimiter::Tilde,
-            Some(BACKTICK) => Delimiter::Backtick,
-            Some(c) => return Err(ScannerError::UnexpectedChar(c)),
-            None => return Err(ScannerError::UnexpectedEndOfFile),
-        };
-
-        self.read_next_char();
-
-        Ok(delimiter)
     }
 
     pub fn eat_identifier(&mut self) -> ScannerResult<&'a str> {
@@ -192,13 +154,23 @@ impl<'a> Scanner<'a> {
         self.skip_while_current(char::is_whitespace)
     }
 
-    pub fn eat_char(&mut self, expected: char) -> ScannerResult<()> {
+    pub fn eat_expected_char(&mut self, expected: char) -> ScannerResult<()> {
         match self.current_char {
             Some(c) if c == expected => {
                 self.read_next_char();
                 Ok(())
             }
             Some(c) => Err(ScannerError::UnexpectedChar(c)),
+            None => Err(ScannerError::UnexpectedEndOfFile),
+        }
+    }
+
+    pub fn eat_char(&mut self) -> ScannerResult<char> {
+        match self.current_char {
+            Some(c) => {
+                self.read_next_char();
+                Ok(c)
+            }
             None => Err(ScannerError::UnexpectedEndOfFile),
         }
     }

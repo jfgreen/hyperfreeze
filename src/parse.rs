@@ -1,6 +1,10 @@
 use std::fmt::Display;
 
-use crate::scan::{CharExt, Delimiter, Peek, Scanner, ScannerError, BACKTICK, HASH};
+//TODO: Do something about number of imports
+use crate::scan::{
+    CharExt, Peek, Scanner, ScannerError, ASTERISK, BACKTICK, COLON, HASH, NEW_LINE, TILDE,
+    UNDERSCORE,
+};
 
 // TODO: Pick a system for IDs, e.g J Decimal, then use newtype or alias
 // TODO: Enforce basic metadata?
@@ -101,9 +105,9 @@ pub fn parse_str(input: &str) -> ParseResult<Document> {
     loop {
         match scanner.peek() {
             Peek::Char(HASH) => {
-                scanner.eat_hash()?;
+                scanner.eat_expected_char(HASH)?;
                 let block_name = scanner.eat_identifier()?;
-                scanner.eat_linebreak()?;
+                scanner.eat_expected_char(NEW_LINE)?;
 
                 match block_name {
                     "metadata" => {
@@ -137,7 +141,7 @@ pub fn parse_str(input: &str) -> ParseResult<Document> {
 fn parse_metadata(scanner: &mut Scanner, metadata: &mut Metadata) -> ParseResult<()> {
     loop {
         let key = scanner.eat_identifier()?;
-        scanner.eat_colon()?;
+        scanner.eat_expected_char(COLON)?;
         scanner.eat_optional_whitespace();
 
         // For now, the value is just everything untill the end of line
@@ -159,7 +163,7 @@ fn parse_metadata(scanner: &mut Scanner, metadata: &mut Metadata) -> ParseResult
                 break;
             }
             Peek::Linebreak => {
-                scanner.eat_linebreak()?;
+                scanner.eat_expected_char(NEW_LINE)?;
                 continue;
             }
             _ => return Err(ParseError::UnexpectedInput),
@@ -174,7 +178,7 @@ fn parse_paragraph(scanner: &mut Scanner) -> ParseResult<Block> {
 
     loop {
         let run = match scanner.peek() {
-            Peek::Char(c) if c.is_delimiter() => parse_delimited_text(scanner, c)?,
+            Peek::Char(c) if c.is_delimiter() => parse_delimited_text(scanner)?,
             Peek::Char(_) => parse_plain_text(scanner)?,
             Peek::EndOfFile => break,
             Peek::Blockbreak => {
@@ -203,7 +207,7 @@ fn parse_plain_text(scanner: &mut Scanner) -> ParseResult<TextRun> {
                 run.push_str(text);
             }
             Peek::Linebreak => {
-                scanner.eat_linebreak()?;
+                scanner.eat_expected_char(NEW_LINE)?;
                 run.push(' ');
             }
             _ => break,
@@ -216,13 +220,21 @@ fn parse_plain_text(scanner: &mut Scanner) -> ParseResult<TextRun> {
     })
 }
 
-fn parse_delimited_text(scanner: &mut Scanner, end: char) -> ParseResult<TextRun> {
-    let delim = scanner.eat_delimiter()?;
+fn parse_delimited_text(scanner: &mut Scanner) -> ParseResult<TextRun> {
+    let delimiter = scanner.eat_char()?;
 
-    let run = if delim == Delimiter::Backtick {
+    let style = match delimiter {
+        ASTERISK => Style::Bold,
+        UNDERSCORE => Style::Emphasis,
+        TILDE => Style::Strikethrough,
+        BACKTICK => Style::Raw,
+        _ => return Err(ParseError::UnexpectedInput),
+    };
+
+    let run = if delimiter == BACKTICK {
         parse_raw_text_run(scanner)?
     } else {
-        parse_styled_text_run(scanner, end)?
+        parse_styled_text_run(scanner, delimiter)?
     };
 
     if run.starts_with(' ') || run.ends_with(' ') {
@@ -232,13 +244,6 @@ fn parse_delimited_text(scanner: &mut Scanner, end: char) -> ParseResult<TextRun
     if run.is_empty() {
         return Err(ParseError::EmptyDelimitedText);
     }
-
-    let style = match delim {
-        Delimiter::Asterisk => Style::Bold,
-        Delimiter::Underscore => Style::Emphasis,
-        Delimiter::Tilde => Style::Strikethrough,
-        Delimiter::Backtick => Style::Raw,
-    };
 
     Ok(TextRun { text: run, style })
 }
@@ -253,7 +258,7 @@ fn parse_styled_text_run(scanner: &mut Scanner, end: char) -> ParseResult<String
                 run.push(' ');
             }
             Peek::Char(c) if c == end => {
-                scanner.eat_char(c)?;
+                scanner.eat_expected_char(c)?;
                 return Ok(run);
             }
             Peek::Char(_) => {
@@ -261,7 +266,7 @@ fn parse_styled_text_run(scanner: &mut Scanner, end: char) -> ParseResult<String
                 run.push_str(text)
             }
             Peek::Linebreak => {
-                scanner.eat_linebreak()?;
+                scanner.eat_expected_char(NEW_LINE)?;
                 run.push(' ');
             }
             _ => return Err(ParseError::UnmatchedDelimiter),
@@ -275,7 +280,7 @@ fn parse_raw_text_run(scanner: &mut Scanner) -> ParseResult<String> {
     loop {
         match scanner.peek() {
             Peek::Char(BACKTICK) => {
-                scanner.eat_char('`')?;
+                scanner.eat_expected_char(BACKTICK)?;
                 return Ok(run);
             }
             Peek::Char(_) => {
@@ -283,7 +288,7 @@ fn parse_raw_text_run(scanner: &mut Scanner) -> ParseResult<String> {
                 run.push_str(text)
             }
             Peek::Linebreak => {
-                scanner.eat_linebreak()?;
+                scanner.eat_expected_char(NEW_LINE)?;
                 run.push(' ');
             }
             _ => return Err(ParseError::UnmatchedDelimiter),
