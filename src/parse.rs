@@ -1,6 +1,6 @@
 use std::fmt::Display;
 
-use crate::scan::{CharExt, Delimiter, Peek, Scanner, ScannerError};
+use crate::scan::{CharExt, Delimiter, Peek, Scanner, ScannerError, BACKTICK, HASH};
 
 // TODO: Pick a system for IDs, e.g J Decimal, then use newtype or alias
 // TODO: Enforce basic metadata?
@@ -100,7 +100,7 @@ pub fn parse_str(input: &str) -> ParseResult<Document> {
     //TODO: Extract func for getting block_name
     loop {
         match scanner.peek() {
-            Peek::Char('#') => {
+            Peek::Char(HASH) => {
                 scanner.eat_hash()?;
                 let block_name = scanner.eat_identifier()?;
                 scanner.eat_linebreak()?;
@@ -274,7 +274,7 @@ fn parse_raw_text_run(scanner: &mut Scanner) -> ParseResult<String> {
 
     loop {
         match scanner.peek() {
-            Peek::Char('`') => {
+            Peek::Char(BACKTICK) => {
                 scanner.eat_char('`')?;
                 return Ok(run);
             }

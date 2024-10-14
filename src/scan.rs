@@ -25,11 +25,11 @@ impl CharExt for char {
     }
 
     fn usable_in_raw(&self) -> bool {
-        !(*self == '\n' || *self == '`')
+        !(*self == NEW_LINE || *self == BACKTICK)
     }
 
     fn is_delimiter(&self) -> bool {
-        *self == '_' || *self == '`' || *self == '*' || *self == '~'
+        *self == UNDERSCORE || *self == BACKTICK || *self == ASTERISK || *self == TILDE
     }
 }
 
@@ -59,6 +59,14 @@ impl Display for ScannerError {
 type ScannerResult<T> = Result<T, ScannerError>;
 
 type CharPredicate = fn(char) -> bool;
+
+pub const NEW_LINE: char = '\n';
+pub const BACKTICK: char = '`';
+pub const ASTERISK: char = '*';
+pub const TILDE: char = '~';
+pub const UNDERSCORE: char = '_';
+pub const HASH: char = '#';
+pub const COLON: char = ':';
 
 pub struct Scanner<'a> {
     input: &'a str,
@@ -90,10 +98,10 @@ impl<'a> Scanner<'a> {
 
     pub fn peek(&self) -> Peek {
         match self.current_char {
-            Some('\n') if self.next_char == Some('\n') => Peek::Blockbreak,
-            Some('\n') if self.next_char.is_none() => Peek::EndOfFile,
+            Some(NEW_LINE) if self.next_char == Some(NEW_LINE) => Peek::Blockbreak,
+            Some(NEW_LINE) if self.next_char.is_none() => Peek::EndOfFile,
             //TODO: do we need linebreak as a peek token?
-            Some('\n') => Peek::Linebreak,
+            Some(NEW_LINE) => Peek::Linebreak,
             Some(c) => Peek::Char(c),
             None => Peek::EndOfFile,
         }
@@ -101,21 +109,21 @@ impl<'a> Scanner<'a> {
 
     //TODO: Are these funcs eating single chars overkill?
     pub fn eat_hash(&mut self) -> ScannerResult<()> {
-        self.eat_char('#')
+        self.eat_char(HASH)
     }
 
     pub fn eat_colon(&mut self) -> ScannerResult<()> {
-        self.eat_char(':')
+        self.eat_char(COLON)
     }
 
     pub fn eat_linebreak(&mut self) -> ScannerResult<()> {
-        self.eat_char('\n')
+        self.eat_char(NEW_LINE)
     }
 
     pub fn eat_blockbreak(&mut self) -> ScannerResult<()> {
-        self.eat_char('\n')?;
-        self.eat_char('\n')?;
-        self.skip_while_current(|c| c == '\n');
+        self.eat_char(NEW_LINE)?;
+        self.eat_char(NEW_LINE)?;
+        self.skip_while_current(|c| c == NEW_LINE);
         Ok(())
     }
 
@@ -123,10 +131,10 @@ impl<'a> Scanner<'a> {
 
     pub fn eat_delimiter(&mut self) -> ScannerResult<Delimiter> {
         let delimiter = match self.current_char {
-            Some('_') => Delimiter::Underscore,
-            Some('*') => Delimiter::Asterisk,
-            Some('~') => Delimiter::Tilde,
-            Some('`') => Delimiter::Backtick,
+            Some(UNDERSCORE) => Delimiter::Underscore,
+            Some(ASTERISK) => Delimiter::Asterisk,
+            Some(TILDE) => Delimiter::Tilde,
+            Some(BACKTICK) => Delimiter::Backtick,
             Some(c) => return Err(ScannerError::UnexpectedChar(c)),
             None => return Err(ScannerError::UnexpectedEndOfFile),
         };
@@ -164,7 +172,7 @@ impl<'a> Scanner<'a> {
 
     pub fn eat_until_linebreak(&mut self) -> ScannerResult<&'a str> {
         match self.current_char {
-            Some(_) => Ok(self.eat_while(|c| c != '\n')),
+            Some(_) => Ok(self.eat_while(|c| c != NEW_LINE)),
             None => Err(ScannerError::UnexpectedEndOfFile),
         }
     }
