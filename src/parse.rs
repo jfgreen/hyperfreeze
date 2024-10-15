@@ -869,6 +869,33 @@ mod test {
         assert_eq!(actual, expected);
     }
 
+    #[test]
+    fn multiple_paragraphs() {
+        let input = "Cat\n\nPower";
+
+        let run1 = TextRun {
+            text: String::from("Cat"),
+            style: Style::None,
+        };
+
+        let run2 = TextRun {
+            text: String::from("Power"),
+            style: Style::None,
+        };
+
+        let para1 = Block::Paragraph(Box::new([run1]));
+        let para2 = Block::Paragraph(Box::new([run2]));
+
+        let expected = Document {
+            metadata: Metadata::default(),
+            blocks: Box::new([para1, para2]),
+        };
+
+        let actual = parse_str(input).unwrap();
+
+        assert_eq!(actual, expected);
+    }
+
     //TODO: Test for variable whitespace in key/value arg
     //TODO: Test doc with both metadata and paragraph
     #[test]
