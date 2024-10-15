@@ -30,7 +30,7 @@ fn render_paragraph(text_runs: &[TextRun], out: &mut impl io::Write) -> io::Resu
     for run in text_runs.iter() {
         match run.style {
             Style::None => (),
-            Style::Bold => write!(out, "<strong>")?,
+            Style::Strong => write!(out, "<strong>")?,
             Style::Emphasis => write!(out, "<em>")?,
             Style::Strikethrough => write!(out, "<s>")?,
             Style::Raw => write!(out, "<code>")?,
@@ -40,7 +40,7 @@ fn render_paragraph(text_runs: &[TextRun], out: &mut impl io::Write) -> io::Resu
 
         match run.style {
             Style::None => (),
-            Style::Bold => write!(out, "</strong>")?,
+            Style::Strong => write!(out, "</strong>")?,
             Style::Emphasis => write!(out, "</em>")?,
             Style::Strikethrough => write!(out, "</s>")?,
             Style::Raw => write!(out, "</code>")?,

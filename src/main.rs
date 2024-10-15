@@ -9,6 +9,17 @@ mod parse;
 mod render;
 mod scan;
 
+// Ideas we could look into:
+// Stream processing (as opposed loading whole input into memory)
+
+// Things we really need to do at some point
+// TODO: Support windows style newlines
+// TODO: Better error reporting -> what went wrong, where
+// TODO: We need much better context in errors!
+// TODO: Pick a system for IDs, e.g J Decimal, then use newtype or alias
+// TODO: Enforce basic metadata?
+// TODO: Pre allocate sensible vec capacities?
+
 #[derive(Debug)]
 enum Error {
     ParseError(ParseError),
@@ -36,12 +47,9 @@ impl Display for Error {
     }
 }
 
-//TODO: Propper error messaging
 fn main() -> Result<(), Error> {
     let (input_path, output_path) = parse_args(std::env::args());
 
-    //TODO: Use buffered reader
-    //TODO: Parse incrementally
     let mut input = String::new();
     let mut in_file = File::open(&input_path)?;
     in_file.read_to_string(&mut input)?;

@@ -2,15 +2,6 @@ use std::fmt::Display;
 
 use crate::scan::{chars::*, CharExt, Peek, Scanner, ScannerError};
 
-// TODO: Support windows style newlines
-// TODO: Better error reporting -> what went wrong, where
-// TODO: We need much better context in errors!
-// TODO: Pick a system for IDs, e.g J Decimal, then use newtype or alias
-// TODO: Enforce basic metadata?
-// TODO: Pre allocate sensible vec capacities?
-// TODO: Allow parsing over buffered input stream
-// TODO 'Strong' instead of bold?
-
 #[derive(PartialEq, Eq, Debug)]
 pub struct Document {
     pub metadata: Metadata,
@@ -37,7 +28,7 @@ pub struct TextRun {
 #[derive(PartialEq, Eq, Debug)]
 pub enum Style {
     None,
-    Bold,
+    Strong,
     Emphasis,
     Strikethrough,
     Raw,
@@ -221,7 +212,7 @@ fn parse_delimited_text(scanner: &mut Scanner) -> ParseResult<TextRun> {
     let delimiter = scanner.eat_char()?;
 
     let style = match delimiter {
-        ASTERISK => Style::Bold,
+        ASTERISK => Style::Strong,
         UNDERSCORE => Style::Emphasis,
         TILDE => Style::Strikethrough,
         BACKTICK => Style::Raw,
@@ -314,7 +305,7 @@ mod test {
     //TODO: Things to add
     // References
     // Escaped chars
-    // Maybe mixture of bold/emph/strike is ok? Use bit mask?
+    // Maybe mixture of strong/emph/strike is ok? Use bit mask?
     // Macros to make building test cases less painful?
 
     #[test]
@@ -550,7 +541,7 @@ mod test {
     }
 
     #[test]
-    fn bold_words() {
+    fn strong_words() {
         let input = "I *need to pet that cat* right away.";
 
         let run1 = TextRun {
@@ -560,7 +551,7 @@ mod test {
 
         let run2 = TextRun {
             text: String::from("need to pet that cat"),
-            style: Style::Bold,
+            style: Style::Strong,
         };
 
         let run3 = TextRun {
@@ -581,7 +572,7 @@ mod test {
     }
 
     #[test]
-    fn bold_mid_word() {
+    fn strong_mid_word() {
         let input = "I said: mee*ooOOo*ww!";
 
         let run1 = TextRun {
@@ -591,7 +582,7 @@ mod test {
 
         let run2 = TextRun {
             text: String::from("ooOOo"),
-            style: Style::Bold,
+            style: Style::Strong,
         };
 
         let run3 = TextRun {
@@ -612,12 +603,12 @@ mod test {
     }
 
     #[test]
-    fn bold_over_two_lines() {
+    fn strong_over_two_lines() {
         let input = "*me\now*";
 
         let run1 = TextRun {
             text: String::from("me ow"),
-            style: Style::Bold,
+            style: Style::Strong,
         };
 
         let text = Box::new([run1]);
@@ -927,7 +918,7 @@ mod test {
     }
 
     #[test]
-    fn loose_bold_delimiter_start() {
+    fn loose_strong_delimiter_start() {
         let input = "* meow meow*";
 
         let expected = Err(ParseError::LooseDelimiter);
@@ -938,7 +929,7 @@ mod test {
     }
 
     #[test]
-    fn loose_bold_delimiter_end() {
+    fn loose_strong_delimiter_end() {
         let input = "*meow meow *";
 
         let expected = Err(ParseError::LooseDelimiter);
