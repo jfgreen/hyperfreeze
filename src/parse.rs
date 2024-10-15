@@ -1,28 +1,17 @@
 use std::fmt::Display;
 
-//TODO: Do something about number of imports
-use crate::scan::{
-    CharExt, Peek, Scanner, ScannerError, ASTERISK, BACKTICK, COLON, HASH, NEW_LINE, TILDE,
-    UNDERSCORE,
-};
+use crate::scan::{chars::*, CharExt, Peek, Scanner, ScannerError};
 
+// TODO: Support windows style newlines
+// TODO: Support escaping special chars
+// TODO: Better error reporting -> what went wrong, where
+// TODO: We need much better context in errors!
 // TODO: Pick a system for IDs, e.g J Decimal, then use newtype or alias
 // TODO: Enforce basic metadata?
-
-// TODO: Reflect on if this document model is better than a token stream?
-// Lots of structure and indirection...
-// So, is there a more efficent way of representing a document tree?
-// Code up an alternative and compare?
-// Token stream of text, space, start format, end format?
-// Think about what will be easy to emit HTML for?
-// Think: Flatter, all pre-allocated, contigious
-// Think: Copy words runs into string fragments?
-// Try the below struct, then...
-// Mad idea, use unicode private use area and have whole doc a one string...
-// But might not work nicely if we need numeric values?
-// Could work just for paragraph / markup type?
-//
-// We could start by having a parse state
+// TODO: Pre allocate sensible vec capacities?
+// TODO: Allow parsing over buffered input stream
+// TODO 'Strong' instead of bold?
+// TODO: Extract func for getting block_name
 
 #[derive(PartialEq, Eq, Debug)]
 pub struct Document {
@@ -48,7 +37,6 @@ pub struct TextRun {
 }
 
 #[derive(PartialEq, Eq, Debug)]
-//TODO 'Strong' instead of bold?
 pub enum Style {
     None,
     Bold,
@@ -57,7 +45,6 @@ pub enum Style {
     Raw,
 }
 
-// TODO: We need much better context in errors!
 #[derive(PartialEq, Eq, Debug)]
 pub enum ParseError {
     ScannerError(ScannerError),
@@ -91,8 +78,6 @@ impl From<ScannerError> for ParseError {
     }
 }
 
-// TODO: Pre allocate sensible vec capacities?
-// TODO: Allow parsing over buffered input stream
 pub fn parse_str(input: &str) -> ParseResult<Document> {
     let mut scanner = Scanner::new(input);
     let mut blocks = Vec::new();
@@ -101,7 +86,6 @@ pub fn parse_str(input: &str) -> ParseResult<Document> {
 
     // We either expect the start of a block or EOF
 
-    //TODO: Extract func for getting block_name
     loop {
         match scanner.peek() {
             Peek::Char(HASH) => {
@@ -197,7 +181,6 @@ fn parse_plain_text(scanner: &mut Scanner) -> ParseResult<TextRun> {
     let mut run = String::new();
     loop {
         match scanner.peek() {
-            //TODO: does rust count linebreak as whitespace?
             Peek::Char(c) if c.is_whitespace() => {
                 let _ = scanner.eat_whitespace();
                 run.push(' ');

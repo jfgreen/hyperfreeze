@@ -1,10 +1,6 @@
 use std::fmt::Display;
 use std::str::CharIndices;
 
-//TODO: Support windows style newlines
-//TODO: Support escaping special chars
-//TODO: Better error reporting -> what went wrong, where
-
 #[derive(Debug)]
 pub enum Peek {
     Char(char),
@@ -52,13 +48,17 @@ type ScannerResult<T> = Result<T, ScannerError>;
 
 type CharPredicate = fn(char) -> bool;
 
-pub const NEW_LINE: char = '\n';
-pub const BACKTICK: char = '`';
-pub const ASTERISK: char = '*';
-pub const TILDE: char = '~';
-pub const UNDERSCORE: char = '_';
-pub const HASH: char = '#';
-pub const COLON: char = ':';
+pub mod chars {
+    pub const NEW_LINE: char = '\n';
+    pub const BACKTICK: char = '`';
+    pub const ASTERISK: char = '*';
+    pub const TILDE: char = '~';
+    pub const UNDERSCORE: char = '_';
+    pub const HASH: char = '#';
+    pub const COLON: char = ':';
+}
+
+use chars::*;
 
 pub struct Scanner<'a> {
     input: &'a str,
@@ -92,7 +92,6 @@ impl<'a> Scanner<'a> {
         match self.current_char {
             Some(NEW_LINE) if self.next_char == Some(NEW_LINE) => Peek::Blockbreak,
             Some(NEW_LINE) if self.next_char.is_none() => Peek::EndOfFile,
-            //TODO: do we need linebreak as a peek token?
             Some(NEW_LINE) => Peek::Linebreak,
             Some(c) => Peek::Char(c),
             None => Peek::EndOfFile,
@@ -116,7 +115,6 @@ impl<'a> Scanner<'a> {
 
     pub fn eat_text_fragment(&mut self) -> ScannerResult<&'a str> {
         match self.current_char {
-            //Some(c) if c.usable_in_word() => Ok(self.eat_while(char::usable_in_word)),
             Some(c) if c.usable_in_word() => Ok(self.eat_while(|c| c.usable_in_word())),
             Some(c) => Err(ScannerError::UnexpectedChar(c)),
             None => Err(ScannerError::UnexpectedEndOfFile),
@@ -125,7 +123,6 @@ impl<'a> Scanner<'a> {
 
     pub fn eat_raw_fragment(&mut self) -> ScannerResult<&'a str> {
         match self.current_char {
-            // Some(c) if c.usable_in_raw() => Ok(self.eat_while(char::usable_in_raw)),
             Some(c) if c.usable_in_raw() => Ok(self.eat_while(|c| c.usable_in_raw())),
             Some(c) => Err(ScannerError::UnexpectedChar(c)),
             None => Err(ScannerError::UnexpectedEndOfFile),
