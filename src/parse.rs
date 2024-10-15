@@ -84,14 +84,10 @@ pub fn parse_str(input: &str) -> ParseResult<Document> {
 
     let mut metadata = Metadata::default();
 
-    // We either expect the start of a block or EOF
-
     loop {
         match scanner.peek() {
-            Peek::Char(HASH) => {
-                scanner.eat_expected_char(HASH)?;
-                let block_name = scanner.eat_identifier()?;
-                scanner.eat_expected_char(NEW_LINE)?;
+            Peek::Char(_) => {
+                let block_name = parse_block_name(&mut scanner)?;
 
                 match block_name {
                     "metadata" => {
@@ -104,14 +100,8 @@ pub fn parse_str(input: &str) -> ParseResult<Document> {
                     _ => return Err(ParseError::UnknownBlock),
                 }
             }
-
-            // A block header is optional for paragraph blocks
-            Peek::Char(_) => {
-                let para = parse_paragraph(&mut scanner)?;
-                blocks.push(para);
-            }
             Peek::EndOfFile => break,
-            //TODO: Ignore linbreak / blockbreak
+            //TODO: Ignore line break / blockbreak
             _ => return Err(ParseError::UnexpectedInput),
         }
     }
@@ -120,6 +110,19 @@ pub fn parse_str(input: &str) -> ParseResult<Document> {
         blocks: blocks.into_boxed_slice(),
         metadata,
     })
+}
+
+fn parse_block_name<'a, 'b>(scanner: &'a mut Scanner<'b>) -> ParseResult<&'b str> {
+    match scanner.peek() {
+        Peek::Char(HASH) => {
+            scanner.eat_expected_char(HASH)?;
+            let block_name = scanner.eat_identifier()?;
+            scanner.eat_expected_char(NEW_LINE)?;
+            Ok(block_name)
+        }
+        Peek::Char(_) => Ok("paragraph"),
+        _ => return Err(ParseError::UnexpectedInput),
+    }
 }
 
 fn parse_metadata(scanner: &mut Scanner, metadata: &mut Metadata) -> ParseResult<()> {
