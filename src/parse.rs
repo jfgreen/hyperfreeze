@@ -302,11 +302,7 @@ mod test {
     // Test: -foo\nbar- <- Valid?
     // Test: -foo\n\nbar- <- Invalid?
 
-    //TODO: Things to add
-    // References
-    // Escaped chars
-    // Maybe mixture of strong/emph/strike is ok? Use bit mask?
-    // Macros to make building test cases less painful?
+    // TODO: Macros to make building test cases less painful?
 
     #[test]
     fn one_line_paragraph() {

@@ -9,16 +9,16 @@ mod parse;
 mod render;
 mod scan;
 
-// Ideas we could look into:
-// Stream processing (as opposed loading whole input into memory)
+// Implementation ideas we could look into:
+// - Stream processing (as opposed loading whole input into memory)
+// - Pre allocate sensible vec capacities?
 
-// Things we really need to do at some point
-// TODO: Support windows style newlines
-// TODO: Better error reporting -> what went wrong, where
-// TODO: We need much better context in errors!
-// TODO: Pick a system for IDs, e.g J Decimal, then use newtype or alias
-// TODO: Enforce basic metadata?
-// TODO: Pre allocate sensible vec capacities?
+// Features to build
+// - References
+// - Support windows style newlines
+// - Better error reporting -> what went wrong, where
+// - Enforce a system for IDs, e.g J Decimal
+// - Enforce basic metadata?
 
 #[derive(Debug)]
 enum Error {
