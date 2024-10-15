@@ -3,7 +3,6 @@ use std::fmt::Display;
 use crate::scan::{chars::*, CharExt, Peek, Scanner, ScannerError};
 
 // TODO: Support windows style newlines
-// TODO: Support escaping special chars
 // TODO: Better error reporting -> what went wrong, where
 // TODO: We need much better context in errors!
 // TODO: Pick a system for IDs, e.g J Decimal, then use newtype or alias
@@ -11,7 +10,7 @@ use crate::scan::{chars::*, CharExt, Peek, Scanner, ScannerError};
 // TODO: Pre allocate sensible vec capacities?
 // TODO: Allow parsing over buffered input stream
 // TODO 'Strong' instead of bold?
-// TODO: Extract func for getting block_name
+// TODO: Char const for ' '
 
 #[derive(PartialEq, Eq, Debug)]
 pub struct Document {
@@ -190,6 +189,11 @@ fn parse_plain_text(scanner: &mut Scanner) -> ParseResult<TextRun> {
     let mut run = String::new();
     loop {
         match scanner.peek() {
+            Peek::Char(BACKSLASH) => {
+                scanner.eat_expected_char(BACKSLASH)?;
+                let escaped = scanner.eat_char()?;
+                run.push(escaped);
+            }
             Peek::Char(c) if c.is_whitespace() => {
                 let _ = scanner.eat_whitespace();
                 run.push(' ');
@@ -245,6 +249,11 @@ fn parse_styled_text_run(scanner: &mut Scanner, end: char) -> ParseResult<String
 
     loop {
         match scanner.peek() {
+            Peek::Char(BACKSLASH) => {
+                scanner.eat_expected_char(BACKSLASH)?;
+                let escaped = scanner.eat_char()?;
+                run.push(escaped);
+            }
             Peek::Char(c) if c.is_whitespace() => {
                 scanner.eat_whitespace()?;
                 run.push(' ');
@@ -431,6 +440,69 @@ mod test {
         let run = TextRun {
             text: String::from("My cat does backflips #coolcat"),
             style: Style::None,
+        };
+
+        let text = Box::new([run]);
+
+        let expected = Document {
+            metadata: Metadata::default(),
+            blocks: Box::new([Block::Paragraph(text)]),
+        };
+
+        let actual = parse_str(input).unwrap();
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn escaped_underscore() {
+        let input = "cat\\_case";
+
+        let run = TextRun {
+            text: String::from("cat_case"),
+            style: Style::None,
+        };
+
+        let text = Box::new([run]);
+
+        let expected = Document {
+            metadata: Metadata::default(),
+            blocks: Box::new([Block::Paragraph(text)]),
+        };
+
+        let actual = parse_str(input).unwrap();
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn escaped_underscore_in_emphasis() {
+        let input = "_cat\\_case_";
+
+        let run = TextRun {
+            text: String::from("cat_case"),
+            style: Style::Emphasis,
+        };
+
+        let text = Box::new([run]);
+
+        let expected = Document {
+            metadata: Metadata::default(),
+            blocks: Box::new([Block::Paragraph(text)]),
+        };
+
+        let actual = parse_str(input).unwrap();
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn escaped_ignored_in_raw() {
+        let input = "`cat\\_case`";
+
+        let run = TextRun {
+            text: String::from("cat\\_case"),
+            style: Style::Raw,
         };
 
         let text = Box::new([run]);

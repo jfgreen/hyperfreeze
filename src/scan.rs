@@ -17,7 +17,7 @@ pub trait CharExt {
 
 impl CharExt for char {
     fn usable_in_word(&self) -> bool {
-        !(self.is_delimiter() || self.is_whitespace())
+        !(self.is_delimiter() || self.is_whitespace() || *self == BACKSLASH)
     }
 
     fn usable_in_raw(&self) -> bool {
@@ -56,6 +56,7 @@ pub mod chars {
     pub const UNDERSCORE: char = '_';
     pub const HASH: char = '#';
     pub const COLON: char = ':';
+    pub const BACKSLASH: char = '\\';
 }
 
 use chars::*;
