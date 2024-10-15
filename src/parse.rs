@@ -100,9 +100,15 @@ pub fn parse_str(input: &str) -> ParseResult<Document> {
                     _ => return Err(ParseError::UnknownBlock),
                 }
             }
+            // Ignore leading newlines
+            Peek::Linebreak => {
+                scanner.eat_expected_char(NEW_LINE)?;
+            }
+            // Ignore block breaks
+            Peek::Blockbreak => {
+                scanner.eat_blockbreak()?;
+            }
             Peek::EndOfFile => break,
-            //TODO: Ignore line break / blockbreak
-            _ => return Err(ParseError::UnexpectedInput),
         }
     }
 
@@ -870,25 +876,40 @@ mod test {
     }
 
     #[test]
-    fn multiple_paragraphs() {
-        let input = "Cat\n\nPower";
+    fn leading_newline_in_doc() {
+        let input = "\nCats";
 
-        let run1 = TextRun {
-            text: String::from("Cat"),
+        let run = TextRun {
+            text: String::from("Cats"),
             style: Style::None,
         };
 
-        let run2 = TextRun {
-            text: String::from("Power"),
-            style: Style::None,
-        };
-
-        let para1 = Block::Paragraph(Box::new([run1]));
-        let para2 = Block::Paragraph(Box::new([run2]));
+        let para = Block::Paragraph(Box::new([run]));
 
         let expected = Document {
             metadata: Metadata::default(),
-            blocks: Box::new([para1, para2]),
+            blocks: Box::new([para]),
+        };
+
+        let actual = parse_str(input).unwrap();
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn leading_newlines_in_doc() {
+        let input = "\n\nCats";
+
+        let run = TextRun {
+            text: String::from("Cats"),
+            style: Style::None,
+        };
+
+        let para = Block::Paragraph(Box::new([run]));
+
+        let expected = Document {
+            metadata: Metadata::default(),
+            blocks: Box::new([para]),
         };
 
         let actual = parse_str(input).unwrap();
