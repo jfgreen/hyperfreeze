@@ -10,7 +10,6 @@ use crate::scan::{chars::*, CharExt, Peek, Scanner, ScannerError};
 // TODO: Pre allocate sensible vec capacities?
 // TODO: Allow parsing over buffered input stream
 // TODO 'Strong' instead of bold?
-// TODO: Char const for ' '
 
 #[derive(PartialEq, Eq, Debug)]
 pub struct Document {
@@ -76,6 +75,8 @@ impl From<ScannerError> for ParseError {
         ParseError::ScannerError(error)
     }
 }
+
+const SPACE: char = ' ';
 
 pub fn parse_str(input: &str) -> ParseResult<Document> {
     let mut scanner = Scanner::new(input);
@@ -196,7 +197,7 @@ fn parse_plain_text(scanner: &mut Scanner) -> ParseResult<TextRun> {
             }
             Peek::Char(c) if c.is_whitespace() => {
                 let _ = scanner.eat_whitespace();
-                run.push(' ');
+                run.push(SPACE);
             }
             Peek::Char(c) if c.usable_in_word() => {
                 let text = scanner.eat_text_fragment()?;
@@ -204,7 +205,7 @@ fn parse_plain_text(scanner: &mut Scanner) -> ParseResult<TextRun> {
             }
             Peek::Linebreak => {
                 scanner.eat_expected_char(NEW_LINE)?;
-                run.push(' ');
+                run.push(SPACE);
             }
             _ => break,
         }
@@ -233,7 +234,7 @@ fn parse_delimited_text(scanner: &mut Scanner) -> ParseResult<TextRun> {
         parse_styled_text_run(scanner, delimiter)?
     };
 
-    if run.starts_with(' ') || run.ends_with(' ') {
+    if run.starts_with(SPACE) || run.ends_with(SPACE) {
         return Err(ParseError::LooseDelimiter);
     }
 
@@ -256,7 +257,7 @@ fn parse_styled_text_run(scanner: &mut Scanner, end: char) -> ParseResult<String
             }
             Peek::Char(c) if c.is_whitespace() => {
                 scanner.eat_whitespace()?;
-                run.push(' ');
+                run.push(SPACE);
             }
             Peek::Char(c) if c == end => {
                 scanner.eat_expected_char(c)?;
@@ -268,7 +269,7 @@ fn parse_styled_text_run(scanner: &mut Scanner, end: char) -> ParseResult<String
             }
             Peek::Linebreak => {
                 scanner.eat_expected_char(NEW_LINE)?;
-                run.push(' ');
+                run.push(SPACE);
             }
             _ => return Err(ParseError::UnmatchedDelimiter),
         }
@@ -290,7 +291,7 @@ fn parse_raw_text_run(scanner: &mut Scanner) -> ParseResult<String> {
             }
             Peek::Linebreak => {
                 scanner.eat_expected_char(NEW_LINE)?;
-                run.push(' ');
+                run.push(SPACE);
             }
             _ => return Err(ParseError::UnmatchedDelimiter),
         }
