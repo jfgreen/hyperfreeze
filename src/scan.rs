@@ -92,7 +92,6 @@ impl<'a> Scanner<'a> {
     pub fn peek(&self) -> Peek {
         match self.current_char {
             Some(NEW_LINE) if self.next_char == Some(NEW_LINE) => Peek::Blockbreak,
-            Some(NEW_LINE) if self.next_char.is_none() => Peek::EndOfFile,
             Some(NEW_LINE) => Peek::Linebreak,
             Some(c) => Peek::Char(c),
             None => Peek::EndOfFile,

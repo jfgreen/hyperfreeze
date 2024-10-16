@@ -295,7 +295,6 @@ fn parse_raw_text_run(scanner: &mut Scanner) -> ParseResult<String> {
 mod test {
     use super::*;
     //TODO: Things to test
-    // Files that end with a trailing single newline
     // Enforce that `foo\n\nbar` is invalid
     // Strip leading whitespace from para
     // Foo_bar_baz vs foobar_baz
@@ -1021,7 +1020,7 @@ mod test {
     }
 
     #[test]
-    fn leading_newline_in_doc() {
+    fn doc_with_leading_new_line() {
         let input = "\nCats";
 
         let run = TextRun {
@@ -1042,7 +1041,7 @@ mod test {
     }
 
     #[test]
-    fn leading_newlines_in_doc() {
+    fn doc_with_leading_newlines() {
         let input = "\n\nCats";
 
         let run = TextRun {
@@ -1055,6 +1054,48 @@ mod test {
         let expected = Document {
             metadata: Metadata::default(),
             blocks: Box::new([para]),
+        };
+
+        let actual = parse_str(input).unwrap();
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn doc_ending_with_new_line() {
+        let input = "Cats are friends\n";
+
+        let run = TextRun {
+            text: String::from("Cats are friends"),
+            style: Style::None,
+        };
+
+        let text = Box::new([run]);
+
+        let expected = Document {
+            metadata: Metadata::default(),
+            blocks: Box::new([Block::Paragraph(text)]),
+        };
+
+        let actual = parse_str(input).unwrap();
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn doc_ending_with_new_lines() {
+        let input = "Feline friends\n\n";
+
+        let run = TextRun {
+            text: String::from("Feline friends"),
+            style: Style::None,
+        };
+
+        let text = Box::new([run]);
+
+        let expected = Document {
+            metadata: Metadata::default(),
+            blocks: Box::new([Block::Paragraph(text)]),
         };
 
         let actual = parse_str(input).unwrap();
