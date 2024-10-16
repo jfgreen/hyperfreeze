@@ -225,10 +225,6 @@ fn parse_delimited_text(scanner: &mut Scanner) -> ParseResult<TextRun> {
         parse_styled_text_run(scanner, delimiter)?
     };
 
-    if run.starts_with(SPACE) || run.ends_with(SPACE) {
-        return Err(ParseError::LooseDelimiter);
-    }
-
     if run.is_empty() {
         return Err(ParseError::EmptyDelimitedText);
     }
@@ -252,7 +248,7 @@ fn parse_styled_text_run(scanner: &mut Scanner, end: char) -> ParseResult<String
             }
             Peek::Char(c) if c == end => {
                 scanner.eat_expected_char(c)?;
-                return Ok(run);
+                break;
             }
             Peek::Char(_) => {
                 let text = scanner.eat_text_fragment()?;
@@ -265,6 +261,12 @@ fn parse_styled_text_run(scanner: &mut Scanner, end: char) -> ParseResult<String
             _ => return Err(ParseError::UnmatchedDelimiter),
         }
     }
+
+    if run.starts_with(SPACE) || run.ends_with(SPACE) {
+        return Err(ParseError::LooseDelimiter);
+    }
+
+    return Ok(run);
 }
 
 fn parse_raw_text_run(scanner: &mut Scanner) -> ParseResult<String> {
@@ -293,7 +295,6 @@ fn parse_raw_text_run(scanner: &mut Scanner) -> ParseResult<String> {
 mod test {
     use super::*;
     //TODO: Things to test
-    // Inline raw immediately starting with newline
     // Files that end with a trailing single newline
     // Enforce that `foo\n\nbar` is invalid
     // Strip leading whitespace from para
@@ -770,6 +771,90 @@ mod test {
 
         let run = TextRun {
             text: String::from("Great cats"),
+            style: Style::Raw,
+        };
+
+        let text = Box::new([run]);
+
+        let expected = Document {
+            metadata: Metadata::default(),
+            blocks: Box::new([Block::Paragraph(text)]),
+        };
+
+        let actual = parse_str(input).unwrap();
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn raw_leading_with_new_line() {
+        let input = "`\nMeow`";
+
+        let run = TextRun {
+            text: String::from(" Meow"),
+            style: Style::Raw,
+        };
+
+        let text = Box::new([run]);
+
+        let expected = Document {
+            metadata: Metadata::default(),
+            blocks: Box::new([Block::Paragraph(text)]),
+        };
+
+        let actual = parse_str(input).unwrap();
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn raw_trailing_with_new_line() {
+        let input = "`Meow\n`";
+
+        let run = TextRun {
+            text: String::from("Meow "),
+            style: Style::Raw,
+        };
+
+        let text = Box::new([run]);
+
+        let expected = Document {
+            metadata: Metadata::default(),
+            blocks: Box::new([Block::Paragraph(text)]),
+        };
+
+        let actual = parse_str(input).unwrap();
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn raw_leading_with_space() {
+        let input = "` Meow`";
+
+        let run = TextRun {
+            text: String::from(" Meow"),
+            style: Style::Raw,
+        };
+
+        let text = Box::new([run]);
+
+        let expected = Document {
+            metadata: Metadata::default(),
+            blocks: Box::new([Block::Paragraph(text)]),
+        };
+
+        let actual = parse_str(input).unwrap();
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn raw_trailing_with_space() {
+        let input = "`Meow `";
+
+        let run = TextRun {
+            text: String::from("Meow "),
             style: Style::Raw,
         };
 
