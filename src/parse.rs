@@ -295,7 +295,6 @@ fn parse_raw_text_run(scanner: &mut Scanner) -> ParseResult<String> {
 mod test {
     use super::*;
     //TODO: Things to test
-    // Enforce that `foo\n\nbar` is invalid
     // Strip leading whitespace from para
     // Foo_bar_baz vs foobar_baz
     // More evils: _``_, `*`*
@@ -958,6 +957,17 @@ mod test {
         let input = "Robot cat says: ``!.";
 
         let expected = Err(ParseError::EmptyDelimitedText);
+
+        let actual = parse_str(input);
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn raw_with_double_linebreak() {
+        let input = "`Erm...\n\nmeow?`";
+
+        let expected = Err(ParseError::UnmatchedDelimiter);
 
         let actual = parse_str(input);
 
