@@ -179,6 +179,7 @@ fn parse_paragraph(scanner: &mut Scanner) -> ParseResult<Block> {
 
 fn parse_plain_text(scanner: &mut Scanner) -> ParseResult<TextRun> {
     let mut run = String::new();
+
     loop {
         match scanner.peek() {
             Peek::Char(BACKSLASH) => {
@@ -196,6 +197,7 @@ fn parse_plain_text(scanner: &mut Scanner) -> ParseResult<TextRun> {
             }
             Peek::Linebreak => {
                 scanner.eat_expected_char(NEW_LINE)?;
+                scanner.eat_optional_whitespace();
                 run.push(SPACE);
             }
             _ => break,
@@ -256,6 +258,7 @@ fn parse_styled_text_run(scanner: &mut Scanner, end: char) -> ParseResult<String
             }
             Peek::Linebreak => {
                 scanner.eat_expected_char(NEW_LINE)?;
+                scanner.eat_optional_whitespace();
                 run.push(SPACE);
             }
             _ => return Err(ParseError::UnmatchedDelimiter),
@@ -296,10 +299,12 @@ mod test {
     use super::*;
     //TODO: Things to test
     // Strip leading whitespace from para
+    // Strip trailing whitespace from para
     // Foo_bar_baz vs foobar_baz
     // More evils: _``_, `*`*
     // Test: -foo\nbar- <- Valid?
     // Test: -foo\n\nbar- <- Invalid?
+    // Explicit #paragraph
 
     // TODO: Macros to make building test cases less painful?
 
@@ -930,6 +935,132 @@ mod test {
         };
 
         let text = Box::new([run1, run2, run3]);
+
+        let expected = Document {
+            metadata: Metadata::default(),
+            blocks: Box::new([Block::Paragraph(text)]),
+        };
+
+        let actual = parse_str(input).unwrap();
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn test_newline_then_multiple_spaces_in_plain_text() {
+        let input = "Cat\n  cat";
+
+        let run = TextRun {
+            text: String::from("Cat cat"),
+            style: Style::None,
+        };
+
+        let text = Box::new([run]);
+
+        let expected = Document {
+            metadata: Metadata::default(),
+            blocks: Box::new([Block::Paragraph(text)]),
+        };
+
+        let actual = parse_str(input).unwrap();
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn test_newline_then_multiple_spaces_in_styled() {
+        let input = "*Cat\n  cat*";
+
+        let run = TextRun {
+            text: String::from("Cat cat"),
+            style: Style::Strong,
+        };
+
+        let text = Box::new([run]);
+
+        let expected = Document {
+            metadata: Metadata::default(),
+            blocks: Box::new([Block::Paragraph(text)]),
+        };
+
+        let actual = parse_str(input).unwrap();
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn test_newline_then_multiple_spaces_in_raw() {
+        let input = "`Cat\n  cat`";
+
+        let run = TextRun {
+            text: String::from("Cat   cat"),
+            style: Style::Raw,
+        };
+
+        let text = Box::new([run]);
+
+        let expected = Document {
+            metadata: Metadata::default(),
+            blocks: Box::new([Block::Paragraph(text)]),
+        };
+
+        let actual = parse_str(input).unwrap();
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn test_multiple_spaces_then_newline_in_plain_text() {
+        let input = "Cat  \ncat";
+
+        let run = TextRun {
+            text: String::from("Cat cat"),
+            style: Style::None,
+        };
+
+        let text = Box::new([run]);
+
+        let expected = Document {
+            metadata: Metadata::default(),
+            blocks: Box::new([Block::Paragraph(text)]),
+        };
+
+        let actual = parse_str(input).unwrap();
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn test_multiple_spaces_then_newline_in_styled() {
+        let input = "*Cat  \ncat*";
+
+        let run = TextRun {
+            text: String::from("Cat cat"),
+            style: Style::Strong,
+        };
+
+        let text = Box::new([run]);
+
+        let expected = Document {
+            metadata: Metadata::default(),
+            blocks: Box::new([Block::Paragraph(text)]),
+        };
+
+        let actual = parse_str(input).unwrap();
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn test_multiple_spaces_then_newline_in_raw() {
+        let input = "`Cat  \ncat`";
+
+        let run = TextRun {
+            text: String::from("Cat   cat"),
+            style: Style::Raw,
+        };
+
+        let text = Box::new([run]);
 
         let expected = Document {
             metadata: Metadata::default(),
