@@ -306,23 +306,105 @@ mod test {
     // Test: -foo\n\nbar- <- Invalid?
     // Explicit #paragraph
 
-    // TODO: Macros to make building test cases less painful?
+    fn document() -> DocmentBuilder {
+        DocmentBuilder::new()
+    }
+
+    fn paragraph() -> ParagraphBuilder {
+        ParagraphBuilder::new()
+    }
+
+    struct DocmentBuilder {
+        metadata: Metadata,
+        blocks: Vec<Block>,
+    }
+
+    impl DocmentBuilder {
+        fn new() -> Self {
+            DocmentBuilder {
+                metadata: Metadata::default(),
+                blocks: Vec::new(),
+            }
+        }
+
+        fn build(self) -> Document {
+            Document {
+                metadata: self.metadata,
+                blocks: self.blocks.into_boxed_slice(),
+            }
+        }
+
+        fn with_id(mut self, id: &str) -> Self {
+            self.metadata.id = id.to_string();
+            self
+        }
+
+        fn with_title(mut self, title: &str) -> Self {
+            self.metadata.title = title.to_string();
+            self
+        }
+
+        fn with_block<T: Into<Block>>(mut self, block: T) -> Self {
+            self.blocks.push(block.into());
+            self
+        }
+    }
+
+    struct ParagraphBuilder {
+        text_runs: Vec<TextRun>,
+    }
+
+    impl ParagraphBuilder {
+        fn new() -> Self {
+            ParagraphBuilder {
+                text_runs: Vec::new(),
+            }
+        }
+
+        fn push_run(&mut self, text: &str, style: Style) {
+            let text = text.to_string();
+            self.text_runs.push(TextRun { text, style });
+        }
+
+        fn with_run(mut self, text: &str) -> Self {
+            self.push_run(text, Style::None);
+            self
+        }
+
+        fn with_emphasised_run(mut self, text: &str) -> Self {
+            self.push_run(text, Style::Emphasis);
+            self
+        }
+
+        fn with_strong_run(mut self, text: &str) -> Self {
+            self.push_run(text, Style::Strong);
+            self
+        }
+
+        fn with_strikethrough_run(mut self, text: &str) -> Self {
+            self.push_run(text, Style::Strikethrough);
+            self
+        }
+
+        fn with_raw_run(mut self, text: &str) -> Self {
+            self.push_run(text, Style::Raw);
+            self
+        }
+    }
+
+    impl Into<Block> for ParagraphBuilder {
+        fn into(self) -> Block {
+            Block::Paragraph(self.text_runs.into_boxed_slice())
+        }
+    }
 
     #[test]
     fn one_line_paragraph() {
         let input = "We like cats very much";
 
-        let run = TextRun {
-            text: String::from("We like cats very much"),
-            style: Style::None,
-        };
-
-        let text = Box::new([run]);
-
-        let expected = Document {
-            metadata: Metadata::default(),
-            blocks: Box::new([Block::Paragraph(text)]),
-        };
+        let expected = document()
+            .with_block(paragraph().with_run("We like cats very much"))
+            .build();
 
         let actual = parse_str(input).unwrap();
 
@@ -333,17 +415,9 @@ mod test {
     fn double_space() {
         let input = "Nice  kitty!";
 
-        let run = TextRun {
-            text: String::from("Nice kitty!"),
-            style: Style::None,
-        };
-
-        let text = Box::new([run]);
-
-        let expected = Document {
-            metadata: Metadata::default(),
-            blocks: Box::new([Block::Paragraph(text)]),
-        };
+        let expected = document()
+            .with_block(paragraph().with_run("Nice kitty!"))
+            .build();
 
         let actual = parse_str(input).unwrap();
 
@@ -354,17 +428,9 @@ mod test {
     fn new_line_becomes_whitespace() {
         let input = "Cats\nwhiskers";
 
-        let run = TextRun {
-            text: String::from("Cats whiskers"),
-            style: Style::None,
-        };
-
-        let text = Box::new([run]);
-
-        let expected = Document {
-            metadata: Metadata::default(),
-            blocks: Box::new([Block::Paragraph(text)]),
-        };
+        let expected = document()
+            .with_block(paragraph().with_run("Cats whiskers"))
+            .build();
 
         let actual = parse_str(input).unwrap();
 
@@ -375,23 +441,10 @@ mod test {
     fn two_new_lines_become_blocks() {
         let input = "Cats\n\nwhiskers";
 
-        let run1 = TextRun {
-            text: String::from("Cats"),
-            style: Style::None,
-        };
-
-        let run2 = TextRun {
-            text: String::from("whiskers"),
-            style: Style::None,
-        };
-
-        let text1 = Box::new([run1]);
-        let text2 = Box::new([run2]);
-
-        let expected = Document {
-            metadata: Metadata::default(),
-            blocks: Box::new([Block::Paragraph(text1), Block::Paragraph(text2)]),
-        };
+        let expected = document()
+            .with_block(paragraph().with_run("Cats"))
+            .with_block(paragraph().with_run("whiskers"))
+            .build();
 
         let actual = parse_str(input).unwrap();
 
@@ -402,23 +455,10 @@ mod test {
     fn three_new_lines_becomes_blocks() {
         let input = "Cats\n\n\nwhiskers";
 
-        let run1 = TextRun {
-            text: String::from("Cats"),
-            style: Style::None,
-        };
-
-        let run2 = TextRun {
-            text: String::from("whiskers"),
-            style: Style::None,
-        };
-
-        let text1 = Box::new([run1]);
-        let text2 = Box::new([run2]);
-
-        let expected = Document {
-            metadata: Metadata::default(),
-            blocks: Box::new([Block::Paragraph(text1), Block::Paragraph(text2)]),
-        };
+        let expected = document()
+            .with_block(paragraph().with_run("Cats"))
+            .with_block(paragraph().with_run("whiskers"))
+            .build();
 
         let actual = parse_str(input).unwrap();
 
@@ -429,17 +469,9 @@ mod test {
     fn hash_in_markup() {
         let input = "My cat does backflips #coolcat";
 
-        let run = TextRun {
-            text: String::from("My cat does backflips #coolcat"),
-            style: Style::None,
-        };
-
-        let text = Box::new([run]);
-
-        let expected = Document {
-            metadata: Metadata::default(),
-            blocks: Box::new([Block::Paragraph(text)]),
-        };
+        let expected = document()
+            .with_block(paragraph().with_run("My cat does backflips #coolcat"))
+            .build();
 
         let actual = parse_str(input).unwrap();
 
@@ -450,17 +482,9 @@ mod test {
     fn escaped_underscore() {
         let input = "cat\\_case";
 
-        let run = TextRun {
-            text: String::from("cat_case"),
-            style: Style::None,
-        };
-
-        let text = Box::new([run]);
-
-        let expected = Document {
-            metadata: Metadata::default(),
-            blocks: Box::new([Block::Paragraph(text)]),
-        };
+        let expected = document()
+            .with_block(paragraph().with_run("cat_case"))
+            .build();
 
         let actual = parse_str(input).unwrap();
 
@@ -471,17 +495,9 @@ mod test {
     fn escaped_underscore_in_emphasis() {
         let input = "_cat\\_case_";
 
-        let run = TextRun {
-            text: String::from("cat_case"),
-            style: Style::Emphasis,
-        };
-
-        let text = Box::new([run]);
-
-        let expected = Document {
-            metadata: Metadata::default(),
-            blocks: Box::new([Block::Paragraph(text)]),
-        };
+        let expected = document()
+            .with_block(paragraph().with_emphasised_run("cat_case"))
+            .build();
 
         let actual = parse_str(input).unwrap();
 
@@ -492,17 +508,9 @@ mod test {
     fn escaped_ignored_in_raw() {
         let input = "`cat\\_case`";
 
-        let run = TextRun {
-            text: String::from("cat\\_case"),
-            style: Style::Raw,
-        };
-
-        let text = Box::new([run]);
-
-        let expected = Document {
-            metadata: Metadata::default(),
-            blocks: Box::new([Block::Paragraph(text)]),
-        };
+        let expected = document()
+            .with_block(paragraph().with_raw_run("cat\\_case"))
+            .build();
 
         let actual = parse_str(input).unwrap();
 
@@ -513,27 +521,14 @@ mod test {
     fn emphasised_words() {
         let input = "We _totally adore_ them";
 
-        let run1 = TextRun {
-            text: String::from("We "),
-            style: Style::None,
-        };
-
-        let run2 = TextRun {
-            text: String::from("totally adore"),
-            style: Style::Emphasis,
-        };
-
-        let run3 = TextRun {
-            text: String::from(" them"),
-            style: Style::None,
-        };
-
-        let text = Box::new([run1, run2, run3]);
-
-        let expected = Document {
-            metadata: Metadata::default(),
-            blocks: Box::new([Block::Paragraph(text)]),
-        };
+        let expected = document()
+            .with_block(
+                paragraph()
+                    .with_run("We ")
+                    .with_emphasised_run("totally adore")
+                    .with_run(" them"),
+            )
+            .build();
 
         let actual = parse_str(input).unwrap();
 
@@ -544,27 +539,14 @@ mod test {
     fn strong_words() {
         let input = "I *need to pet that cat* right away.";
 
-        let run1 = TextRun {
-            text: String::from("I "),
-            style: Style::None,
-        };
-
-        let run2 = TextRun {
-            text: String::from("need to pet that cat"),
-            style: Style::Strong,
-        };
-
-        let run3 = TextRun {
-            text: String::from(" right away."),
-            style: Style::None,
-        };
-
-        let text = Box::new([run1, run2, run3]);
-
-        let expected = Document {
-            metadata: Metadata::default(),
-            blocks: Box::new([Block::Paragraph(text)]),
-        };
+        let expected = document()
+            .with_block(
+                paragraph()
+                    .with_run("I ")
+                    .with_strong_run("need to pet that cat")
+                    .with_run(" right away."),
+            )
+            .build();
 
         let actual = parse_str(input).unwrap();
 
@@ -575,27 +557,14 @@ mod test {
     fn strong_mid_word() {
         let input = "I said: mee*ooOOo*ww!";
 
-        let run1 = TextRun {
-            text: String::from("I said: mee"),
-            style: Style::None,
-        };
-
-        let run2 = TextRun {
-            text: String::from("ooOOo"),
-            style: Style::Strong,
-        };
-
-        let run3 = TextRun {
-            text: String::from("ww!"),
-            style: Style::None,
-        };
-
-        let text = Box::new([run1, run2, run3]);
-
-        let expected = Document {
-            metadata: Metadata::default(),
-            blocks: Box::new([Block::Paragraph(text)]),
-        };
+        let expected = document()
+            .with_block(
+                paragraph()
+                    .with_run("I said: mee")
+                    .with_strong_run("ooOOo")
+                    .with_run("ww!"),
+            )
+            .build();
 
         let actual = parse_str(input).unwrap();
 
@@ -606,17 +575,9 @@ mod test {
     fn strong_over_two_lines() {
         let input = "*me\now*";
 
-        let run1 = TextRun {
-            text: String::from("me ow"),
-            style: Style::Strong,
-        };
-
-        let text = Box::new([run1]);
-
-        let expected = Document {
-            metadata: Metadata::default(),
-            blocks: Box::new([Block::Paragraph(text)]),
-        };
+        let expected = document()
+            .with_block(paragraph().with_strong_run("me ow"))
+            .build();
 
         let actual = parse_str(input).unwrap();
 
@@ -627,27 +588,14 @@ mod test {
     fn strikethrough_words() {
         let input = "Cats are ~ok i guess~ magnificant";
 
-        let run1 = TextRun {
-            text: String::from("Cats are "),
-            style: Style::None,
-        };
-
-        let run2 = TextRun {
-            text: String::from("ok i guess"),
-            style: Style::Strikethrough,
-        };
-
-        let run3 = TextRun {
-            text: String::from(" magnificant"),
-            style: Style::None,
-        };
-
-        let text = Box::new([run1, run2, run3]);
-
-        let expected = Document {
-            metadata: Metadata::default(),
-            blocks: Box::new([Block::Paragraph(text)]),
-        };
+        let expected = document()
+            .with_block(
+                paragraph()
+                    .with_run("Cats are ")
+                    .with_strikethrough_run("ok i guess")
+                    .with_run(" magnificant"),
+            )
+            .build();
 
         let actual = parse_str(input).unwrap();
 
@@ -658,27 +606,14 @@ mod test {
     fn raw_words() {
         let input = "Robot cat says `bleep bloop`!";
 
-        let run1 = TextRun {
-            text: String::from("Robot cat says "),
-            style: Style::None,
-        };
-
-        let run2 = TextRun {
-            text: String::from("bleep bloop"),
-            style: Style::Raw,
-        };
-
-        let run3 = TextRun {
-            text: String::from("!"),
-            style: Style::None,
-        };
-
-        let text = Box::new([run1, run2, run3]);
-
-        let expected = Document {
-            metadata: Metadata::default(),
-            blocks: Box::new([Block::Paragraph(text)]),
-        };
+        let expected = document()
+            .with_block(
+                paragraph()
+                    .with_run("Robot cat says ")
+                    .with_raw_run("bleep bloop")
+                    .with_run("!"),
+            )
+            .build();
 
         let actual = parse_str(input).unwrap();
 
@@ -687,29 +622,16 @@ mod test {
 
     #[test]
     fn raw_mid_word() {
-        let input = "Bl`ee`p!";
+        let input = "Bl`eeee`p!";
 
-        let run1 = TextRun {
-            text: String::from("Bl"),
-            style: Style::None,
-        };
-
-        let run2 = TextRun {
-            text: String::from("ee"),
-            style: Style::Raw,
-        };
-
-        let run3 = TextRun {
-            text: String::from("p!"),
-            style: Style::None,
-        };
-
-        let text = Box::new([run1, run2, run3]);
-
-        let expected = Document {
-            metadata: Metadata::default(),
-            blocks: Box::new([Block::Paragraph(text)]),
-        };
+        let expected = document()
+            .with_block(
+                paragraph()
+                    .with_run("Bl")
+                    .with_raw_run("eeee")
+                    .with_run("p!"),
+            )
+            .build();
 
         let actual = parse_str(input).unwrap();
 
@@ -720,27 +642,14 @@ mod test {
     fn underscore_in_raw() {
         let input = "Set `PURR_LOUDLY` to true";
 
-        let run1 = TextRun {
-            text: String::from("Set "),
-            style: Style::None,
-        };
-
-        let run2 = TextRun {
-            text: String::from("PURR_LOUDLY"),
-            style: Style::Raw,
-        };
-
-        let run3 = TextRun {
-            text: String::from(" to true"),
-            style: Style::None,
-        };
-
-        let text = Box::new([run1, run2, run3]);
-
-        let expected = Document {
-            metadata: Metadata::default(),
-            blocks: Box::new([Block::Paragraph(text)]),
-        };
+        let expected = document()
+            .with_block(
+                paragraph()
+                    .with_run("Set ")
+                    .with_raw_run("PURR_LOUDLY")
+                    .with_run(" to true"),
+            )
+            .build();
 
         let actual = parse_str(input).unwrap();
 
@@ -751,17 +660,9 @@ mod test {
     fn extra_spaces_in_raw() {
         let input = "`Keep your       distance`";
 
-        let run = TextRun {
-            text: String::from("Keep your       distance"),
-            style: Style::Raw,
-        };
-
-        let text = Box::new([run]);
-
-        let expected = Document {
-            metadata: Metadata::default(),
-            blocks: Box::new([Block::Paragraph(text)]),
-        };
+        let expected = document()
+            .with_block(paragraph().with_raw_run("Keep your       distance"))
+            .build();
 
         let actual = parse_str(input).unwrap();
 
@@ -772,17 +673,9 @@ mod test {
     fn raw_over_two_lines() {
         let input = "`Great\ncats`";
 
-        let run = TextRun {
-            text: String::from("Great cats"),
-            style: Style::Raw,
-        };
-
-        let text = Box::new([run]);
-
-        let expected = Document {
-            metadata: Metadata::default(),
-            blocks: Box::new([Block::Paragraph(text)]),
-        };
+        let expected = document()
+            .with_block(paragraph().with_raw_run("Great cats"))
+            .build();
 
         let actual = parse_str(input).unwrap();
 
@@ -791,19 +684,11 @@ mod test {
 
     #[test]
     fn raw_leading_with_new_line() {
-        let input = "`\nMeow`";
+        let input = "`\nMeow?`";
 
-        let run = TextRun {
-            text: String::from(" Meow"),
-            style: Style::Raw,
-        };
-
-        let text = Box::new([run]);
-
-        let expected = Document {
-            metadata: Metadata::default(),
-            blocks: Box::new([Block::Paragraph(text)]),
-        };
+        let expected = document()
+            .with_block(paragraph().with_raw_run(" Meow?"))
+            .build();
 
         let actual = parse_str(input).unwrap();
 
@@ -814,17 +699,9 @@ mod test {
     fn raw_trailing_with_new_line() {
         let input = "`Meow\n`";
 
-        let run = TextRun {
-            text: String::from("Meow "),
-            style: Style::Raw,
-        };
-
-        let text = Box::new([run]);
-
-        let expected = Document {
-            metadata: Metadata::default(),
-            blocks: Box::new([Block::Paragraph(text)]),
-        };
+        let expected = document()
+            .with_block(paragraph().with_raw_run("Meow "))
+            .build();
 
         let actual = parse_str(input).unwrap();
 
@@ -835,17 +712,9 @@ mod test {
     fn raw_leading_with_space() {
         let input = "` Meow`";
 
-        let run = TextRun {
-            text: String::from(" Meow"),
-            style: Style::Raw,
-        };
-
-        let text = Box::new([run]);
-
-        let expected = Document {
-            metadata: Metadata::default(),
-            blocks: Box::new([Block::Paragraph(text)]),
-        };
+        let expected = document()
+            .with_block(paragraph().with_raw_run(" Meow"))
+            .build();
 
         let actual = parse_str(input).unwrap();
 
@@ -856,17 +725,9 @@ mod test {
     fn raw_trailing_with_space() {
         let input = "`Meow `";
 
-        let run = TextRun {
-            text: String::from("Meow "),
-            style: Style::Raw,
-        };
-
-        let text = Box::new([run]);
-
-        let expected = Document {
-            metadata: Metadata::default(),
-            blocks: Box::new([Block::Paragraph(text)]),
-        };
+        let expected = document()
+            .with_block(paragraph().with_raw_run("Meow "))
+            .build();
 
         let actual = parse_str(input).unwrap();
 
@@ -877,17 +738,9 @@ mod test {
     fn raw_over_three_lines() {
         let input = "`Great\ncats\nassemble!`";
 
-        let run = TextRun {
-            text: String::from("Great cats assemble!"),
-            style: Style::Raw,
-        };
-
-        let text = Box::new([run]);
-
-        let expected = Document {
-            metadata: Metadata::default(),
-            blocks: Box::new([Block::Paragraph(text)]),
-        };
+        let expected = document()
+            .with_block(paragraph().with_raw_run("Great cats assemble!"))
+            .build();
 
         let actual = parse_str(input).unwrap();
 
@@ -898,17 +751,9 @@ mod test {
     fn standalone_dash() {
         let input = "Felines - fantastic!";
 
-        let run1 = TextRun {
-            text: String::from("Felines - fantastic!"),
-            style: Style::None,
-        };
-
-        let text = Box::new([run1]);
-
-        let expected = Document {
-            metadata: Metadata::default(),
-            blocks: Box::new([Block::Paragraph(text)]),
-        };
+        let expected = document()
+            .with_block(paragraph().with_run("Felines - fantastic!"))
+            .build();
 
         let actual = parse_str(input).unwrap();
 
@@ -919,27 +764,14 @@ mod test {
     fn underscore_in_awkward_places() {
         let input = "Cat cat_cat cat_ cat.";
 
-        let run1 = TextRun {
-            text: String::from("Cat cat"),
-            style: Style::None,
-        };
-
-        let run2 = TextRun {
-            text: String::from("cat cat"),
-            style: Style::Emphasis,
-        };
-
-        let run3 = TextRun {
-            text: String::from(" cat."),
-            style: Style::None,
-        };
-
-        let text = Box::new([run1, run2, run3]);
-
-        let expected = Document {
-            metadata: Metadata::default(),
-            blocks: Box::new([Block::Paragraph(text)]),
-        };
+        let expected = document()
+            .with_block(
+                paragraph()
+                    .with_run("Cat cat")
+                    .with_emphasised_run("cat cat")
+                    .with_run(" cat."),
+            )
+            .build();
 
         let actual = parse_str(input).unwrap();
 
@@ -950,17 +782,9 @@ mod test {
     fn test_newline_then_multiple_spaces_in_plain_text() {
         let input = "Cat\n  cat";
 
-        let run = TextRun {
-            text: String::from("Cat cat"),
-            style: Style::None,
-        };
-
-        let text = Box::new([run]);
-
-        let expected = Document {
-            metadata: Metadata::default(),
-            blocks: Box::new([Block::Paragraph(text)]),
-        };
+        let expected = document()
+            .with_block(paragraph().with_run("Cat cat"))
+            .build();
 
         let actual = parse_str(input).unwrap();
 
@@ -971,17 +795,9 @@ mod test {
     fn test_newline_then_multiple_spaces_in_styled() {
         let input = "*Cat\n  cat*";
 
-        let run = TextRun {
-            text: String::from("Cat cat"),
-            style: Style::Strong,
-        };
-
-        let text = Box::new([run]);
-
-        let expected = Document {
-            metadata: Metadata::default(),
-            blocks: Box::new([Block::Paragraph(text)]),
-        };
+        let expected = document()
+            .with_block(paragraph().with_strong_run("Cat cat"))
+            .build();
 
         let actual = parse_str(input).unwrap();
 
@@ -992,17 +808,9 @@ mod test {
     fn test_newline_then_multiple_spaces_in_raw() {
         let input = "`Cat\n  cat`";
 
-        let run = TextRun {
-            text: String::from("Cat   cat"),
-            style: Style::Raw,
-        };
-
-        let text = Box::new([run]);
-
-        let expected = Document {
-            metadata: Metadata::default(),
-            blocks: Box::new([Block::Paragraph(text)]),
-        };
+        let expected = document()
+            .with_block(paragraph().with_raw_run("Cat   cat"))
+            .build();
 
         let actual = parse_str(input).unwrap();
 
@@ -1013,17 +821,9 @@ mod test {
     fn test_multiple_spaces_then_newline_in_plain_text() {
         let input = "Cat  \ncat";
 
-        let run = TextRun {
-            text: String::from("Cat cat"),
-            style: Style::None,
-        };
-
-        let text = Box::new([run]);
-
-        let expected = Document {
-            metadata: Metadata::default(),
-            blocks: Box::new([Block::Paragraph(text)]),
-        };
+        let expected = document()
+            .with_block(paragraph().with_run("Cat cat"))
+            .build();
 
         let actual = parse_str(input).unwrap();
 
@@ -1034,17 +834,9 @@ mod test {
     fn test_multiple_spaces_then_newline_in_styled() {
         let input = "*Cat  \ncat*";
 
-        let run = TextRun {
-            text: String::from("Cat cat"),
-            style: Style::Strong,
-        };
-
-        let text = Box::new([run]);
-
-        let expected = Document {
-            metadata: Metadata::default(),
-            blocks: Box::new([Block::Paragraph(text)]),
-        };
+        let expected = document()
+            .with_block(paragraph().with_strong_run("Cat cat"))
+            .build();
 
         let actual = parse_str(input).unwrap();
 
@@ -1055,17 +847,9 @@ mod test {
     fn test_multiple_spaces_then_newline_in_raw() {
         let input = "`Cat  \ncat`";
 
-        let run = TextRun {
-            text: String::from("Cat   cat"),
-            style: Style::Raw,
-        };
-
-        let text = Box::new([run]);
-
-        let expected = Document {
-            metadata: Metadata::default(),
-            blocks: Box::new([Block::Paragraph(text)]),
-        };
+        let expected = document()
+            .with_block(paragraph().with_raw_run("Cat   cat"))
+            .build();
 
         let actual = parse_str(input).unwrap();
 
@@ -1162,19 +946,11 @@ mod test {
 
     #[test]
     fn doc_with_leading_new_line() {
-        let input = "\nCats";
+        let input = "\nCats cats cats";
 
-        let run = TextRun {
-            text: String::from("Cats"),
-            style: Style::None,
-        };
-
-        let para = Block::Paragraph(Box::new([run]));
-
-        let expected = Document {
-            metadata: Metadata::default(),
-            blocks: Box::new([para]),
-        };
+        let expected = document()
+            .with_block(paragraph().with_run("Cats cats cats"))
+            .build();
 
         let actual = parse_str(input).unwrap();
 
@@ -1183,19 +959,11 @@ mod test {
 
     #[test]
     fn doc_with_leading_newlines() {
-        let input = "\n\nCats";
+        let input = "\n\nCats cats cats";
 
-        let run = TextRun {
-            text: String::from("Cats"),
-            style: Style::None,
-        };
-
-        let para = Block::Paragraph(Box::new([run]));
-
-        let expected = Document {
-            metadata: Metadata::default(),
-            blocks: Box::new([para]),
-        };
+        let expected = document()
+            .with_block(paragraph().with_run("Cats cats cats"))
+            .build();
 
         let actual = parse_str(input).unwrap();
 
@@ -1206,17 +974,9 @@ mod test {
     fn doc_ending_with_new_line() {
         let input = "Cats are friends\n";
 
-        let run = TextRun {
-            text: String::from("Cats are friends"),
-            style: Style::None,
-        };
-
-        let text = Box::new([run]);
-
-        let expected = Document {
-            metadata: Metadata::default(),
-            blocks: Box::new([Block::Paragraph(text)]),
-        };
+        let expected = document()
+            .with_block(paragraph().with_run("Cats are friends"))
+            .build();
 
         let actual = parse_str(input).unwrap();
 
@@ -1227,17 +987,9 @@ mod test {
     fn doc_ending_with_new_lines() {
         let input = "Feline friends\n\n";
 
-        let run = TextRun {
-            text: String::from("Feline friends"),
-            style: Style::None,
-        };
-
-        let text = Box::new([run]);
-
-        let expected = Document {
-            metadata: Metadata::default(),
-            blocks: Box::new([Block::Paragraph(text)]),
-        };
+        let expected = document()
+            .with_block(paragraph().with_run("Feline friends"))
+            .build();
 
         let actual = parse_str(input).unwrap();
 
@@ -1254,13 +1006,12 @@ mod test {
             "title: Practical espionage for felines\n",
         );
 
-        let expected = Metadata {
-            id: String::from("01.23"),
-            title: String::from("Practical espionage for felines"),
-        };
+        let expected = document()
+            .with_id("01.23")
+            .with_title("Practical espionage for felines")
+            .build();
 
-        let parsed = parse_str(input).unwrap();
-        let actual = parsed.metadata;
+        let actual = parse_str(input).unwrap();
 
         assert_eq!(actual, expected);
     }
