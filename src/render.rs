@@ -1,6 +1,6 @@
 use std::io;
 
-use crate::parse::{Block, Document, Style, TextRun};
+use crate::parse::{Block, Document, Paragraph, Style};
 
 //TODO: Have some kind of helper for writing HTML, with indent
 pub fn render_html(document: &Document, out: &mut impl io::Write) -> io::Result<()> {
@@ -14,7 +14,12 @@ pub fn render_html(document: &Document, out: &mut impl io::Write) -> io::Result<
 
     for block in document.blocks.iter() {
         match block {
-            Block::Paragraph(text_runs) => render_paragraph(text_runs, out)?,
+            Block::Paragraph(paragraph) => render_paragraph(paragraph, out)?,
+            Block::Alert(alert) => {
+                for paragraph in alert.content.iter() {
+                    render_paragraph(paragraph, out)?;
+                }
+            }
         }
     }
 
@@ -24,9 +29,10 @@ pub fn render_html(document: &Document, out: &mut impl io::Write) -> io::Result<
     Ok(())
 }
 
-fn render_paragraph(text_runs: &[TextRun], out: &mut impl io::Write) -> io::Result<()> {
+fn render_paragraph(paragraph: &Paragraph, out: &mut impl io::Write) -> io::Result<()> {
     writeln!(out, "    <p>")?;
     writeln!(out, "      ")?;
+    let text_runs = paragraph.runs();
     for run in text_runs.iter() {
         match run.style {
             Style::None => (),

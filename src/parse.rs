@@ -16,7 +16,30 @@ pub struct Metadata {
 
 #[derive(PartialEq, Eq, Debug)]
 pub enum Block {
-    Paragraph(Box<[TextRun]>),
+    Paragraph(Paragraph),
+    Alert(Alert),
+}
+
+#[derive(PartialEq, Eq, Debug)]
+pub struct Paragraph(Box<[TextRun]>);
+
+impl Paragraph {
+    pub fn runs(&self) -> &[TextRun] {
+        &self.0
+    }
+}
+
+//TODO: What if we want to include things like lists in alerts?
+#[derive(PartialEq, Eq, Debug)]
+pub struct Alert {
+    pub content: Box<[Paragraph]>,
+    pub kind: AlertKind,
+}
+
+#[derive(PartialEq, Eq, Debug)]
+pub enum AlertKind {
+    Info,
+    //TODO: Other kinds of alert
 }
 
 #[derive(PartialEq, Eq, Debug)]
@@ -80,13 +103,18 @@ pub fn parse_str(input: &str) -> ParseResult<Document> {
             Peek::Char(_) => {
                 let block_name = parse_block_name(&mut scanner)?;
 
+                //TODO: Extract?
                 match block_name {
                     "metadata" => {
                         parse_metadata(&mut scanner, &mut metadata)?;
                     }
                     "paragraph" => {
                         let para = parse_paragraph(&mut scanner)?;
-                        blocks.push(para);
+                        blocks.push(Block::Paragraph(para));
+                    }
+                    "info" => {
+                        let alert = parse_alert(&mut scanner, AlertKind::Info)?;
+                        blocks.push(Block::Alert(alert));
                     }
                     _ => return Err(ParseError::UnknownBlock),
                 }
@@ -157,7 +185,7 @@ fn parse_metadata(scanner: &mut Scanner, metadata: &mut Metadata) -> ParseResult
     Ok(())
 }
 
-fn parse_paragraph(scanner: &mut Scanner) -> ParseResult<Block> {
+fn parse_paragraph(scanner: &mut Scanner) -> ParseResult<Paragraph> {
     let mut text_runs = Vec::new();
 
     loop {
@@ -174,7 +202,7 @@ fn parse_paragraph(scanner: &mut Scanner) -> ParseResult<Block> {
         text_runs.push(run);
     }
 
-    Ok(Block::Paragraph(text_runs.into_boxed_slice()))
+    Ok(Paragraph(text_runs.into_boxed_slice()))
 }
 
 fn parse_plain_text(scanner: &mut Scanner) -> ParseResult<TextRun> {
@@ -295,6 +323,18 @@ fn parse_raw_text_run(scanner: &mut Scanner) -> ParseResult<String> {
     }
 }
 
+fn parse_alert(scanner: &mut Scanner, kind: AlertKind) -> ParseResult<Alert> {
+    let mut paragraphs = Vec::new();
+
+    let para = parse_paragraph(scanner)?;
+    paragraphs.push(para);
+
+    Ok(Alert {
+        content: paragraphs.into_boxed_slice(),
+        kind,
+    })
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
@@ -310,6 +350,10 @@ mod test {
 
     fn paragraph() -> ParagraphBuilder {
         ParagraphBuilder::new()
+    }
+
+    fn info() -> AlertBuilder {
+        AlertBuilder::new(AlertKind::Info)
     }
 
     struct DocmentBuilder {
@@ -388,11 +432,43 @@ mod test {
             self.push_run(text, Style::Raw);
             self
         }
+
+        fn build(self) -> Paragraph {
+            Paragraph(self.text_runs.into_boxed_slice())
+        }
     }
 
     impl Into<Block> for ParagraphBuilder {
         fn into(self) -> Block {
-            Block::Paragraph(self.text_runs.into_boxed_slice())
+            Block::Paragraph(self.build())
+        }
+    }
+
+    struct AlertBuilder {
+        content: Vec<Paragraph>,
+        kind: AlertKind,
+    }
+
+    impl AlertBuilder {
+        fn new(kind: AlertKind) -> Self {
+            AlertBuilder {
+                content: Vec::new(),
+                kind,
+            }
+        }
+
+        fn with_paragraph(mut self, paragraph: ParagraphBuilder) -> Self {
+            self.content.push(paragraph.build());
+            self
+        }
+    }
+
+    impl Into<Block> for AlertBuilder {
+        fn into(self) -> Block {
+            Block::Alert(Alert {
+                content: self.content.into_boxed_slice(),
+                kind: self.kind,
+            })
         }
     }
 
@@ -1035,4 +1111,29 @@ mod test {
 
         assert_eq!(actual, expected);
     }
+
+    #[test]
+    fn one_line_info() {
+        let input = concat!(
+            "#info\n",
+            "Did you know that cats can reach speeds of up to *30mph*?"
+        );
+
+        let expected = document()
+            .with_block(
+                info().with_paragraph(
+                    paragraph()
+                        .with_run("Did you know that cats can reach speeds of up to ")
+                        .with_strong_run("30mph")
+                        .with_run("?"),
+                ),
+            )
+            .build();
+
+        let actual = parse_str(input).unwrap();
+        assert_eq!(actual, expected);
+    }
+
+    //#[test]
+    //fn multi_line_info() {}
 }
