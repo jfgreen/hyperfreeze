@@ -137,7 +137,7 @@ pub fn parse_str(input: &str) -> ParseResult<Document> {
     })
 }
 
-fn parse_block_name<'a, 'b>(scanner: &'a mut Scanner<'b>) -> ParseResult<&'b str> {
+fn parse_block_name<'a>(scanner: &mut Scanner<'a>) -> ParseResult<&'a str> {
     match scanner.peek() {
         Peek::Char(HASH) => {
             scanner.eat_expected_char(HASH)?;
@@ -146,7 +146,7 @@ fn parse_block_name<'a, 'b>(scanner: &'a mut Scanner<'b>) -> ParseResult<&'b str
             Ok(block_name)
         }
         Peek::Char(_) => Ok("paragraph"),
-        _ => return Err(ParseError::UnexpectedInput),
+        _ => Err(ParseError::UnexpectedInput),
     }
 }
 
@@ -298,7 +298,7 @@ fn parse_styled_text_run(scanner: &mut Scanner, end: char) -> ParseResult<String
         return Err(ParseError::LooseDelimiter);
     }
 
-    return Ok(run);
+    Ok(run)
 }
 
 fn parse_raw_text_run(scanner: &mut Scanner) -> ParseResult<String> {
