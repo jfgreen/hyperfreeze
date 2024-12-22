@@ -19,6 +19,7 @@ mod scan;
 // - Better error reporting -> what went wrong, where
 // - Enforce a system for IDs, e.g J Decimal
 // - Enforce basic metadata?
+// - Strip leading/trailing whitespace from para
 
 #[derive(Debug)]
 enum Error {

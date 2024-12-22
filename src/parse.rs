@@ -252,6 +252,7 @@ fn parse_styled_text_run(scanner: &mut Scanner, end: char) -> ParseResult<String
                 scanner.eat_expected_char(c)?;
                 break;
             }
+            Peek::Char(c) if c.is_delimiter() => return Err(ParseError::UnexpectedInput),
             Peek::Char(_) => {
                 let text = scanner.eat_text_fragment()?;
                 run.push_str(text)
@@ -298,9 +299,6 @@ fn parse_raw_text_run(scanner: &mut Scanner) -> ParseResult<String> {
 mod test {
     use super::*;
     //TODO: Things to test
-    // Strip leading whitespace from para
-    // Strip trailing whitespace from para
-    // Foo_bar_baz vs foobar_baz
     // More evils: _``_, `*`*
     // Test: -foo\nbar- <- Valid?
     // Test: -foo\n\nbar- <- Invalid?
@@ -938,6 +936,28 @@ mod test {
         let input = "*meow meow *";
 
         let expected = Err(ParseError::LooseDelimiter);
+
+        let actual = parse_str(input);
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn raw_immediately_in_emphasis() {
+        let input = "_``_";
+
+        let expected = Err(ParseError::UnexpectedInput);
+
+        let actual = parse_str(input);
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn raw_within_in_emphasis() {
+        let input = "_a``a_";
+
+        let expected = Err(ParseError::UnexpectedInput);
 
         let actual = parse_str(input);
 
