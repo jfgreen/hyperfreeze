@@ -280,7 +280,9 @@ fn parse_styled_text_run(scanner: &mut Scanner, end: char) -> ParseResult<String
                 scanner.eat_expected_char(c)?;
                 break;
             }
-            Peek::Char(c) if c.is_delimiter() => return Err(ParseError::UnexpectedInput),
+            Peek::Char(c) if c.is_delimiter() => {
+                return Err(ParseError::UnexpectedInput);
+            }
             Peek::Char(_) => {
                 let text = scanner.eat_text_fragment()?;
                 run.push_str(text)
@@ -1134,6 +1136,27 @@ mod test {
         assert_eq!(actual, expected);
     }
 
-    //#[test]
-    //fn multi_line_info() {}
+    #[test]
+    #[ignore]
+    fn multi_line_info() {
+        let input = concat!(
+            "#info\n",
+            "---\n",
+            "Here are some facts...\n",
+            "\n",
+            "...about the cats!",
+            "---"
+        );
+
+        let expected = document()
+            .with_block(
+                info()
+                    .with_paragraph(paragraph().with_run("Here are some facts..."))
+                    .with_paragraph(paragraph().with_run("...about the cats")),
+            )
+            .build();
+
+        let actual = parse_str(input).unwrap();
+        assert_eq!(actual, expected);
+    }
 }
