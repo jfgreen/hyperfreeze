@@ -8,7 +8,8 @@ pub fn render_html(document: &Document, out: &mut impl io::Write) -> io::Result<
     writeln!(out, "<html>")?;
     writeln!(out, "  <head>")?;
     writeln!(out, "    <meta charset=\"UTF-8\">")?;
-    writeln!(out, "    <title>{}</title>", document.metadata.title)?;
+    //FIXME: Render meteadata
+    //writeln!(out, "    <title>{}</title>", document.metadata.title)?;
     writeln!(out, "  </head>")?;
     writeln!(out, "  <body>")?;
 
@@ -20,6 +21,7 @@ pub fn render_html(document: &Document, out: &mut impl io::Write) -> io::Result<
                     render_paragraph(paragraph, out)?;
                 }
             }
+            _ => panic!(), //FIXME
         }
     }
 

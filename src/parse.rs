@@ -1,10 +1,10 @@
 use std::fmt::Display;
 
-use crate::scan::{chars::*, CharExt, Peek, Scanner, ScannerError};
+use crate::scan::{Delimiter, ScanContext, Scanner, Token};
 
+//TODO: Could be a type alias instead?
 #[derive(PartialEq, Eq, Debug)]
 pub struct Document {
-    pub metadata: Metadata,
     pub blocks: Box<[Block]>,
 }
 
@@ -16,6 +16,7 @@ pub struct Metadata {
 
 #[derive(PartialEq, Eq, Debug)]
 pub enum Block {
+    Metadata(Metadata),
     Paragraph(Paragraph),
     Alert(Alert),
 }
@@ -59,7 +60,6 @@ pub enum Style {
 
 #[derive(PartialEq, Eq, Debug)]
 pub enum ParseError {
-    ScannerError(ScannerError),
     UnexpectedInput,
     UnmatchedDelimiter,
     LooseDelimiter,
@@ -71,7 +71,6 @@ pub enum ParseError {
 impl Display for ParseError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            ParseError::ScannerError(e) => write!(f, "{}", e),
             ParseError::UnexpectedInput => write!(f, "unexpected input"),
             ParseError::UnmatchedDelimiter => write!(f, "unmatched delimiter"),
             ParseError::LooseDelimiter => write!(f, "loose delimiter"),
@@ -84,83 +83,128 @@ impl Display for ParseError {
 
 type ParseResult<T> = Result<T, ParseError>;
 
-impl From<ScannerError> for ParseError {
-    fn from(error: ScannerError) -> Self {
-        ParseError::ScannerError(error)
+const SPACE: char = ' ';
+
+//TODO: Make these be a macro?
+fn eat(scanner: &mut Scanner, expected: Token) -> ParseResult<()> {
+    if scanner.next() != expected {
+        Err(ParseError::UnexpectedInput)
+    } else {
+        Ok(())
     }
 }
 
-const SPACE: char = ' ';
+fn eat_block_header<'a>(scanner: &mut Scanner<'a>) -> ParseResult<&'a str> {
+    match scanner.next() {
+        Token::BlockHeader(name) => Ok(name),
+        _ => Err(ParseError::UnexpectedInput),
+    }
+}
+
+fn eat_identifier<'a>(scanner: &mut Scanner<'a>) -> ParseResult<&'a str> {
+    match scanner.next() {
+        Token::Identifier(name) => Ok(name),
+        _ => Err(ParseError::UnexpectedInput),
+    }
+}
+
+fn eat_text<'a>(scanner: &mut Scanner<'a>) -> ParseResult<&'a str> {
+    match scanner.next() {
+        Token::Text(text) => Ok(text),
+        _ => Err(ParseError::UnexpectedInput),
+    }
+}
+
+fn eat_delimiter(scanner: &mut Scanner) -> ParseResult<Delimiter> {
+    match scanner.next() {
+        Token::Delimiter(delimiter) => Ok(delimiter),
+        _ => Err(ParseError::UnexpectedInput),
+    }
+}
+
+fn eat_optional_whitespace(scanner: &mut Scanner) {
+    //TODO: Does this need to be a loop...
+    // would we ever get two consecutive whitespace tokens?
+    while scanner.peek() == Token::Whitespace {
+        scanner.next();
+    }
+}
 
 pub fn parse_str(input: &str) -> ParseResult<Document> {
+    //TODO: Make metadata be a block?
     let mut scanner = Scanner::new(input);
     let mut blocks = Vec::new();
 
-    let mut metadata = Metadata::default();
+    //TODO: Think about using types to restrict set of tokens returned by each mode
+
+    // Trim start of doc if it has some kind of whitespace
+    if matches!(scanner.peek(), Token::Linebreak | Token::Blockbreak) {
+        scanner.next();
+    }
 
     loop {
         match scanner.peek() {
-            Peek::Char(_) => {
-                let block_name = parse_block_name(&mut scanner)?;
-
-                //TODO: Extract?
-                match block_name {
-                    "metadata" => {
-                        parse_metadata(&mut scanner, &mut metadata)?;
-                    }
-                    "paragraph" => {
-                        let para = parse_paragraph(&mut scanner)?;
-                        blocks.push(Block::Paragraph(para));
-                    }
-                    "info" => {
-                        let alert = parse_alert(&mut scanner, AlertKind::Info)?;
-                        blocks.push(Block::Alert(alert));
-                    }
-                    _ => return Err(ParseError::UnknownBlock),
-                }
+            Token::BlockHeader(_) => {
+                let block = parse_named_block(&mut scanner)?;
+                blocks.push(block);
             }
-            // Ignore leading newlines
-            Peek::Linebreak => {
-                scanner.eat_expected_char(NEW_LINE)?;
+            Token::Text(_) | Token::Delimiter(_) => {
+                //TODO: Have parse_paragraph return block?
+                let para = parse_paragraph(&mut scanner)?;
+                let block = Block::Paragraph(para);
+                blocks.push(block);
             }
-            // Ignore block breaks
-            Peek::Blockbreak => {
-                scanner.eat_blockbreak()?;
-            }
-            Peek::EndOfFile => break,
+            Token::EndOfFile => break,
+            _ => return Err(ParseError::UnexpectedInput),
         }
     }
 
     Ok(Document {
         blocks: blocks.into_boxed_slice(),
-        metadata,
     })
 }
 
-fn parse_block_name<'a>(scanner: &mut Scanner<'a>) -> ParseResult<&'a str> {
-    match scanner.peek() {
-        Peek::Char(HASH) => {
-            scanner.eat_expected_char(HASH)?;
-            let block_name = scanner.eat_identifier()?;
-            scanner.eat_expected_char(NEW_LINE)?;
-            Ok(block_name)
+fn parse_named_block(scanner: &mut Scanner) -> ParseResult<Block> {
+    let block_name = eat_block_header(scanner)?;
+
+    eat(scanner, Token::Linebreak)?;
+
+    let block = match block_name {
+        "metadata" => {
+            //TODO: Validate that metadata is first block
+            let meta = parse_metadata(scanner)?;
+            Block::Metadata(meta)
         }
-        Peek::Char(_) => Ok("paragraph"),
-        _ => Err(ParseError::UnexpectedInput),
-    }
+        "paragraph" => {
+            let para = parse_paragraph(scanner)?;
+            Block::Paragraph(para)
+        }
+        "info" => {
+            let alert = parse_alert(scanner, AlertKind::Info)?;
+            Block::Alert(alert)
+        }
+        _ => return Err(ParseError::UnknownBlock),
+    };
+
+    Ok(block)
 }
 
-fn parse_metadata(scanner: &mut Scanner, metadata: &mut Metadata) -> ParseResult<()> {
+fn parse_metadata(scanner: &mut Scanner) -> ParseResult<Metadata> {
+    let mut metadata = Metadata::default();
+    scanner.push_context(ScanContext::Metadata);
+
     loop {
-        let key = scanner.eat_identifier()?;
-        scanner.eat_expected_char(COLON)?;
-        scanner.eat_optional_whitespace();
+        let key = eat_identifier(scanner)?;
+        eat_optional_whitespace(scanner);
+        eat(scanner, Token::Colon)?;
+        eat_optional_whitespace(scanner);
 
         // For now, the value is just everything untill the end of line
         // This might get more complicated in the future
         // e.g treating value as int, bool, list, etc?
 
-        let value = scanner.eat_until_linebreak()?;
+        //TODO: Should we have a distinct token for 'metadata value'
+        let value = eat_text(scanner)?;
 
         match key {
             "id" => metadata.id.push_str(value),
@@ -168,33 +212,28 @@ fn parse_metadata(scanner: &mut Scanner, metadata: &mut Metadata) -> ParseResult
             _ => return Err(ParseError::UnknownMetadata),
         };
 
-        match scanner.peek() {
-            Peek::EndOfFile => break,
-            Peek::Blockbreak => {
-                scanner.eat_blockbreak()?;
-                break;
-            }
-            Peek::Linebreak => {
-                scanner.eat_expected_char(NEW_LINE)?;
-                continue;
-            }
+        match scanner.next() {
+            Token::EndOfFile | Token::Blockbreak => break,
+            Token::Linebreak => continue,
             _ => return Err(ParseError::UnexpectedInput),
         }
     }
 
-    Ok(())
+    scanner.pop_context();
+    Ok(metadata)
 }
 
 fn parse_paragraph(scanner: &mut Scanner) -> ParseResult<Paragraph> {
     let mut text_runs = Vec::new();
+    scanner.push_context(ScanContext::Paragraph);
 
     loop {
         let run = match scanner.peek() {
-            Peek::Char(c) if c.is_delimiter() => parse_delimited_text(scanner)?,
-            Peek::Char(_) => parse_plain_text(scanner)?,
-            Peek::EndOfFile => break,
-            Peek::Blockbreak => {
-                scanner.eat_blockbreak()?;
+            Token::Text(_) | Token::Whitespace => parse_plain_text(scanner)?,
+            Token::Delimiter(_) => parse_delimited_text(scanner)?,
+            Token::EndOfFile => break,
+            Token::Blockbreak => {
+                scanner.next();
                 break;
             }
             _ => return Err(ParseError::UnexpectedInput),
@@ -202,6 +241,7 @@ fn parse_paragraph(scanner: &mut Scanner) -> ParseResult<Paragraph> {
         text_runs.push(run);
     }
 
+    scanner.pop_context();
     Ok(Paragraph(text_runs.into_boxed_slice()))
 }
 
@@ -210,22 +250,17 @@ fn parse_plain_text(scanner: &mut Scanner) -> ParseResult<TextRun> {
 
     loop {
         match scanner.peek() {
-            Peek::Char(BACKSLASH) => {
-                scanner.eat_expected_char(BACKSLASH)?;
-                let escaped = scanner.eat_char()?;
-                run.push(escaped);
-            }
-            Peek::Char(c) if c.is_whitespace() => {
-                let _ = scanner.eat_whitespace();
-                run.push(SPACE);
-            }
-            Peek::Char(c) if c.usable_in_word() => {
-                let text = scanner.eat_text_fragment()?;
+            Token::Text(text) => {
+                scanner.next();
                 run.push_str(text);
             }
-            Peek::Linebreak => {
-                scanner.eat_expected_char(NEW_LINE)?;
-                scanner.eat_optional_whitespace();
+            Token::Whitespace => {
+                scanner.next();
+                run.push(SPACE);
+            }
+            Token::Linebreak => {
+                scanner.next();
+                eat_optional_whitespace(scanner);
                 run.push(SPACE);
             }
             _ => break,
@@ -239,17 +274,18 @@ fn parse_plain_text(scanner: &mut Scanner) -> ParseResult<TextRun> {
 }
 
 fn parse_delimited_text(scanner: &mut Scanner) -> ParseResult<TextRun> {
-    let delimiter = scanner.eat_char()?;
+    let delimiter = eat_delimiter(scanner)?;
+
+    use Delimiter::*;
 
     let style = match delimiter {
-        ASTERISK => Style::Strong,
-        UNDERSCORE => Style::Emphasis,
-        TILDE => Style::Strikethrough,
-        BACKTICK => Style::Raw,
-        _ => return Err(ParseError::UnexpectedInput),
+        Asterisk => Style::Strong,
+        Underscore => Style::Emphasis,
+        Tilde => Style::Strikethrough,
+        Backtick => Style::Raw,
     };
 
-    let run = if delimiter == BACKTICK {
+    let run = if delimiter == Backtick {
         parse_raw_text_run(scanner)?
     } else {
         parse_styled_text_run(scanner, delimiter)?
@@ -262,34 +298,25 @@ fn parse_delimited_text(scanner: &mut Scanner) -> ParseResult<TextRun> {
     Ok(TextRun { text: run, style })
 }
 
-fn parse_styled_text_run(scanner: &mut Scanner, end: char) -> ParseResult<String> {
+fn parse_styled_text_run(scanner: &mut Scanner, end: Delimiter) -> ParseResult<String> {
     let mut run = String::new();
 
     loop {
-        match scanner.peek() {
-            Peek::Char(BACKSLASH) => {
-                scanner.eat_expected_char(BACKSLASH)?;
-                let escaped = scanner.eat_char()?;
-                run.push(escaped);
+        match scanner.next() {
+            Token::Text(text) => {
+                run.push_str(text);
             }
-            Peek::Char(c) if c.is_whitespace() => {
-                scanner.eat_whitespace()?;
+            Token::Whitespace => {
                 run.push(SPACE);
             }
-            Peek::Char(c) if c == end => {
-                scanner.eat_expected_char(c)?;
+            Token::Delimiter(d) if d == end => {
                 break;
             }
-            Peek::Char(c) if c.is_delimiter() => {
+            Token::Delimiter(_) => {
                 return Err(ParseError::UnexpectedInput);
             }
-            Peek::Char(_) => {
-                let text = scanner.eat_text_fragment()?;
-                run.push_str(text)
-            }
-            Peek::Linebreak => {
-                scanner.eat_expected_char(NEW_LINE)?;
-                scanner.eat_optional_whitespace();
+            Token::Linebreak => {
+                eat_optional_whitespace(scanner);
                 run.push(SPACE);
             }
             _ => return Err(ParseError::UnmatchedDelimiter),
@@ -304,25 +331,27 @@ fn parse_styled_text_run(scanner: &mut Scanner, end: char) -> ParseResult<String
 }
 
 fn parse_raw_text_run(scanner: &mut Scanner) -> ParseResult<String> {
+    scanner.push_context(ScanContext::InlineRaw);
     let mut run = String::new();
 
     loop {
-        match scanner.peek() {
-            Peek::Char(BACKTICK) => {
-                scanner.eat_expected_char(BACKTICK)?;
-                return Ok(run);
+        match scanner.next() {
+            Token::Delimiter(Delimiter::Backtick) => {
+                break;
             }
-            Peek::Char(_) => {
-                let text = scanner.eat_raw_fragment()?;
-                run.push_str(text)
+            //TODO: Should raw text fragment be its own type?
+            Token::Text(text) => {
+                run.push_str(text);
             }
-            Peek::Linebreak => {
-                scanner.eat_expected_char(NEW_LINE)?;
+            Token::Linebreak => {
                 run.push(SPACE);
             }
             _ => return Err(ParseError::UnmatchedDelimiter),
         }
     }
+
+    scanner.pop_context();
+    Ok(run)
 }
 
 fn parse_alert(scanner: &mut Scanner, kind: AlertKind) -> ParseResult<Alert> {
@@ -344,10 +373,18 @@ mod test {
     // More evils: _``_, `*`*
     // Test: -foo\nbar- <- Valid?
     // Test: -foo\n\nbar- <- Invalid?
+    // Test: escaped chars in metadata
     // Explicit #paragraph
+    //
+    // Very evil test for peek across context bounaries
+    // (i.e token cached from peek in context A used context B)
 
     fn document() -> DocmentBuilder {
         DocmentBuilder::new()
+    }
+
+    fn metadata() -> MetadataBuilder {
+        MetadataBuilder::new()
     }
 
     fn paragraph() -> ParagraphBuilder {
@@ -359,22 +396,34 @@ mod test {
     }
 
     struct DocmentBuilder {
-        metadata: Metadata,
         blocks: Vec<Block>,
     }
 
     impl DocmentBuilder {
         fn new() -> Self {
-            DocmentBuilder {
-                metadata: Metadata::default(),
-                blocks: Vec::new(),
-            }
+            DocmentBuilder { blocks: Vec::new() }
         }
 
         fn build(self) -> Document {
             Document {
-                metadata: self.metadata,
                 blocks: self.blocks.into_boxed_slice(),
+            }
+        }
+
+        fn with_block<T: Into<Block>>(mut self, block: T) -> Self {
+            self.blocks.push(block.into());
+            self
+        }
+    }
+
+    struct MetadataBuilder {
+        metadata: Metadata,
+    }
+
+    impl MetadataBuilder {
+        fn new() -> Self {
+            MetadataBuilder {
+                metadata: Metadata::default(),
             }
         }
 
@@ -388,9 +437,14 @@ mod test {
             self
         }
 
-        fn with_block<T: Into<Block>>(mut self, block: T) -> Self {
-            self.blocks.push(block.into());
-            self
+        fn build(self) -> Metadata {
+            self.metadata
+        }
+    }
+
+    impl Into<Block> for MetadataBuilder {
+        fn into(self) -> Block {
+            Block::Metadata(self.build())
         }
     }
 
@@ -1056,7 +1110,7 @@ mod test {
     }
 
     #[test]
-    fn doc_with_leading_newlines() {
+    fn doc_with_leading_new_lines() {
         let input = "\n\nCats cats cats";
 
         let expected = document()
@@ -1105,8 +1159,11 @@ mod test {
         );
 
         let expected = document()
-            .with_id("01.23")
-            .with_title("Practical espionage for felines")
+            .with_block(
+                metadata()
+                    .with_id("01.23")
+                    .with_title("Practical espionage for felines"),
+            )
             .build();
 
         let actual = parse_str(input).unwrap();
