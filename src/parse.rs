@@ -31,6 +31,8 @@ impl Paragraph {
 }
 
 //TODO: What if we want to include things like lists in alerts?
+//TODO: Generify the concept of a BlockContainer and limit what it can contain
+
 #[derive(PartialEq, Eq, Debug)]
 pub struct Alert {
     pub content: Box<[Paragraph]>,
@@ -101,6 +103,20 @@ fn eat_block_header<'a>(scanner: &mut Scanner<'a>) -> ParseResult<&'a str> {
     }
 }
 
+fn eat_single_container_header<'a>(scanner: &mut Scanner<'a>) -> ParseResult<&'a str> {
+    match scanner.next() {
+        Token::SingleBlockContainerHeader(name) => Ok(name),
+        _ => Err(ParseError::UnexpectedInput),
+    }
+}
+
+fn eat_multi_container_header<'a>(scanner: &mut Scanner<'a>) -> ParseResult<&'a str> {
+    match scanner.next() {
+        Token::MultiBlockContainerHeader(name) => Ok(name),
+        _ => Err(ParseError::UnexpectedInput),
+    }
+}
+
 fn eat_identifier<'a>(scanner: &mut Scanner<'a>) -> ParseResult<&'a str> {
     match scanner.next() {
         Token::Identifier(name) => Ok(name),
@@ -130,6 +146,9 @@ fn eat_optional_whitespace(scanner: &mut Scanner) {
     }
 }
 
+// TODO: Maybe use asserts instead of eats for hand offs that should always be true
+// Eg func A peeks a Text, calls func B. B should assert next() is text
+// TODO: Handoff to and from various parse funcs feels a little adhoc
 pub fn parse_str(input: &str) -> ParseResult<Document> {
     //TODO: Make metadata be a block?
     let mut scanner = Scanner::new(input);
@@ -148,20 +167,91 @@ pub fn parse_str(input: &str) -> ParseResult<Document> {
                 let block = parse_named_block(&mut scanner)?;
                 blocks.push(block);
             }
-            Token::Text(_) | Token::Delimiter(_) => {
+            Token::SingleBlockContainerHeader(_) => {
+                //For now, alert is the only kind of container
+                let block = parse_single_block_container(&mut scanner)?;
+                blocks.push(block);
+            }
+            Token::MultiBlockContainerHeader(_) => {
+                //For now, alert is the only kind of container
+                let block = parse_multi_block_container(&mut scanner)?;
+                blocks.push(block);
+            }
+            Token::EndOfFile => break,
+            _ => {
+                // Default for a block missing header is to assume paragraph
+                // (this will likely change once we have lists)
+
                 //TODO: Have parse_paragraph return block?
                 let para = parse_paragraph(&mut scanner)?;
                 let block = Block::Paragraph(para);
                 blocks.push(block);
             }
-            Token::EndOfFile => break,
-            _ => return Err(ParseError::UnexpectedInput),
         }
     }
 
     Ok(Document {
         blocks: blocks.into_boxed_slice(),
     })
+}
+
+fn parse_single_block_container(scanner: &mut Scanner) -> ParseResult<Block> {
+    let container_name = eat_single_container_header(scanner)?;
+    let container_kind = container_kind_from_name(container_name)?;
+    eat(scanner, Token::Linebreak)?;
+
+    let mut paragraphs = Vec::new();
+
+    let para = parse_paragraph(scanner)?;
+    paragraphs.push(para);
+
+    //TODO: This should be of kind 'Container'
+    let container = Alert {
+        content: paragraphs.into_boxed_slice(),
+        kind: container_kind,
+    };
+    let block = Block::Alert(container);
+    Ok(block)
+}
+
+fn parse_multi_block_container(scanner: &mut Scanner) -> ParseResult<Block> {
+    let container_name = eat_multi_container_header(scanner)?;
+    let container_kind = container_kind_from_name(container_name)?;
+    eat(scanner, Token::Linebreak)?;
+
+    let mut paragraphs = Vec::new();
+
+    loop {
+        match scanner.peek() {
+            Token::MultiBlockContainerFooter => {
+                scanner.next();
+                break;
+            }
+            //TODO: Helper func for tokens that could be para start
+            Token::Text(_) | Token::Whitespace | Token::Delimiter(_) => {
+                let para = parse_paragraph(scanner)?;
+                paragraphs.push(para);
+            }
+            _ => return Err(ParseError::UnexpectedInput),
+        }
+    }
+
+    //TODO: This should be of kind 'Container'
+    let container = Alert {
+        content: paragraphs.into_boxed_slice(),
+        kind: container_kind,
+    };
+    let block = Block::Alert(container);
+    Ok(block)
+}
+
+//TODO: This should return ContainerKind
+fn container_kind_from_name(name: &str) -> ParseResult<AlertKind> {
+    match name {
+        "info" => Ok(AlertKind::Info),
+        //TODO: Should be UnknownContainer?
+        _ => Err(ParseError::UnknownBlock),
+    }
 }
 
 fn parse_named_block(scanner: &mut Scanner) -> ParseResult<Block> {
@@ -178,10 +268,6 @@ fn parse_named_block(scanner: &mut Scanner) -> ParseResult<Block> {
         "paragraph" => {
             let para = parse_paragraph(scanner)?;
             Block::Paragraph(para)
-        }
-        "info" => {
-            let alert = parse_alert(scanner, AlertKind::Info)?;
-            Block::Alert(alert)
         }
         _ => return Err(ParseError::UnknownBlock),
     };
@@ -236,6 +322,9 @@ fn parse_paragraph(scanner: &mut Scanner) -> ParseResult<Paragraph> {
                 scanner.next();
                 break;
             }
+            //TODO: Should we instead give up and return on anything
+            // we dont recognise? (i.e dont throw unexpected here?)
+            Token::MultiBlockContainerFooter => break,
             _ => return Err(ParseError::UnexpectedInput),
         };
         text_runs.push(run);
@@ -248,9 +337,19 @@ fn parse_paragraph(scanner: &mut Scanner) -> ParseResult<Paragraph> {
 fn parse_plain_text(scanner: &mut Scanner) -> ParseResult<TextRun> {
     let mut run = String::new();
 
+    let mut pending_linebreak = false;
+
     loop {
         match scanner.peek() {
             Token::Text(text) => {
+                // Last token was linebreak,
+                // and now we have more text.
+                // So treat as a space.
+
+                if pending_linebreak {
+                    pending_linebreak = false;
+                    run.push(SPACE);
+                }
                 scanner.next();
                 run.push_str(text);
             }
@@ -261,7 +360,8 @@ fn parse_plain_text(scanner: &mut Scanner) -> ParseResult<TextRun> {
             Token::Linebreak => {
                 scanner.next();
                 eat_optional_whitespace(scanner);
-                run.push(SPACE);
+                // Wait to see if the next line is more text
+                pending_linebreak = true;
             }
             _ => break,
         }
@@ -354,18 +454,6 @@ fn parse_raw_text_run(scanner: &mut Scanner) -> ParseResult<String> {
     Ok(run)
 }
 
-fn parse_alert(scanner: &mut Scanner, kind: AlertKind) -> ParseResult<Alert> {
-    let mut paragraphs = Vec::new();
-
-    let para = parse_paragraph(scanner)?;
-    paragraphs.push(para);
-
-    Ok(Alert {
-        content: paragraphs.into_boxed_slice(),
-        kind,
-    })
-}
-
 #[cfg(test)]
 mod test {
     use super::*;
@@ -374,6 +462,7 @@ mod test {
     // Test: -foo\nbar- <- Valid?
     // Test: -foo\n\nbar- <- Invalid?
     // Test: escaped chars in metadata
+    // Test: just a '#'
     // Explicit #paragraph
     //
     // Very evil test for peek across context bounaries
@@ -513,7 +602,7 @@ mod test {
             }
         }
 
-        fn with_paragraph(mut self, paragraph: ParagraphBuilder) -> Self {
+        fn with(mut self, paragraph: ParagraphBuilder) -> Self {
             self.content.push(paragraph.build());
             self
         }
@@ -1171,16 +1260,18 @@ mod test {
         assert_eq!(actual, expected);
     }
 
+    //TODO: Do we even want to support this syntax?
+    // Maybe only for single anon blocks
     #[test]
-    fn one_line_info() {
+    fn one_paragraph_info() {
         let input = concat!(
-            "#info\n",
+            "#=info\n",
             "Did you know that cats can reach speeds of up to *30mph*?"
         );
 
         let expected = document()
             .with_block(
-                info().with_paragraph(
+                info().with(
                     paragraph()
                         .with_run("Did you know that cats can reach speeds of up to ")
                         .with_strong_run("30mph")
@@ -1193,23 +1284,24 @@ mod test {
         assert_eq!(actual, expected);
     }
 
+    //TODO: Test for unterminated container
+    //TODO: Test for container at EOF
+    //TODO: Test for "pretty varients" of alert #=info=, #==info== and #=== INFO ===
     #[test]
-    #[ignore]
-    fn multi_line_info() {
+    fn multi_paragraph_info() {
         let input = concat!(
-            "#info\n",
-            "---\n",
+            "#==info\n",
             "Here are some facts...\n",
             "\n",
-            "...about the cats!",
-            "---"
+            "...about the cats!\n",
+            "#=="
         );
 
         let expected = document()
             .with_block(
                 info()
-                    .with_paragraph(paragraph().with_run("Here are some facts..."))
-                    .with_paragraph(paragraph().with_run("...about the cats")),
+                    .with(paragraph().with_run("Here are some facts..."))
+                    .with(paragraph().with_run("...about the cats!")),
             )
             .build();
 

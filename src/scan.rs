@@ -6,6 +6,9 @@ pub enum Token<'a> {
     Blockbreak,
     Linebreak,
     BlockHeader(&'a str),
+    SingleBlockContainerHeader(&'a str),
+    MultiBlockContainerHeader(&'a str),
+    MultiBlockContainerFooter,
     Text(&'a str),
     Whitespace,
     Identifier(&'a str),
@@ -29,6 +32,7 @@ const UNDERSCORE: char = '_';
 const HASH: char = '#';
 const COLON: char = ':';
 const BACKSLASH: char = '\\';
+const EQUALS: char = '=';
 
 trait CharExt {
     fn usable_in_word(&self) -> bool;
@@ -129,7 +133,7 @@ impl<'a> Scanner<'a> {
         //TODO: Modal Tokens! (i.e contrained set per mode)
         //TODO: Make the order less fragile
 
-        let token = match self.current_char {
+        match self.current_char {
             Some(NEW_LINE) => {
                 self.read_next_char();
                 match self.current_char {
@@ -141,10 +145,29 @@ impl<'a> Scanner<'a> {
                     _ => Token::Linebreak,
                 }
             }
-            Some(HASH) if context == Base => {
+            //TODO: Think about which contexts we expect this to work in?
+            Some(HASH) if self.column == 1 => {
                 self.read_next_char();
-                let name = self.eat_while(char::is_alphanumeric);
-                Token::BlockHeader(name)
+                match self.current_char {
+                    Some(EQUALS) => {
+                        //TODO: Eat while eq would be useful
+                        let equals = self.eat_while(|c| c == EQUALS);
+
+                        if self.current_char.is_some_and(char::is_alphanumeric) {
+                            let name = self.eat_while(char::is_alphanumeric);
+                            match equals.len() {
+                                1 => Token::SingleBlockContainerHeader(name),
+                                _ => Token::MultiBlockContainerHeader(name),
+                            }
+                        } else {
+                            Token::MultiBlockContainerFooter
+                        }
+                    }
+                    _ => {
+                        let name = self.eat_while(char::is_alphanumeric);
+                        Token::BlockHeader(name)
+                    }
+                }
             }
             //TODO: Escaped chars in other modes
             Some(BACKSLASH) if context == Paragraph => {
@@ -201,16 +224,12 @@ impl<'a> Scanner<'a> {
                 self.read_next_char();
                 Token::Delimiter(Underscore)
             }
-            Some(c) => {
-                dbg!(c);
-                todo!()
+            Some(_) => {
+                //TODO: Better default, maybe an "Unknown token"
+                Token::Text(self.eat_char())
             }
             None => Token::EndOfFile,
-        };
-
-        dbg!(token);
-
-        token
+        }
     }
 
     //TODO: More ergonomic to have a method per context (e.g push_context_paragraph())
