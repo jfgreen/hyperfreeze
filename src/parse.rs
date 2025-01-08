@@ -5,6 +5,7 @@ use crate::scan::{Delimiter, ScanContext, Scanner, Token};
 //TODO: Could be a type alias instead?
 #[derive(PartialEq, Eq, Debug)]
 pub struct Document {
+    pub metadata: Metadata,
     pub blocks: Box<[Block]>,
 }
 
@@ -16,7 +17,6 @@ pub struct Metadata {
 
 #[derive(PartialEq, Eq, Debug)]
 pub enum Block {
-    Metadata(Metadata),
     Paragraph(Paragraph),
     Alert(Alert),
 }
@@ -67,6 +67,7 @@ pub enum ParseError {
     LooseDelimiter,
     EmptyDelimitedText,
     UnknownMetadata,
+    MetadataNotAtStart,
     UnknownBlock,
 }
 
@@ -78,6 +79,7 @@ impl Display for ParseError {
             ParseError::LooseDelimiter => write!(f, "loose delimiter"),
             ParseError::EmptyDelimitedText => write!(f, "empty delimited text"),
             ParseError::UnknownMetadata => write!(f, "unknown metadata"),
+            ParseError::MetadataNotAtStart => write!(f, "metadata not at start"),
             ParseError::UnknownBlock => write!(f, "unknown block"),
         }
     }
@@ -151,8 +153,10 @@ fn eat_optional_whitespace(scanner: &mut Scanner) {
 // TODO: Handoff to and from various parse funcs feels a little adhoc
 pub fn parse_str(input: &str) -> ParseResult<Document> {
     //TODO: Make metadata be a block?
-    let mut scanner = Scanner::new(input);
+    let scanner = &mut Scanner::new(input);
     let mut blocks = Vec::new();
+
+    let mut metadata = Metadata::default();
 
     //TODO: Think about using types to restrict set of tokens returned by each mode
 
@@ -161,20 +165,24 @@ pub fn parse_str(input: &str) -> ParseResult<Document> {
         scanner.next();
     }
 
+    if matches!(scanner.peek(), Token::BlockHeader("metadata")) {
+        metadata = parse_metadata_block(scanner)?;
+    }
+
     loop {
         match scanner.peek() {
             Token::BlockHeader(_) => {
-                let block = parse_named_block(&mut scanner)?;
+                let block = parse_named_block(scanner)?;
                 blocks.push(block);
             }
             Token::SingleBlockContainerHeader(_) => {
                 //For now, alert is the only kind of container
-                let block = parse_single_block_container(&mut scanner)?;
+                let block = parse_single_block_container(scanner)?;
                 blocks.push(block);
             }
             Token::MultiBlockContainerHeader(_) => {
                 //For now, alert is the only kind of container
-                let block = parse_multi_block_container(&mut scanner)?;
+                let block = parse_multi_block_container(scanner)?;
                 blocks.push(block);
             }
             Token::EndOfFile => break,
@@ -183,7 +191,7 @@ pub fn parse_str(input: &str) -> ParseResult<Document> {
                 // (this will likely change once we have lists)
 
                 //TODO: Have parse_paragraph return block?
-                let para = parse_paragraph(&mut scanner)?;
+                let para = parse_paragraph(scanner)?;
                 let block = Block::Paragraph(para);
                 blocks.push(block);
             }
@@ -191,6 +199,7 @@ pub fn parse_str(input: &str) -> ParseResult<Document> {
     }
 
     Ok(Document {
+        metadata,
         blocks: blocks.into_boxed_slice(),
     })
 }
@@ -260,11 +269,7 @@ fn parse_named_block(scanner: &mut Scanner) -> ParseResult<Block> {
     eat(scanner, Token::Linebreak)?;
 
     let block = match block_name {
-        "metadata" => {
-            //TODO: Validate that metadata is first block
-            let meta = parse_metadata(scanner)?;
-            Block::Metadata(meta)
-        }
+        "metadata" => return Err(ParseError::MetadataNotAtStart),
         "paragraph" => {
             let para = parse_paragraph(scanner)?;
             Block::Paragraph(para)
@@ -275,7 +280,10 @@ fn parse_named_block(scanner: &mut Scanner) -> ParseResult<Block> {
     Ok(block)
 }
 
-fn parse_metadata(scanner: &mut Scanner) -> ParseResult<Metadata> {
+fn parse_metadata_block(scanner: &mut Scanner) -> ParseResult<Metadata> {
+    eat_block_header(scanner)?;
+    eat(scanner, Token::Linebreak)?;
+
     let mut metadata = Metadata::default();
     scanner.push_context(ScanContext::Metadata);
 
@@ -485,18 +493,27 @@ mod test {
     }
 
     struct DocmentBuilder {
+        metadata: Metadata,
         blocks: Vec<Block>,
     }
 
     impl DocmentBuilder {
         fn new() -> Self {
-            DocmentBuilder { blocks: Vec::new() }
+            DocmentBuilder {
+                metadata: Metadata::default(),
+                blocks: Vec::new(),
+            }
         }
 
         fn build(self) -> Document {
             Document {
+                metadata: self.metadata,
                 blocks: self.blocks.into_boxed_slice(),
             }
+        }
+        fn with_metadata(mut self, metadata: MetadataBuilder) -> Self {
+            self.metadata = metadata.build();
+            self
         }
 
         fn with_block<T: Into<Block>>(mut self, block: T) -> Self {
@@ -528,12 +545,6 @@ mod test {
 
         fn build(self) -> Metadata {
             self.metadata
-        }
-    }
-
-    impl Into<Block> for MetadataBuilder {
-        fn into(self) -> Block {
-            Block::Metadata(self.build())
         }
     }
 
@@ -1248,7 +1259,7 @@ mod test {
         );
 
         let expected = document()
-            .with_block(
+            .with_metadata(
                 metadata()
                     .with_id("01.23")
                     .with_title("Practical espionage for felines"),
@@ -1256,6 +1267,23 @@ mod test {
             .build();
 
         let actual = parse_str(input).unwrap();
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn metadata_not_at_start_is_rejected() {
+        let input = concat!(
+            "Hi!\n",
+            "\n",
+            "#metadata\n",
+            "id: 01.23\n",
+            "title: Some document\n",
+        );
+
+        let expected = Err(ParseError::MetadataNotAtStart);
+
+        let actual = parse_str(input);
 
         assert_eq!(actual, expected);
     }
