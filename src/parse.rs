@@ -2,7 +2,6 @@ use std::fmt::Display;
 
 use crate::scan::{Delimiter, ScanContext, Scanner, Token};
 
-//TODO: Could be a type alias instead?
 #[derive(PartialEq, Eq, Debug)]
 pub struct Document {
     pub metadata: Metadata,
@@ -126,9 +125,9 @@ fn eat_identifier<'a>(scanner: &mut Scanner<'a>) -> ParseResult<&'a str> {
     }
 }
 
-fn eat_text<'a>(scanner: &mut Scanner<'a>) -> ParseResult<&'a str> {
+fn eat_meta_text<'a>(scanner: &mut Scanner<'a>) -> ParseResult<&'a str> {
     match scanner.next() {
-        Token::Text(text) => Ok(text),
+        Token::MetaText(text) => Ok(text),
         _ => Err(ParseError::UnexpectedInput),
     }
 }
@@ -141,9 +140,7 @@ fn eat_delimiter(scanner: &mut Scanner) -> ParseResult<Delimiter> {
 }
 
 fn eat_optional_whitespace(scanner: &mut Scanner) {
-    //TODO: Does this need to be a loop...
-    // would we ever get two consecutive whitespace tokens?
-    while scanner.peek() == Token::Whitespace {
+    if scanner.peek() == Token::Whitespace {
         scanner.next();
     }
 }
@@ -152,13 +149,10 @@ fn eat_optional_whitespace(scanner: &mut Scanner) {
 // Eg func A peeks a Text, calls func B. B should assert next() is text
 // TODO: Handoff to and from various parse funcs feels a little adhoc
 pub fn parse_str(input: &str) -> ParseResult<Document> {
-    //TODO: Make metadata be a block?
     let scanner = &mut Scanner::new(input);
     let mut blocks = Vec::new();
 
     let mut metadata = Metadata::default();
-
-    //TODO: Think about using types to restrict set of tokens returned by each mode
 
     // Trim start of doc if it has some kind of whitespace
     if matches!(scanner.peek(), Token::Linebreak | Token::Blockbreak) {
@@ -297,8 +291,7 @@ fn parse_metadata_block(scanner: &mut Scanner) -> ParseResult<Metadata> {
         // This might get more complicated in the future
         // e.g treating value as int, bool, list, etc?
 
-        //TODO: Should we have a distinct token for 'metadata value'
-        let value = eat_text(scanner)?;
+        let value = eat_meta_text(scanner)?;
 
         match key {
             "id" => metadata.id.push_str(value),
@@ -330,8 +323,6 @@ fn parse_paragraph(scanner: &mut Scanner) -> ParseResult<Paragraph> {
                 scanner.next();
                 break;
             }
-            //TODO: Should we instead give up and return on anything
-            // we dont recognise? (i.e dont throw unexpected here?)
             Token::MultiBlockContainerFooter => break,
             _ => return Err(ParseError::UnexpectedInput),
         };
@@ -447,8 +438,7 @@ fn parse_raw_text_run(scanner: &mut Scanner) -> ParseResult<String> {
             Token::Delimiter(Delimiter::Backtick) => {
                 break;
             }
-            //TODO: Should raw text fragment be its own type?
-            Token::Text(text) => {
+            Token::RawFragment(text) => {
                 run.push_str(text);
             }
             Token::Linebreak => {
@@ -473,8 +463,10 @@ mod test {
     // Test: just a '#'
     // Explicit #paragraph
     //
-    // Very evil test for peek across context bounaries
-    // (i.e token cached from peek in context A used context B)
+    // Pathalogical test, that limits our design
+    // \n  \n
+    // Should _probably_ be treated as a block break
+    // However, we cant use a simple fixed char lookahead
 
     fn document() -> DocmentBuilder {
         DocmentBuilder::new()
@@ -1289,6 +1281,7 @@ mod test {
     }
 
     //TODO: Do we even want to support this syntax?
+    // We could make the there just be multi block and have it use '#='?
     // Maybe only for single anon blocks
     #[test]
     fn one_paragraph_info() {
@@ -1337,3 +1330,22 @@ mod test {
         assert_eq!(actual, expected);
     }
 }
+
+//TODO: what about
+
+// Foo
+// #paragraph <-- Should reject, no block break
+// Bar
+
+// Foo
+//  #paragraph <-- Should maybe reject?
+// Bar
+
+//
+// #==Foo==
+// Foo
+// #==bar <-- should reject
+//
+//
+// Foo
+// #==bar <-- should reject no opening

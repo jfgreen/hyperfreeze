@@ -13,7 +13,10 @@ pub enum Token<'a> {
     Whitespace,
     Identifier(&'a str),
     Delimiter(Delimiter),
+    MetaText(&'a str),
     Colon,
+    RawFragment(&'a str),
+    Unknown,
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Copy)]
@@ -35,14 +38,14 @@ const BACKSLASH: char = '\\';
 const EQUALS: char = '=';
 
 trait CharExt {
-    fn usable_in_word(&self) -> bool;
+    fn usable_in_text(&self) -> bool;
     fn usable_in_raw(&self) -> bool;
     fn usable_in_identifier(&self) -> bool;
     fn is_delimiter(&self) -> bool;
 }
 
 impl CharExt for char {
-    fn usable_in_word(&self) -> bool {
+    fn usable_in_text(&self) -> bool {
         !(self.is_delimiter() || self.is_whitespace() || *self == BACKSLASH)
     }
 
@@ -121,19 +124,10 @@ impl<'a> Scanner<'a> {
     }
 
     fn read_token(&mut self) -> Token<'a> {
-        let context = *self.context_stack.last().unwrap_or(&ScanContext::Base);
-
-        use Delimiter::*;
-        use ScanContext::*;
-
-        //TODO: Try "borrowing" the right mode? Reset peek on return;
-        //TODO: Track line and column in each token
-        //TODO: Test we report correct line number
-        //TODO: Pull different contexts out into seperate match statements
-        //TODO: Modal Tokens! (i.e contrained set per mode)
-        //TODO: Make the order less fragile
+        let context = self.context_stack.last().unwrap_or(&ScanContext::Base);
 
         match self.current_char {
+            None => Token::EndOfFile,
             Some(NEW_LINE) => {
                 self.read_next_char();
                 match self.current_char {
@@ -145,23 +139,37 @@ impl<'a> Scanner<'a> {
                     _ => Token::Linebreak,
                 }
             }
+            Some(c) => match context {
+                ScanContext::Base => self.read_token_base(c),
+                ScanContext::Metadata => self.read_token_metadata(c),
+                ScanContext::Paragraph => self.read_token_paragraph(c),
+                ScanContext::InlineRaw => self.read_token_inline_raw(c),
+            },
+        }
+
+        //TODO: Track line and column in each token
+        //TODO: Test we report correct line number
+    }
+
+    fn read_token_base(&mut self, first_char: char) -> Token<'a> {
+        match first_char {
             //TODO: Think about which contexts we expect this to work in?
-            Some(HASH) if self.column == 1 => {
+            HASH if self.column == 1 => {
                 self.read_next_char();
                 match self.current_char {
                     Some(EQUALS) => {
-                        //TODO: Eat while eq would be useful
                         let equals = self.eat_while(|c| c == EQUALS);
 
-                        if self.current_char.is_some_and(char::is_alphanumeric) {
-                            let name = self.eat_while(char::is_alphanumeric);
-                            match equals.len() {
-                                1 => Token::SingleBlockContainerHeader(name),
-                                _ => Token::MultiBlockContainerHeader(name),
-                            }
-                        } else {
-                            Token::MultiBlockContainerFooter
+                        //FIXME: Should assert
+                        // if self.current_char.is_some_and(char::is_alphanumeric) {
+                        let name = self.eat_while(char::is_alphanumeric);
+                        match equals.len() {
+                            1 => Token::SingleBlockContainerHeader(name),
+                            _ => Token::MultiBlockContainerHeader(name),
                         }
+                        //} else {
+                        //    Token::MultiBlockContainerFooter
+                        //}
                     }
                     _ => {
                         let name = self.eat_while(char::is_alphanumeric);
@@ -169,8 +177,50 @@ impl<'a> Scanner<'a> {
                     }
                 }
             }
-            //TODO: Escaped chars in other modes
-            Some(BACKSLASH) if context == Paragraph => {
+            c if c.is_whitespace() => {
+                self.eat_while(char::is_whitespace);
+                Token::Whitespace
+            }
+            // NOTE: Each mode need to detect sentinal tokens that delimit
+            // one context from another. But read_token_base also needs to
+            // correctly infer the first token of a paragraph or list when
+            // the block header is ommited (a valid syntactical sugar)
+            c => self.read_token_paragraph(c),
+        }
+    }
+
+    fn read_token_metadata(&mut self, first_char: char) -> Token<'a> {
+        //TODO: Pull out EOF stuff up also
+        match first_char {
+            c if c.usable_in_identifier() && self.column == 1 => {
+                let identifier = self.eat_while(|c| c.usable_in_identifier());
+                Token::Identifier(identifier)
+            }
+            COLON => {
+                self.read_next_char();
+                Token::Colon
+            }
+            c if c.is_whitespace() => {
+                self.eat_while(char::is_whitespace);
+                Token::Whitespace
+            }
+            _ => {
+                let text = self.eat_while(|c| c != '\n');
+                Token::MetaText(text)
+            }
+        }
+    }
+
+    fn read_token_paragraph(&mut self, first_char: char) -> Token<'a> {
+        match first_char {
+            //TODO: Bit of a hack?
+            HASH if self.column == 1 => {
+                self.read_next_char();
+                //FIXME: Should enforce at least two =
+                self.eat_while(|c| c == EQUALS);
+                Token::MultiBlockContainerFooter
+            }
+            BACKSLASH => {
                 self.read_next_char();
                 if self.current_char.is_some() {
                     Token::Text(self.eat_char())
@@ -178,57 +228,45 @@ impl<'a> Scanner<'a> {
                     Token::EndOfFile
                 }
             }
-            Some(c) if c.usable_in_identifier() && context == Metadata && self.column == 1 => {
-                let identifier = self.eat_while(|c| c.usable_in_identifier());
-                Token::Identifier(identifier)
-            }
-            Some(COLON) if context == Metadata => {
-                self.read_next_char();
-                Token::Colon
-            }
-            Some(c) if c.usable_in_raw() && context == InlineRaw => {
-                let fragment = self.eat_while(|c| c.usable_in_raw());
-                //TODO: Ideally this should be a raw fragment token, exclusive to markup mode
-                Token::Text(fragment)
-            }
-            Some(c) if c.is_whitespace() => {
+            c if c.is_whitespace() => {
                 self.eat_while(char::is_whitespace);
                 Token::Whitespace
             }
-            Some(_) if context == Metadata => {
-                let text = self.eat_while(|c| c != '\n');
+            c if c.usable_in_text() => {
+                let text = self.eat_while(|c| c.usable_in_text());
                 Token::Text(text)
             }
-            Some(c) if c.usable_in_word() => {
-                let word = self.eat_while(|c| c.usable_in_word());
-                //TODO: Ideally this should be a word token, exclusive to markup mode
-                Token::Text(word)
-            }
-            Some(c) if c.is_whitespace() => {
-                self.eat_while(char::is_whitespace);
-                Token::Whitespace
-            }
-            Some(BACKTICK) => {
+            BACKTICK => {
                 self.read_next_char();
-                Token::Delimiter(Backtick)
+                Token::Delimiter(Delimiter::Backtick)
             }
-            Some(ASTERISK) => {
+            ASTERISK => {
                 self.read_next_char();
-                Token::Delimiter(Asterisk)
+                Token::Delimiter(Delimiter::Asterisk)
             }
-            Some(TILDE) => {
+            TILDE => {
                 self.read_next_char();
-                Token::Delimiter(Tilde)
+                Token::Delimiter(Delimiter::Tilde)
             }
-            Some(UNDERSCORE) => {
+            UNDERSCORE => {
                 self.read_next_char();
-                Token::Delimiter(Underscore)
+                Token::Delimiter(Delimiter::Underscore)
             }
-            Some(_) => {
-                //TODO: Better default, maybe an "Unknown token"
-                Token::Text(self.eat_char())
+            _ => Token::Unknown,
+        }
+    }
+
+    fn read_token_inline_raw(&mut self, first_char: char) -> Token<'a> {
+        match first_char {
+            c if c.usable_in_raw() => {
+                let fragment = self.eat_while(|c| c.usable_in_raw());
+                Token::RawFragment(fragment)
             }
-            None => Token::EndOfFile,
+            BACKTICK => {
+                self.read_next_char();
+                Token::Delimiter(Delimiter::Backtick)
+            }
+            _ => Token::Unknown,
         }
     }
 
