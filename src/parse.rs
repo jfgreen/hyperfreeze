@@ -88,62 +88,39 @@ type ParseResult<T> = Result<T, ParseError>;
 
 const SPACE: char = ' ';
 
-//TODO: Make these be a macro?
-fn eat(scanner: &mut Scanner, expected: Token) -> ParseResult<()> {
-    if scanner.next() != expected {
-        Err(ParseError::UnexpectedInput)
-    } else {
-        Ok(())
-    }
-}
-
-fn eat_block_header<'a>(scanner: &mut Scanner<'a>) -> ParseResult<&'a str> {
-    match scanner.next() {
-        Token::BlockHeader(name) => Ok(name),
-        _ => Err(ParseError::UnexpectedInput),
-    }
-}
-
-fn eat_single_container_header<'a>(scanner: &mut Scanner<'a>) -> ParseResult<&'a str> {
-    match scanner.next() {
-        Token::SingleBlockContainerHeader(name) => Ok(name),
-        _ => Err(ParseError::UnexpectedInput),
-    }
-}
-
-fn eat_multi_container_header<'a>(scanner: &mut Scanner<'a>) -> ParseResult<&'a str> {
-    match scanner.next() {
-        Token::MultiBlockContainerHeader(name) => Ok(name),
-        _ => Err(ParseError::UnexpectedInput),
-    }
-}
-
-fn eat_identifier<'a>(scanner: &mut Scanner<'a>) -> ParseResult<&'a str> {
-    match scanner.next() {
-        Token::Identifier(name) => Ok(name),
-        _ => Err(ParseError::UnexpectedInput),
-    }
-}
-
-fn eat_meta_text<'a>(scanner: &mut Scanner<'a>) -> ParseResult<&'a str> {
-    match scanner.next() {
-        Token::MetaText(text) => Ok(text),
-        _ => Err(ParseError::UnexpectedInput),
-    }
-}
-
-fn eat_delimiter(scanner: &mut Scanner) -> ParseResult<Delimiter> {
-    match scanner.next() {
-        Token::Delimiter(delimiter) => Ok(delimiter),
-        _ => Err(ParseError::UnexpectedInput),
-    }
-}
-
 fn eat_optional_whitespace(scanner: &mut Scanner) {
     if scanner.peek() == Token::Whitespace {
         scanner.next();
     }
 }
+
+macro_rules! token_eater {
+    ($eater:ident, $token:ident, $return:ty) => {
+        fn $eater<'a>(scanner: &mut Scanner<'a>) -> ParseResult<$return> {
+            match scanner.next() {
+                Token::$token(contents) => Ok(contents),
+                _ => Err(ParseError::UnexpectedInput),
+            }
+        }
+    };
+    ($eater:ident, $token:ident) => {
+        fn $eater(scanner: &mut Scanner) -> ParseResult<()> {
+            match scanner.next() {
+                Token::$token => Ok(()),
+                _ => Err(ParseError::UnexpectedInput),
+            }
+        }
+    };
+}
+
+token_eater!(eat_colon, Colon);
+token_eater!(eat_linebreak, Linebreak);
+token_eater!(eat_delimiter, Delimiter, Delimiter);
+token_eater!(eat_block_header, BlockHeader, &'a str);
+token_eater!(eat_single_container_header, SingleContainerHeader, &'a str);
+token_eater!(eat_multi_container_header, MultiContainerHeader, &'a str);
+token_eater!(eat_identifier, Identifier, &'a str);
+token_eater!(eat_meta_text, MetaText, &'a str);
 
 // TODO: Maybe use asserts instead of eats for hand offs that should always be true
 // Eg func A peeks a Text, calls func B. B should assert next() is text
@@ -169,12 +146,12 @@ pub fn parse_str(input: &str) -> ParseResult<Document> {
                 let block = parse_named_block(scanner)?;
                 blocks.push(block);
             }
-            Token::SingleBlockContainerHeader(_) => {
+            Token::SingleContainerHeader(_) => {
                 //For now, alert is the only kind of container
                 let block = parse_single_block_container(scanner)?;
                 blocks.push(block);
             }
-            Token::MultiBlockContainerHeader(_) => {
+            Token::MultiContainerHeader(_) => {
                 //For now, alert is the only kind of container
                 let block = parse_multi_block_container(scanner)?;
                 blocks.push(block);
@@ -201,7 +178,7 @@ pub fn parse_str(input: &str) -> ParseResult<Document> {
 fn parse_single_block_container(scanner: &mut Scanner) -> ParseResult<Block> {
     let container_name = eat_single_container_header(scanner)?;
     let container_kind = container_kind_from_name(container_name)?;
-    eat(scanner, Token::Linebreak)?;
+    eat_linebreak(scanner)?;
 
     let mut paragraphs = Vec::new();
 
@@ -220,13 +197,13 @@ fn parse_single_block_container(scanner: &mut Scanner) -> ParseResult<Block> {
 fn parse_multi_block_container(scanner: &mut Scanner) -> ParseResult<Block> {
     let container_name = eat_multi_container_header(scanner)?;
     let container_kind = container_kind_from_name(container_name)?;
-    eat(scanner, Token::Linebreak)?;
+    eat_linebreak(scanner)?;
 
     let mut paragraphs = Vec::new();
 
     loop {
         match scanner.peek() {
-            Token::MultiBlockContainerFooter => {
+            Token::MultiContainerFooter => {
                 scanner.next();
                 break;
             }
@@ -260,7 +237,7 @@ fn container_kind_from_name(name: &str) -> ParseResult<AlertKind> {
 fn parse_named_block(scanner: &mut Scanner) -> ParseResult<Block> {
     let block_name = eat_block_header(scanner)?;
 
-    eat(scanner, Token::Linebreak)?;
+    eat_linebreak(scanner)?;
 
     let block = match block_name {
         "metadata" => return Err(ParseError::MetadataNotAtStart),
@@ -276,7 +253,7 @@ fn parse_named_block(scanner: &mut Scanner) -> ParseResult<Block> {
 
 fn parse_metadata_block(scanner: &mut Scanner) -> ParseResult<Metadata> {
     eat_block_header(scanner)?;
-    eat(scanner, Token::Linebreak)?;
+    eat_linebreak(scanner)?;
 
     let mut metadata = Metadata::default();
     scanner.push_context(ScanContext::Metadata);
@@ -284,7 +261,7 @@ fn parse_metadata_block(scanner: &mut Scanner) -> ParseResult<Metadata> {
     loop {
         let key = eat_identifier(scanner)?;
         eat_optional_whitespace(scanner);
-        eat(scanner, Token::Colon)?;
+        eat_colon(scanner)?;
         eat_optional_whitespace(scanner);
 
         // For now, the value is just everything untill the end of line
@@ -323,7 +300,7 @@ fn parse_paragraph(scanner: &mut Scanner) -> ParseResult<Paragraph> {
                 scanner.next();
                 break;
             }
-            Token::MultiBlockContainerFooter => break,
+            Token::MultiContainerFooter => break,
             _ => return Err(ParseError::UnexpectedInput),
         };
         text_runs.push(run);

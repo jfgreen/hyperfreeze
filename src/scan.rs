@@ -6,9 +6,9 @@ pub enum Token<'a> {
     Blockbreak,
     Linebreak,
     BlockHeader(&'a str),
-    SingleBlockContainerHeader(&'a str),
-    MultiBlockContainerHeader(&'a str),
-    MultiBlockContainerFooter,
+    SingleContainerHeader(&'a str),
+    MultiContainerHeader(&'a str),
+    MultiContainerFooter,
     Text(&'a str),
     Whitespace,
     Identifier(&'a str),
@@ -164,8 +164,8 @@ impl<'a> Scanner<'a> {
                         // if self.current_char.is_some_and(char::is_alphanumeric) {
                         let name = self.eat_while(char::is_alphanumeric);
                         match equals.len() {
-                            1 => Token::SingleBlockContainerHeader(name),
-                            _ => Token::MultiBlockContainerHeader(name),
+                            1 => Token::SingleContainerHeader(name),
+                            _ => Token::MultiContainerHeader(name),
                         }
                         //} else {
                         //    Token::MultiBlockContainerFooter
@@ -218,7 +218,7 @@ impl<'a> Scanner<'a> {
                 self.read_next_char();
                 //FIXME: Should enforce at least two =
                 self.eat_while(|c| c == EQUALS);
-                Token::MultiBlockContainerFooter
+                Token::MultiContainerFooter
             }
             BACKSLASH => {
                 self.read_next_char();
