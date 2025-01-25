@@ -5,7 +5,7 @@ use crate::scan::{Delimiter, ScanContext, Scanner, Token};
 #[derive(PartialEq, Eq, Debug)]
 pub struct Document {
     pub metadata: Metadata,
-    pub blocks: Box<[Block]>,
+    pub contents: Box<[Element]>,
 }
 
 #[derive(PartialEq, Eq, Debug, Default)]
@@ -15,10 +15,31 @@ pub struct Metadata {
 }
 
 #[derive(PartialEq, Eq, Debug)]
+pub enum Element {
+    Block(Block),
+    Container(Container),
+}
+
+#[derive(PartialEq, Eq, Debug)]
 pub enum Block {
     Paragraph(Paragraph),
-    //TODO: Container isn't _really_ a block. What to call this?
-    Container(Container),
+}
+
+#[derive(PartialEq, Eq, Debug)]
+pub struct Container {
+    pub content: Box<[ContainedBlock]>,
+    pub kind: ContainerKind,
+}
+
+#[derive(PartialEq, Eq, Debug)]
+pub enum ContainedBlock {
+    Paragraph(Paragraph),
+}
+
+#[derive(PartialEq, Eq, Debug)]
+pub enum ContainerKind {
+    Info,
+    //TODO: Other kinds of alert
 }
 
 #[derive(PartialEq, Eq, Debug)]
@@ -28,20 +49,6 @@ impl Paragraph {
     pub fn runs(&self) -> &[TextRun] {
         &self.0
     }
-}
-
-//TODO: What if we want to include things like lists in container? Mix of things?
-
-#[derive(PartialEq, Eq, Debug)]
-pub struct Container {
-    pub content: Box<[Paragraph]>,
-    pub kind: ContainerKind,
-}
-
-#[derive(PartialEq, Eq, Debug)]
-pub enum ContainerKind {
-    Info,
-    //TODO: Other kinds of alert
 }
 
 #[derive(PartialEq, Eq, Debug)]
@@ -128,7 +135,7 @@ token_eater!(eat_meta_text, MetaText, &'a str);
 // TODO: Handoff to and from various parse funcs feels a little adhoc
 pub fn parse_str(input: &str) -> ParseResult<Document> {
     let scanner = &mut Scanner::new(input);
-    let mut blocks = Vec::new();
+    let mut elements = Vec::new();
 
     let mut metadata = Metadata::default();
 
@@ -144,12 +151,12 @@ pub fn parse_str(input: &str) -> ParseResult<Document> {
     loop {
         match scanner.peek() {
             Token::BlockHeader(_) => {
-                let block = parse_named_block(scanner)?;
-                blocks.push(block);
+                let element = parse_named_block(scanner)?;
+                elements.push(element);
             }
             Token::ContainerHeader(_) => {
-                let block = parse_container(scanner)?;
-                blocks.push(block);
+                let element = parse_container(scanner)?;
+                elements.push(element);
             }
             Token::EndOfFile => break,
             _ => {
@@ -159,23 +166,24 @@ pub fn parse_str(input: &str) -> ParseResult<Document> {
                 //TODO: Have parse_paragraph return block?
                 let para = parse_paragraph(scanner)?;
                 let block = Block::Paragraph(para);
-                blocks.push(block);
+                let element = Element::Block(block);
+                elements.push(element);
             }
         }
     }
 
     Ok(Document {
         metadata,
-        blocks: blocks.into_boxed_slice(),
+        contents: elements.into_boxed_slice(),
     })
 }
 
-fn parse_container(scanner: &mut Scanner) -> ParseResult<Block> {
+fn parse_container(scanner: &mut Scanner) -> ParseResult<Element> {
     let container_name = eat_container_header(scanner)?;
     let container_kind = container_kind_from_name(container_name)?;
     eat_linebreak(scanner)?;
 
-    let mut paragraphs = Vec::new();
+    let mut blocks = Vec::new();
 
     loop {
         match scanner.peek() {
@@ -186,19 +194,19 @@ fn parse_container(scanner: &mut Scanner) -> ParseResult<Block> {
             //TODO: Helper func for tokens that could be para start
             Token::Text(_) | Token::Whitespace | Token::Delimiter(_) => {
                 let para = parse_paragraph(scanner)?;
-                paragraphs.push(para);
+                let block = ContainedBlock::Paragraph(para);
+                blocks.push(block);
             }
             _ => return Err(ParseError::UnexpectedInput),
         }
     }
 
-    //TODO: This should be of kind 'Container'
     let container = Container {
-        content: paragraphs.into_boxed_slice(),
+        content: blocks.into_boxed_slice(),
         kind: container_kind,
     };
-    let block = Block::Container(container);
-    Ok(block)
+    let element = Element::Container(container);
+    Ok(element)
 }
 
 fn container_kind_from_name(name: &str) -> ParseResult<ContainerKind> {
@@ -208,21 +216,22 @@ fn container_kind_from_name(name: &str) -> ParseResult<ContainerKind> {
     }
 }
 
-fn parse_named_block(scanner: &mut Scanner) -> ParseResult<Block> {
+fn parse_named_block(scanner: &mut Scanner) -> ParseResult<Element> {
     let block_name = eat_block_header(scanner)?;
 
     eat_linebreak(scanner)?;
 
-    let block = match block_name {
+    let element = match block_name {
         "metadata" => return Err(ParseError::MetadataNotAtStart),
         "paragraph" => {
             let para = parse_paragraph(scanner)?;
-            Block::Paragraph(para)
+            let block = Block::Paragraph(para);
+            Element::Block(block)
         }
         _ => return Err(ParseError::UnknownBlock),
     };
 
-    Ok(block)
+    Ok(element)
 }
 
 fn parse_metadata_block(scanner: &mut Scanner) -> ParseResult<Metadata> {
@@ -444,21 +453,21 @@ mod test {
 
     struct DocmentBuilder {
         metadata: Metadata,
-        blocks: Vec<Block>,
+        contents: Vec<Element>,
     }
 
     impl DocmentBuilder {
         fn new() -> Self {
             DocmentBuilder {
                 metadata: Metadata::default(),
-                blocks: Vec::new(),
+                contents: Vec::new(),
             }
         }
 
         fn build(self) -> Document {
             Document {
                 metadata: self.metadata,
-                blocks: self.blocks.into_boxed_slice(),
+                contents: self.contents.into_boxed_slice(),
             }
         }
         fn with_metadata(mut self, metadata: MetadataBuilder) -> Self {
@@ -467,7 +476,12 @@ mod test {
         }
 
         fn with_block<T: Into<Block>>(mut self, block: T) -> Self {
-            self.blocks.push(block.into());
+            self.contents.push(Element::Block(block.into()));
+            self
+        }
+
+        fn with_container<T: Into<Container>>(mut self, container: T) -> Self {
+            self.contents.push(Element::Container(container.into()));
             self
         }
     }
@@ -550,8 +564,14 @@ mod test {
         }
     }
 
+    impl Into<ContainedBlock> for ParagraphBuilder {
+        fn into(self) -> ContainedBlock {
+            ContainedBlock::Paragraph(self.build())
+        }
+    }
+
     struct ContainerBuilder {
-        content: Vec<Paragraph>,
+        content: Vec<ContainedBlock>,
         kind: ContainerKind,
     }
 
@@ -563,18 +583,18 @@ mod test {
             }
         }
 
-        fn with(mut self, paragraph: ParagraphBuilder) -> Self {
-            self.content.push(paragraph.build());
+        fn with<T: Into<ContainedBlock>>(mut self, block: T) -> Self {
+            self.content.push(block.into());
             self
         }
     }
 
-    impl Into<Block> for ContainerBuilder {
-        fn into(self) -> Block {
-            Block::Container(Container {
+    impl Into<Container> for ContainerBuilder {
+        fn into(self) -> Container {
+            Container {
                 content: self.content.into_boxed_slice(),
                 kind: self.kind,
-            })
+            }
         }
     }
 
@@ -1252,7 +1272,7 @@ mod test {
         );
 
         let expected = document()
-            .with_block(
+            .with_container(
                 info()
                     .with(paragraph().with_run("Here are some facts..."))
                     .with(paragraph().with_run("...about the cats!")),
