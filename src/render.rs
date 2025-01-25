@@ -15,8 +15,8 @@ pub fn render_html(document: &Document, out: &mut impl io::Write) -> io::Result<
     for block in document.blocks.iter() {
         match block {
             Block::Paragraph(paragraph) => render_paragraph(paragraph, out)?,
-            Block::Alert(alert) => {
-                for paragraph in alert.content.iter() {
+            Block::Container(container) => {
+                for paragraph in container.content.iter() {
                     render_paragraph(paragraph, out)?;
                 }
             }

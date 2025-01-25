@@ -13,6 +13,7 @@ mod scan;
 // - Stream processing (as opposed loading whole input into memory)
 // - Pre allocate sensible vec capacities?
 
+// TODO:
 // Features to build
 // - References
 // - Support windows style newlines

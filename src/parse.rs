@@ -17,7 +17,8 @@ pub struct Metadata {
 #[derive(PartialEq, Eq, Debug)]
 pub enum Block {
     Paragraph(Paragraph),
-    Alert(Alert),
+    //TODO: Container isn't _really_ a block. What to call this?
+    Container(Container),
 }
 
 #[derive(PartialEq, Eq, Debug)]
@@ -29,17 +30,16 @@ impl Paragraph {
     }
 }
 
-//TODO: What if we want to include things like lists in alerts?
-//TODO: Generify the concept of a BlockContainer and limit what it can contain
+//TODO: What if we want to include things like lists in container? Mix of things?
 
 #[derive(PartialEq, Eq, Debug)]
-pub struct Alert {
+pub struct Container {
     pub content: Box<[Paragraph]>,
-    pub kind: AlertKind,
+    pub kind: ContainerKind,
 }
 
 #[derive(PartialEq, Eq, Debug)]
-pub enum AlertKind {
+pub enum ContainerKind {
     Info,
     //TODO: Other kinds of alert
 }
@@ -68,6 +68,7 @@ pub enum ParseError {
     UnknownMetadata,
     MetadataNotAtStart,
     UnknownBlock,
+    UnknownContainer,
 }
 
 impl Display for ParseError {
@@ -80,6 +81,7 @@ impl Display for ParseError {
             ParseError::UnknownMetadata => write!(f, "unknown metadata"),
             ParseError::MetadataNotAtStart => write!(f, "metadata not at start"),
             ParseError::UnknownBlock => write!(f, "unknown block"),
+            ParseError::UnknownContainer => write!(f, "unknown container"),
         }
     }
 }
@@ -146,7 +148,6 @@ pub fn parse_str(input: &str) -> ParseResult<Document> {
                 blocks.push(block);
             }
             Token::ContainerHeader(_) => {
-                //For now, alert is the only kind of container
                 let block = parse_container(scanner)?;
                 blocks.push(block);
             }
@@ -192,20 +193,18 @@ fn parse_container(scanner: &mut Scanner) -> ParseResult<Block> {
     }
 
     //TODO: This should be of kind 'Container'
-    let container = Alert {
+    let container = Container {
         content: paragraphs.into_boxed_slice(),
         kind: container_kind,
     };
-    let block = Block::Alert(container);
+    let block = Block::Container(container);
     Ok(block)
 }
 
-//TODO: This should return ContainerKind
-fn container_kind_from_name(name: &str) -> ParseResult<AlertKind> {
+fn container_kind_from_name(name: &str) -> ParseResult<ContainerKind> {
     match name {
-        "info" => Ok(AlertKind::Info),
-        //TODO: Should be UnknownContainer?
-        _ => Err(ParseError::UnknownBlock),
+        "info" => Ok(ContainerKind::Info),
+        _ => Err(ParseError::UnknownContainer),
     }
 }
 
@@ -439,8 +438,8 @@ mod test {
         ParagraphBuilder::new()
     }
 
-    fn info() -> AlertBuilder {
-        AlertBuilder::new(AlertKind::Info)
+    fn info() -> ContainerBuilder {
+        ContainerBuilder::new(ContainerKind::Info)
     }
 
     struct DocmentBuilder {
@@ -551,14 +550,14 @@ mod test {
         }
     }
 
-    struct AlertBuilder {
+    struct ContainerBuilder {
         content: Vec<Paragraph>,
-        kind: AlertKind,
+        kind: ContainerKind,
     }
 
-    impl AlertBuilder {
-        fn new(kind: AlertKind) -> Self {
-            AlertBuilder {
+    impl ContainerBuilder {
+        fn new(kind: ContainerKind) -> Self {
+            ContainerBuilder {
                 content: Vec::new(),
                 kind,
             }
@@ -570,9 +569,9 @@ mod test {
         }
     }
 
-    impl Into<Block> for AlertBuilder {
+    impl Into<Block> for ContainerBuilder {
         fn into(self) -> Block {
-            Block::Alert(Alert {
+            Block::Container(Container {
                 content: self.content.into_boxed_slice(),
                 kind: self.kind,
             })
