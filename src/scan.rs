@@ -6,8 +6,8 @@ pub enum Token<'a> {
     Blockbreak,
     Linebreak,
     BlockHeader(&'a str),
-    MultiContainerHeader(&'a str),
-    MultiContainerFooter,
+    ContainerHeader(&'a str),
+    ContainerFooter,
     Text(&'a str),
     Whitespace,
     Identifier(&'a str),
@@ -161,7 +161,7 @@ impl<'a> Scanner<'a> {
                         match equals.len() {
                             // 1 is reserved for explicitly demarcated blocks
                             1 => Token::Unknown,
-                            _ => Token::MultiContainerHeader(name),
+                            _ => Token::ContainerHeader(name),
                         }
                     }
                     _ => {
@@ -211,7 +211,7 @@ impl<'a> Scanner<'a> {
                 self.read_next_char();
                 //FIXME: Should enforce at least two =
                 self.eat_while(|c| c == EQUALS);
-                Token::MultiContainerFooter
+                Token::ContainerFooter
             }
             BACKSLASH => {
                 self.read_next_char();

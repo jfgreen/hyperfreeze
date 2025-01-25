@@ -117,7 +117,7 @@ token_eater!(eat_colon, Colon);
 token_eater!(eat_linebreak, Linebreak);
 token_eater!(eat_delimiter, Delimiter, Delimiter);
 token_eater!(eat_block_header, BlockHeader, &'a str);
-token_eater!(eat_multi_container_header, MultiContainerHeader, &'a str);
+token_eater!(eat_container_header, ContainerHeader, &'a str);
 token_eater!(eat_identifier, Identifier, &'a str);
 token_eater!(eat_meta_text, MetaText, &'a str);
 
@@ -145,9 +145,9 @@ pub fn parse_str(input: &str) -> ParseResult<Document> {
                 let block = parse_named_block(scanner)?;
                 blocks.push(block);
             }
-            Token::MultiContainerHeader(_) => {
+            Token::ContainerHeader(_) => {
                 //For now, alert is the only kind of container
-                let block = parse_multi_block_container(scanner)?;
+                let block = parse_container(scanner)?;
                 blocks.push(block);
             }
             Token::EndOfFile => break,
@@ -169,8 +169,8 @@ pub fn parse_str(input: &str) -> ParseResult<Document> {
     })
 }
 
-fn parse_multi_block_container(scanner: &mut Scanner) -> ParseResult<Block> {
-    let container_name = eat_multi_container_header(scanner)?;
+fn parse_container(scanner: &mut Scanner) -> ParseResult<Block> {
+    let container_name = eat_container_header(scanner)?;
     let container_kind = container_kind_from_name(container_name)?;
     eat_linebreak(scanner)?;
 
@@ -178,7 +178,7 @@ fn parse_multi_block_container(scanner: &mut Scanner) -> ParseResult<Block> {
 
     loop {
         match scanner.peek() {
-            Token::MultiContainerFooter => {
+            Token::ContainerFooter => {
                 scanner.next();
                 break;
             }
@@ -275,7 +275,7 @@ fn parse_paragraph(scanner: &mut Scanner) -> ParseResult<Paragraph> {
                 scanner.next();
                 break;
             }
-            Token::MultiContainerFooter => break,
+            Token::ContainerFooter => break,
             _ => return Err(ParseError::UnexpectedInput),
         };
         text_runs.push(run);
