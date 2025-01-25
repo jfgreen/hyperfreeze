@@ -6,7 +6,6 @@ pub enum Token<'a> {
     Blockbreak,
     Linebreak,
     BlockHeader(&'a str),
-    SingleContainerHeader(&'a str),
     MultiContainerHeader(&'a str),
     MultiContainerFooter,
     Text(&'a str),
@@ -153,23 +152,17 @@ impl<'a> Scanner<'a> {
 
     fn read_token_base(&mut self, first_char: char) -> Token<'a> {
         match first_char {
-            //TODO: Think about which contexts we expect this to work in?
             HASH if self.column == 1 => {
                 self.read_next_char();
                 match self.current_char {
                     Some(EQUALS) => {
                         let equals = self.eat_while(|c| c == EQUALS);
-
-                        //FIXME: Should assert
-                        // if self.current_char.is_some_and(char::is_alphanumeric) {
                         let name = self.eat_while(char::is_alphanumeric);
                         match equals.len() {
-                            1 => Token::SingleContainerHeader(name),
+                            // 1 is reserved for explicitly demarcated blocks
+                            1 => Token::Unknown,
                             _ => Token::MultiContainerHeader(name),
                         }
-                        //} else {
-                        //    Token::MultiBlockContainerFooter
-                        //}
                     }
                     _ => {
                         let name = self.eat_while(char::is_alphanumeric);
@@ -181,7 +174,7 @@ impl<'a> Scanner<'a> {
                 self.eat_while(char::is_whitespace);
                 Token::Whitespace
             }
-            // NOTE: Each mode need to detect sentinal tokens that delimit
+            // NOTE: Each mode needs to detect sentinal tokens that delimit
             // one context from another. But read_token_base also needs to
             // correctly infer the first token of a paragraph or list when
             // the block header is ommited (a valid syntactical sugar)

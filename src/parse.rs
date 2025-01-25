@@ -117,7 +117,6 @@ token_eater!(eat_colon, Colon);
 token_eater!(eat_linebreak, Linebreak);
 token_eater!(eat_delimiter, Delimiter, Delimiter);
 token_eater!(eat_block_header, BlockHeader, &'a str);
-token_eater!(eat_single_container_header, SingleContainerHeader, &'a str);
 token_eater!(eat_multi_container_header, MultiContainerHeader, &'a str);
 token_eater!(eat_identifier, Identifier, &'a str);
 token_eater!(eat_meta_text, MetaText, &'a str);
@@ -146,11 +145,6 @@ pub fn parse_str(input: &str) -> ParseResult<Document> {
                 let block = parse_named_block(scanner)?;
                 blocks.push(block);
             }
-            Token::SingleContainerHeader(_) => {
-                //For now, alert is the only kind of container
-                let block = parse_single_block_container(scanner)?;
-                blocks.push(block);
-            }
             Token::MultiContainerHeader(_) => {
                 //For now, alert is the only kind of container
                 let block = parse_multi_block_container(scanner)?;
@@ -173,25 +167,6 @@ pub fn parse_str(input: &str) -> ParseResult<Document> {
         metadata,
         blocks: blocks.into_boxed_slice(),
     })
-}
-
-fn parse_single_block_container(scanner: &mut Scanner) -> ParseResult<Block> {
-    let container_name = eat_single_container_header(scanner)?;
-    let container_kind = container_kind_from_name(container_name)?;
-    eat_linebreak(scanner)?;
-
-    let mut paragraphs = Vec::new();
-
-    let para = parse_paragraph(scanner)?;
-    paragraphs.push(para);
-
-    //TODO: This should be of kind 'Container'
-    let container = Alert {
-        content: paragraphs.into_boxed_slice(),
-        kind: container_kind,
-    };
-    let block = Block::Alert(container);
-    Ok(block)
 }
 
 fn parse_multi_block_container(scanner: &mut Scanner) -> ParseResult<Block> {
@@ -444,6 +419,13 @@ mod test {
     // \n  \n
     // Should _probably_ be treated as a block break
     // However, we cant use a simple fixed char lookahead
+    //
+    // TODO: Consider a different syntax for containers
+    // e.g
+    //
+    // #[ info ]
+    // Some facts
+    // #[ ---- ]
 
     fn document() -> DocmentBuilder {
         DocmentBuilder::new()
@@ -1254,31 +1236,6 @@ mod test {
 
         let actual = parse_str(input);
 
-        assert_eq!(actual, expected);
-    }
-
-    //TODO: Do we even want to support this syntax?
-    // We could make the there just be multi block and have it use '#='?
-    // Maybe only for single anon blocks
-    #[test]
-    fn one_paragraph_info() {
-        let input = concat!(
-            "#=info\n",
-            "Did you know that cats can reach speeds of up to *30mph*?"
-        );
-
-        let expected = document()
-            .with_block(
-                info().with(
-                    paragraph()
-                        .with_run("Did you know that cats can reach speeds of up to ")
-                        .with_strong_run("30mph")
-                        .with_run("?"),
-                ),
-            )
-            .build();
-
-        let actual = parse_str(input).unwrap();
         assert_eq!(actual, expected);
     }
 
