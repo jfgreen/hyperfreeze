@@ -35,6 +35,8 @@ const HASH: char = '#';
 const COLON: char = ':';
 const BACKSLASH: char = '\\';
 const EQUALS: char = '=';
+const LEFT_SQUARE_BRACKET: char = '[';
+const RIGHT_SQUARE_BRACKET: char = ']';
 
 trait CharExt {
     fn usable_in_text(&self) -> bool;
@@ -151,35 +153,37 @@ impl<'a> Scanner<'a> {
     }
 
     fn read_token_base(&mut self, first_char: char) -> Token<'a> {
-        match first_char {
-            HASH if self.column == 1 => {
-                self.read_next_char();
-                match self.current_char {
-                    Some(EQUALS) => {
-                        let equals = self.eat_while(|c| c == EQUALS);
-                        let name = self.eat_while(char::is_alphanumeric);
-                        match equals.len() {
-                            // 1 is reserved for explicitly demarcated blocks
-                            1 => Token::Unknown,
-                            _ => Token::ContainerHeader(name),
+        if first_char == HASH && self.column == 1 {
+            self.read_next_char();
+            return match self.current_char {
+                Some(LEFT_SQUARE_BRACKET) => {
+                    self.read_next_char();
+                    let name = self.eat_while(char::is_alphanumeric);
+                    match self.current_char {
+                        Some(RIGHT_SQUARE_BRACKET) => {
+                            self.read_next_char();
+                            Token::ContainerHeader(name)
                         }
-                    }
-                    _ => {
-                        let name = self.eat_while(char::is_alphanumeric);
-                        Token::BlockHeader(name)
+                        _ => Token::Unknown,
                     }
                 }
-            }
-            c if c.is_whitespace() => {
-                self.eat_while(char::is_whitespace);
-                Token::Whitespace
-            }
-            // NOTE: Each mode needs to detect sentinal tokens that delimit
-            // one context from another. But read_token_base also needs to
-            // correctly infer the first token of a paragraph or list when
-            // the block header is ommited (a valid syntactical sugar)
-            c => self.read_token_paragraph(c),
+                _ => {
+                    let name = self.eat_while(char::is_alphanumeric);
+                    Token::BlockHeader(name)
+                }
+            };
         }
+
+        if first_char.is_whitespace() {
+            self.eat_while(char::is_whitespace);
+            return Token::Whitespace;
+        }
+
+        // NOTE: Each mode needs to detect sentinal tokens that delimit
+        // one context from another. But read_token_base also needs to
+        // correctly infer the first token of a paragraph or list when
+        // the block header is ommited (a valid syntactical sugar)
+        self.read_token_paragraph(first_char)
     }
 
     fn read_token_metadata(&mut self, first_char: char) -> Token<'a> {

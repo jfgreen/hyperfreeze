@@ -149,6 +149,7 @@ pub fn parse_str(input: &str) -> ParseResult<Document> {
     }
 
     loop {
+        dbg!(scanner.peek());
         match scanner.peek() {
             Token::BlockHeader(_) => {
                 let element = parse_named_block(scanner)?;
@@ -428,12 +429,6 @@ mod test {
     // Should _probably_ be treated as a block break
     // However, we cant use a simple fixed char lookahead
     //
-    // TODO: Consider a different syntax for containers
-    // e.g
-    //
-    // #[ info ]
-    // Some facts
-    // #[ ---- ]
 
     fn document() -> DocmentBuilder {
         DocmentBuilder::new()
@@ -1264,11 +1259,11 @@ mod test {
     #[test]
     fn multi_paragraph_info() {
         let input = concat!(
-            "#==info\n",
+            "#[info]\n",
             "Here are some facts...\n",
             "\n",
             "...about the cats!\n",
-            "#=="
+            "#="
         );
 
         let expected = document()
@@ -1283,7 +1278,6 @@ mod test {
         assert_eq!(actual, expected);
     }
 }
-
 //TODO: what about
 
 // Foo
