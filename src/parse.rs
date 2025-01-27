@@ -76,6 +76,7 @@ pub enum ParseError {
     MetadataNotAtStart,
     UnknownBlock,
     UnknownContainer,
+    UnterminatedContainer,
 }
 
 impl Display for ParseError {
@@ -89,6 +90,7 @@ impl Display for ParseError {
             ParseError::MetadataNotAtStart => write!(f, "metadata not at start"),
             ParseError::UnknownBlock => write!(f, "unknown block"),
             ParseError::UnknownContainer => write!(f, "unknown container"),
+            ParseError::UnterminatedContainer => write!(f, "unknown container"),
         }
     }
 }
@@ -149,7 +151,6 @@ pub fn parse_str(input: &str) -> ParseResult<Document> {
     }
 
     loop {
-        dbg!(scanner.peek());
         match scanner.peek() {
             Token::BlockHeader(_) => {
                 let element = parse_named_block(scanner)?;
@@ -198,7 +199,7 @@ fn parse_container(scanner: &mut Scanner) -> ParseResult<Element> {
                 let block = ContainedBlock::Paragraph(para);
                 blocks.push(block);
             }
-            _ => return Err(ParseError::UnexpectedInput),
+            _ => return Err(ParseError::UnterminatedContainer),
         }
     }
 
@@ -260,9 +261,12 @@ fn parse_metadata_block(scanner: &mut Scanner) -> ParseResult<Metadata> {
             _ => return Err(ParseError::UnknownMetadata),
         };
 
-        match scanner.next() {
-            Token::EndOfFile | Token::Blockbreak => break,
-            Token::Linebreak => continue,
+        let next_token = scanner.next();
+        let following_is_identifier = matches!(scanner.peek(), Token::Identifier(_));
+
+        match next_token {
+            Token::Linebreak if following_is_identifier => continue,
+            Token::EndOfFile | Token::Blockbreak | Token::Linebreak => break,
             _ => return Err(ParseError::UnexpectedInput),
         }
     }
@@ -1253,9 +1257,6 @@ mod test {
         assert_eq!(actual, expected);
     }
 
-    //TODO: Test for unterminated container
-    //TODO: Test for container at EOF
-    //TODO: Test for "pretty varients" of alert #=info=, #==info== and #=== INFO ===
     #[test]
     fn multi_paragraph_info() {
         let input = concat!(
@@ -1275,6 +1276,30 @@ mod test {
             .build();
 
         let actual = parse_str(input).unwrap();
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn unterminated_container_is_rejected() {
+        let input = concat!(
+            "#[info]\n",
+            "Did you know that cats sometimes like to ...\n",
+            "\n",
+        );
+
+        let expected = Err(ParseError::UnterminatedContainer);
+
+        let actual = parse_str(input);
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn only_container_header_is_rejected() {
+        let input = concat!("#[info]\n",);
+
+        let expected = Err(ParseError::UnterminatedContainer);
+
+        let actual = parse_str(input);
         assert_eq!(actual, expected);
     }
 }

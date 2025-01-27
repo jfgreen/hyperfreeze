@@ -136,7 +136,6 @@ impl<'a> Scanner<'a> {
                         self.skip_while(|c| c == NEW_LINE);
                         Token::Blockbreak
                     }
-                    None => Token::Blockbreak,
                     _ => Token::Linebreak,
                 }
             }
