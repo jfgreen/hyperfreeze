@@ -2,6 +2,8 @@ use std::fmt::Display;
 
 use crate::scan::{Delimiter, ScanContext, Scanner, Token};
 
+//TODO: Can we simplify / flatten this at all?
+
 #[derive(PartialEq, Eq, Debug)]
 pub struct Document {
     pub metadata: Metadata,
@@ -132,9 +134,6 @@ token_eater!(eat_container_header, ContainerHeader, &'a str);
 token_eater!(eat_identifier, Identifier, &'a str);
 token_eater!(eat_meta_text, MetaText, &'a str);
 
-// TODO: Maybe use asserts instead of eats for hand offs that should always be true
-// Eg func A peeks a Text, calls func B. B should assert next() is text
-// TODO: Handoff to and from various parse funcs feels a little adhoc
 pub fn parse_str(input: &str) -> ParseResult<Document> {
     let scanner = &mut Scanner::new(input);
     let mut elements = Vec::new();
@@ -193,7 +192,6 @@ fn parse_container(scanner: &mut Scanner) -> ParseResult<Element> {
                 scanner.next();
                 break;
             }
-            //TODO: Helper func for tokens that could be para start
             Token::Text(_) | Token::Whitespace | Token::Delimiter(_) => {
                 let para = parse_paragraph(scanner)?;
                 let block = ContainedBlock::Paragraph(para);
@@ -201,6 +199,10 @@ fn parse_container(scanner: &mut Scanner) -> ParseResult<Element> {
             }
             _ => return Err(ParseError::UnterminatedContainer),
         }
+    }
+
+    if scanner.peek() == Token::Blockbreak {
+        scanner.next();
     }
 
     let container = Container {
@@ -244,6 +246,11 @@ fn parse_metadata_block(scanner: &mut Scanner) -> ParseResult<Metadata> {
     scanner.push_context(ScanContext::Metadata);
 
     loop {
+        //TODO: This is kind of meh
+        if scanner.peek() == Token::EndOfFile {
+            break;
+        }
+
         let key = eat_identifier(scanner)?;
         eat_optional_whitespace(scanner);
         eat_colon(scanner)?;
@@ -262,11 +269,13 @@ fn parse_metadata_block(scanner: &mut Scanner) -> ParseResult<Metadata> {
         };
 
         let next_token = scanner.next();
-        let following_is_identifier = matches!(scanner.peek(), Token::Identifier(_));
+        //let following_is_identifier = matches!(scanner.peek(), Token::Identifier(_));
 
         match next_token {
-            Token::Linebreak if following_is_identifier => continue,
-            Token::EndOfFile | Token::Blockbreak | Token::Linebreak => break,
+            Token::EndOfFile | Token::Blockbreak => break,
+            //TODO: This would be less awkward if we reset peek on context shift
+            //Token::Linebreak if following_is_identifier => continue,
+            Token::Linebreak => continue,
             _ => return Err(ParseError::UnexpectedInput),
         }
     }
@@ -281,7 +290,7 @@ fn parse_paragraph(scanner: &mut Scanner) -> ParseResult<Paragraph> {
 
     loop {
         let run = match scanner.peek() {
-            Token::Text(_) | Token::Whitespace => parse_plain_text(scanner)?,
+            Token::Text(_) | Token::Whitespace | Token::Linebreak => parse_plain_text(scanner)?,
             Token::Delimiter(_) => parse_delimited_text(scanner)?,
             Token::EndOfFile => break,
             Token::Blockbreak => {
@@ -420,19 +429,29 @@ fn parse_raw_text_run(scanner: &mut Scanner) -> ParseResult<String> {
 #[cfg(test)]
 mod test {
     use super::*;
-    //TODO: Things to test
-    // More evils: _``_, `*`*
-    // Test: -foo\nbar- <- Valid?
-    // Test: -foo\n\nbar- <- Invalid?
-    // Test: escaped chars in metadata
-    // Test: just a '#'
-    // Explicit #paragraph
-    //
-    // Pathalogical test, that limits our design
+    // TODO: Pathalogical test, that limits our design
     // \n  \n
     // Should _probably_ be treated as a block break
     // However, we cant use a simple fixed char lookahead
+
+    //TODO: what about
+
+    // Foo
+    // #paragraph <-- Should reject, no block break
+    // Bar
+
+    // Foo
+    //  #paragraph <-- Should maybe reject?
+    // Bar
+
     //
+    // #==Foo==
+    // Foo
+    // #==bar <-- should reject
+    //
+    //
+    // Foo
+    // #==bar <-- should reject no opening
 
     fn document() -> DocmentBuilder {
         DocmentBuilder::new()
@@ -598,6 +617,44 @@ mod test {
     }
 
     #[test]
+    fn complete_doc_test() {
+        let input = concat!(
+            "#metadata\n",
+            "id: 01.42\n",
+            "title: Feline friendly flower arranging\n",
+            "\n",
+            "#[info]\n",
+            "Did you know flower pots are for *more*\n",
+            "than simply knocking on the floor?\n",
+            "#=\n",
+            "\n",
+            "Opposable thumbs\n",
+            "are useful?"
+        );
+
+        let expected = document()
+            .with_metadata(
+                metadata()
+                    .with_id("01.42")
+                    .with_title("Feline friendly flower arranging"),
+            )
+            .with_container(
+                info().with(
+                    paragraph()
+                        .with_run("Did you know flower pots are for ")
+                        .with_strong_run("more")
+                        .with_run(" than simply knocking on the floor?"),
+                ),
+            )
+            .with_block(paragraph().with_run("Opposable thumbs are useful?"))
+            .build();
+
+        let actual = parse_str(input).unwrap();
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
     fn one_line_paragraph() {
         let input = "We like cats very much";
 
@@ -606,6 +663,52 @@ mod test {
             .build();
 
         let actual = parse_str(input).unwrap();
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn explicit_paragraph() {
+        let input = "#paragraph\nCats go meeow!";
+
+        let expected = document()
+            .with_block(paragraph().with_run("Cats go meeow!"))
+            .build();
+
+        let actual = parse_str(input).unwrap();
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn unknown_block_is_rejected() {
+        let input = "#meowograph\nCats go meeow!";
+
+        let expected = Err(ParseError::UnknownBlock);
+
+        let actual = parse_str(input);
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn empty_block_name_is_rejected() {
+        let input = "#\nHi";
+
+        let expected = Err(ParseError::UnknownBlock);
+
+        let actual = parse_str(input);
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn block_header_without_newline_is_rejected() {
+        let input = "#paragraph";
+
+        let expected = Err(ParseError::UnexpectedInput);
+
+        let actual = parse_str(input);
 
         assert_eq!(actual, expected);
     }
@@ -726,6 +829,24 @@ mod test {
                     .with_run("We ")
                     .with_emphasised_run("totally adore")
                     .with_run(" them"),
+            )
+            .build();
+
+        let actual = parse_str(input).unwrap();
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn emphasis_at_end_of_line() {
+        let input = "Cats like to _zoom_\naround";
+
+        let expected = document()
+            .with_block(
+                paragraph()
+                    .with_run("Cats like to ")
+                    .with_emphasised_run("zoom")
+                    .with_run(" around"),
             )
             .build();
 
@@ -874,6 +995,19 @@ mod test {
 
         let expected = document()
             .with_block(paragraph().with_raw_run("Great cats"))
+            .build();
+
+        let actual = parse_str(input).unwrap();
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn strikethrough_over_two_lines() {
+        let input = "~Great\ndogs~";
+
+        let expected = document()
+            .with_block(paragraph().with_strikethrough_run("Great dogs"))
             .build();
 
         let actual = parse_str(input).unwrap();
@@ -1089,6 +1223,17 @@ mod test {
     }
 
     #[test]
+    fn strikethrough_with_double_linebreak() {
+        let input = "~Erm...\n\nmeow?~";
+
+        let expected = Err(ParseError::UnmatchedDelimiter);
+
+        let actual = parse_str(input);
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
     fn unmatched_emphasis_1() {
         let input = "_.";
 
@@ -1217,8 +1362,6 @@ mod test {
         assert_eq!(actual, expected);
     }
 
-    //TODO: Test for variable whitespace in key/value arg
-    //TODO: Test doc with both metadata and paragraph
     #[test]
     fn doc_metadata() {
         let input = concat!(
@@ -1233,6 +1376,19 @@ mod test {
                     .with_id("01.23")
                     .with_title("Practical espionage for felines"),
             )
+            .build();
+
+        let actual = parse_str(input).unwrap();
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn doc_metadata_with_alternate_spacing() {
+        let input = concat!("#metadata\n", "id :01.23\n",);
+
+        let expected = document()
+            .with_metadata(metadata().with_id("01.23"))
             .build();
 
         let actual = parse_str(input).unwrap();
@@ -1303,21 +1459,3 @@ mod test {
         assert_eq!(actual, expected);
     }
 }
-//TODO: what about
-
-// Foo
-// #paragraph <-- Should reject, no block break
-// Bar
-
-// Foo
-//  #paragraph <-- Should maybe reject?
-// Bar
-
-//
-// #==Foo==
-// Foo
-// #==bar <-- should reject
-//
-//
-// Foo
-// #==bar <-- should reject no opening

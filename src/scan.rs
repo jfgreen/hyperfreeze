@@ -212,7 +212,7 @@ impl<'a> Scanner<'a> {
             //TODO: Bit of a hack?
             HASH if self.column == 1 => {
                 self.read_next_char();
-                //FIXME: Should enforce at least two =
+                //FIXME: Should enforce at least one =
                 self.eat_while(|c| c == EQUALS);
                 Token::ContainerFooter
             }
