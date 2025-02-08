@@ -124,18 +124,26 @@ impl<'a> Scanner<'a> {
         }
     }
 
+    //TODO: Get finer grained with tokens. Be less clever / "convenient" in scanner.
     fn read_token(&mut self) -> Token<'a> {
         let context = self.context_stack.last().unwrap_or(&ScanContext::Base);
 
-        match self.current_char {
+        dbg!(self.current_char);
+        let token = match self.current_char {
+            // New line handling is the same across all contexts
             None => Token::EndOfFile,
             Some(NEW_LINE) => {
                 self.read_next_char();
+                self.skip_non_newline_whitespace();
                 match self.current_char {
                     Some(NEW_LINE) => {
-                        self.skip_while(|c| c == NEW_LINE);
+                        while self.current_char == Some(NEW_LINE) {
+                            self.read_next_char();
+                            self.skip_non_newline_whitespace();
+                        }
                         Token::Blockbreak
                     }
+                    None => Token::EndOfFile,
                     _ => Token::Linebreak,
                 }
             }
@@ -145,7 +153,10 @@ impl<'a> Scanner<'a> {
                 ScanContext::Paragraph => self.read_token_paragraph(c),
                 ScanContext::InlineRaw => self.read_token_inline_raw(c),
             },
-        }
+        };
+
+        dbg!(token);
+        token
 
         //TODO: Track line and column in each token
         //TODO: Test we report correct line number
@@ -186,7 +197,6 @@ impl<'a> Scanner<'a> {
     }
 
     fn read_token_metadata(&mut self, first_char: char) -> Token<'a> {
-        //TODO: Pull out EOF stuff up also
         match first_char {
             c if c.usable_in_identifier() && self.column == 1 => {
                 let identifier = self.eat_while(|c| c.usable_in_identifier());
@@ -209,12 +219,14 @@ impl<'a> Scanner<'a> {
 
     fn read_token_paragraph(&mut self, first_char: char) -> Token<'a> {
         match first_char {
-            //TODO: Bit of a hack?
             HASH if self.column == 1 => {
                 self.read_next_char();
-                //FIXME: Should enforce at least one =
-                self.eat_while(|c| c == EQUALS);
-                Token::ContainerFooter
+                let eq = self.eat_while(|c| c == EQUALS);
+                if eq.len() > 0 {
+                    Token::ContainerFooter
+                } else {
+                    Token::Unknown
+                }
             }
             BACKSLASH => {
                 self.read_next_char();
@@ -225,7 +237,7 @@ impl<'a> Scanner<'a> {
                 }
             }
             c if c.is_whitespace() => {
-                self.eat_while(char::is_whitespace);
+                self.skip_non_newline_whitespace();
                 Token::Whitespace
             }
             c if c.usable_in_text() => {
@@ -266,9 +278,14 @@ impl<'a> Scanner<'a> {
         }
     }
 
-    //TODO: More ergonomic to have a method per context (e.g push_context_paragraph())
-    pub fn push_context(&mut self, context: ScanContext) {
-        self.context_stack.push(context);
+    pub fn push_context_metadata(&mut self) {
+        self.context_stack.push(ScanContext::Metadata);
+    }
+    pub fn push_context_paragraph(&mut self) {
+        self.context_stack.push(ScanContext::Paragraph);
+    }
+    pub fn push_context_inline_raw(&mut self) {
+        self.context_stack.push(ScanContext::InlineRaw);
     }
 
     pub fn pop_context(&mut self) {
@@ -293,6 +310,10 @@ impl<'a> Scanner<'a> {
         while self.current_char.is_some_and(predicate) {
             self.read_next_char();
         }
+    }
+
+    fn skip_non_newline_whitespace(&mut self) {
+        self.skip_while(|c| c.is_whitespace() && c != NEW_LINE)
     }
 
     fn read_next_char(&mut self) {

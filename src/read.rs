@@ -35,7 +35,7 @@ impl<'a> Reader<'a> {
     }
 
     fn advance(&mut self) {
-        let last_index = self.buffer.len() - 1;
+        let last_index = self.buffer.len().saturating_sub(1);
         let is_more_input = self.chars.peek().is_some();
 
         if self.buffer.is_empty() && is_more_input {

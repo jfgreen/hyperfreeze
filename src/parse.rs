@@ -1,6 +1,6 @@
 use std::fmt::Display;
 
-use crate::scan::{Delimiter, ScanContext, Scanner, Token};
+use crate::scan::{Delimiter, Scanner, Token};
 
 //TODO: Can we simplify / flatten this at all?
 
@@ -141,7 +141,10 @@ pub fn parse_str(input: &str) -> ParseResult<Document> {
     let mut metadata = Metadata::default();
 
     // Trim start of doc if it has some kind of whitespace
-    if matches!(scanner.peek(), Token::Linebreak | Token::Blockbreak) {
+    while matches!(
+        scanner.peek(),
+        Token::Linebreak | Token::Blockbreak | Token::Whitespace
+    ) {
         scanner.next();
     }
 
@@ -160,16 +163,12 @@ pub fn parse_str(input: &str) -> ParseResult<Document> {
                 elements.push(element);
             }
             Token::EndOfFile => break,
-            _ => {
-                // Default for a block missing header is to assume paragraph
-                // (this will likely change once we have lists)
-
-                //TODO: Have parse_paragraph return block?
-                let para = parse_paragraph(scanner)?;
-                let block = Block::Paragraph(para);
-                let element = Element::Block(block);
+            Token::Text(_) | Token::Delimiter(_) => {
+                // Infer paragraph missing header (a valid sugar)
+                let element = parse_paragraph_block(scanner)?;
                 elements.push(element);
             }
+            _ => return Err(ParseError::UnexpectedInput),
         }
     }
 
@@ -201,8 +200,11 @@ fn parse_container(scanner: &mut Scanner) -> ParseResult<Element> {
         }
     }
 
-    if scanner.peek() == Token::Blockbreak {
+    let peek = scanner.peek();
+    if peek == Token::Blockbreak {
         scanner.next();
+    } else if peek != Token::EndOfFile {
+        return Err(ParseError::UnexpectedInput);
     }
 
     let container = Container {
@@ -227,11 +229,7 @@ fn parse_named_block(scanner: &mut Scanner) -> ParseResult<Element> {
 
     let element = match block_name {
         "metadata" => return Err(ParseError::MetadataNotAtStart),
-        "paragraph" => {
-            let para = parse_paragraph(scanner)?;
-            let block = Block::Paragraph(para);
-            Element::Block(block)
-        }
+        "paragraph" => parse_paragraph_block(scanner)?,
         _ => return Err(ParseError::UnknownBlock),
     };
 
@@ -243,14 +241,9 @@ fn parse_metadata_block(scanner: &mut Scanner) -> ParseResult<Metadata> {
     eat_linebreak(scanner)?;
 
     let mut metadata = Metadata::default();
-    scanner.push_context(ScanContext::Metadata);
+    scanner.push_context_metadata();
 
     loop {
-        //TODO: This is kind of meh
-        if scanner.peek() == Token::EndOfFile {
-            break;
-        }
-
         let key = eat_identifier(scanner)?;
         eat_optional_whitespace(scanner);
         eat_colon(scanner)?;
@@ -269,12 +262,9 @@ fn parse_metadata_block(scanner: &mut Scanner) -> ParseResult<Metadata> {
         };
 
         let next_token = scanner.next();
-        //let following_is_identifier = matches!(scanner.peek(), Token::Identifier(_));
 
         match next_token {
             Token::EndOfFile | Token::Blockbreak => break,
-            //TODO: This would be less awkward if we reset peek on context shift
-            //Token::Linebreak if following_is_identifier => continue,
             Token::Linebreak => continue,
             _ => return Err(ParseError::UnexpectedInput),
         }
@@ -284,9 +274,16 @@ fn parse_metadata_block(scanner: &mut Scanner) -> ParseResult<Metadata> {
     Ok(metadata)
 }
 
+fn parse_paragraph_block(scanner: &mut Scanner) -> ParseResult<Element> {
+    let paragraph = parse_paragraph(scanner)?;
+    let block = Block::Paragraph(paragraph);
+    let element = Element::Block(block);
+    Ok(element)
+}
+
 fn parse_paragraph(scanner: &mut Scanner) -> ParseResult<Paragraph> {
     let mut text_runs = Vec::new();
-    scanner.push_context(ScanContext::Paragraph);
+    scanner.push_context_paragraph();
 
     loop {
         let run = match scanner.peek() {
@@ -304,7 +301,8 @@ fn parse_paragraph(scanner: &mut Scanner) -> ParseResult<Paragraph> {
     }
 
     scanner.pop_context();
-    Ok(Paragraph(text_runs.into_boxed_slice()))
+    let para = Paragraph(text_runs.into_boxed_slice());
+    Ok(para)
 }
 
 fn parse_plain_text(scanner: &mut Scanner) -> ParseResult<TextRun> {
@@ -328,11 +326,15 @@ fn parse_plain_text(scanner: &mut Scanner) -> ParseResult<TextRun> {
             }
             Token::Whitespace => {
                 scanner.next();
-                run.push(SPACE);
+                if scanner.peek() != Token::Blockbreak {
+                    run.push(SPACE);
+                }
+                if scanner.peek() == Token::Linebreak {
+                    scanner.next();
+                }
             }
             Token::Linebreak => {
                 scanner.next();
-                eat_optional_whitespace(scanner);
                 // Wait to see if the next line is more text
                 pending_linebreak = true;
             }
@@ -381,6 +383,9 @@ fn parse_styled_text_run(scanner: &mut Scanner, end: Delimiter) -> ParseResult<S
             }
             Token::Whitespace => {
                 run.push(SPACE);
+                if scanner.peek() == Token::Linebreak {
+                    scanner.next();
+                }
             }
             Token::Delimiter(d) if d == end => {
                 break;
@@ -389,7 +394,6 @@ fn parse_styled_text_run(scanner: &mut Scanner, end: Delimiter) -> ParseResult<S
                 return Err(ParseError::UnexpectedInput);
             }
             Token::Linebreak => {
-                eat_optional_whitespace(scanner);
                 run.push(SPACE);
             }
             _ => return Err(ParseError::UnmatchedDelimiter),
@@ -404,7 +408,7 @@ fn parse_styled_text_run(scanner: &mut Scanner, end: Delimiter) -> ParseResult<S
 }
 
 fn parse_raw_text_run(scanner: &mut Scanner) -> ParseResult<String> {
-    scanner.push_context(ScanContext::InlineRaw);
+    scanner.push_context_inline_raw();
     let mut run = String::new();
 
     loop {
@@ -429,29 +433,6 @@ fn parse_raw_text_run(scanner: &mut Scanner) -> ParseResult<String> {
 #[cfg(test)]
 mod test {
     use super::*;
-    // TODO: Pathalogical test, that limits our design
-    // \n  \n
-    // Should _probably_ be treated as a block break
-    // However, we cant use a simple fixed char lookahead
-
-    //TODO: what about
-
-    // Foo
-    // #paragraph <-- Should reject, no block break
-    // Bar
-
-    // Foo
-    //  #paragraph <-- Should maybe reject?
-    // Bar
-
-    //
-    // #==Foo==
-    // Foo
-    // #==bar <-- should reject
-    //
-    //
-    // Foo
-    // #==bar <-- should reject no opening
 
     fn document() -> DocmentBuilder {
         DocmentBuilder::new()
@@ -738,6 +719,17 @@ mod test {
 
         assert_eq!(actual, expected);
     }
+    #[test]
+    fn new_line_with_extra_whitespace_collapses() {
+        let input = "Cats    \n    whiskers";
+        let expected = document()
+            .with_block(paragraph().with_run("Cats whiskers"))
+            .build();
+
+        let actual = parse_str(input).unwrap();
+
+        assert_eq!(actual, expected);
+    }
 
     #[test]
     fn two_new_lines_become_blocks() {
@@ -764,6 +756,45 @@ mod test {
 
         let actual = parse_str(input).unwrap();
 
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn two_new_lines_with_whitespace_is_treated_as_blockbreak() {
+        let input = "Cats\n \nwhiskers";
+        let expected = document()
+            .with_block(paragraph().with_run("Cats"))
+            .with_block(paragraph().with_run("whiskers"))
+            .build();
+
+        let actual = parse_str(input).unwrap();
+
+        assert_eq!(actual, expected);
+    }
+    #[test]
+    fn blockbreak_with_extra_whitespace() {
+        let input = "Cats  \n    \n  whiskers";
+        let expected = document()
+            .with_block(paragraph().with_run("Cats"))
+            .with_block(paragraph().with_run("whiskers"))
+            .build();
+
+        let actual = parse_str(input).unwrap();
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn missing_blockbreak_is_rejected() {
+        let input = concat!(
+            "Cats can sometimes be\n",
+            "#paragraph\n",
+            "ever so surprising\n"
+        );
+
+        let expected = Err(ParseError::UnexpectedInput);
+
+        let actual = parse_str(input);
         assert_eq!(actual, expected);
     }
 
@@ -1142,7 +1173,7 @@ mod test {
         let input = "`Cat\n  cat`";
 
         let expected = document()
-            .with_block(paragraph().with_raw_run("Cat   cat"))
+            .with_block(paragraph().with_raw_run("Cat cat"))
             .build();
 
         let actual = parse_str(input).unwrap();
@@ -1337,6 +1368,19 @@ mod test {
     }
 
     #[test]
+    fn doc_with_leading_spaces_and_new_line() {
+        let input = "   \nCats cats cats";
+
+        let expected = document()
+            .with_block(paragraph().with_run("Cats cats cats"))
+            .build();
+
+        let actual = parse_str(input).unwrap();
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
     fn doc_ending_with_new_line() {
         let input = "Cats are friends\n";
 
@@ -1450,10 +1494,34 @@ mod test {
     }
 
     #[test]
+    fn container_missing_start_is_rejected() {
+        let input = concat!("Silly cat\n", "#=");
+
+        let expected = Err(ParseError::UnexpectedInput);
+
+        let actual = parse_str(input);
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
     fn only_container_header_is_rejected() {
         let input = concat!("#[info]\n",);
 
-        let expected = Err(ParseError::UnterminatedContainer);
+        let expected = Err(ParseError::UnexpectedInput);
+
+        let actual = parse_str(input);
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn trailing_text_on_container_footer_is_rejected() {
+        let input = concat!(
+            "#[info]\n",
+            "Let me know if you find where I left my\n",
+            "#=toy"
+        );
+
+        let expected = Err(ParseError::UnexpectedInput);
 
         let actual = parse_str(input);
         assert_eq!(actual, expected);
