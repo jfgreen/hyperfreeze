@@ -3,6 +3,8 @@ use std::fmt::Display;
 use crate::scan::{Delimiter, Scanner, Token};
 
 //TODO: Can we simplify / flatten this at all?
+//TODO: Container could just be a kind of block that has other blocks in it?
+//TODO: Fuzz test?
 
 #[derive(PartialEq, Eq, Debug)]
 pub struct Document {
@@ -22,9 +24,11 @@ pub enum Element {
     Container(Container),
 }
 
+//TODO: Paragraph could just be Paragraph(Box<[TextRun])>?
 #[derive(PartialEq, Eq, Debug)]
 pub enum Block {
     Paragraph(Paragraph),
+    List(Box<[ListItem]>),
 }
 
 #[derive(PartialEq, Eq, Debug)]
@@ -54,6 +58,12 @@ impl Paragraph {
 }
 
 #[derive(PartialEq, Eq, Debug)]
+pub struct ListItem {
+    level: usize,
+    runs: Box<[TextRun]>,
+}
+
+#[derive(PartialEq, Eq, Debug)]
 pub struct TextRun {
     pub text: String,
     pub style: Style,
@@ -68,6 +78,7 @@ pub enum Style {
     Raw,
 }
 
+//TODO: Errors should describe where things went wrong, and what was expected
 #[derive(PartialEq, Eq, Debug)]
 pub enum ParseError {
     UnexpectedInput,
@@ -446,8 +457,51 @@ mod test {
         ParagraphBuilder::new()
     }
 
+    fn list() -> ListBuilder {
+        ListBuilder::new()
+    }
+
+    fn list_item() -> ListItemBuilder {
+        ListItemBuilder::new()
+    }
+
     fn info() -> ContainerBuilder {
         ContainerBuilder::new(ContainerKind::Info)
+    }
+
+    fn text(text: &str) -> TextRun {
+        TextRun {
+            text: text.to_string(),
+            style: Style::None,
+        }
+    }
+
+    fn emphasised_text(text: &str) -> TextRun {
+        TextRun {
+            text: text.to_string(),
+            style: Style::Emphasis,
+        }
+    }
+
+    fn strong_text(text: &str) -> TextRun {
+        TextRun {
+            text: text.to_string(),
+            style: Style::Strong,
+        }
+    }
+
+    fn strikethrough_text(text: &str) -> TextRun {
+        TextRun {
+            text: text.to_string(),
+            style: Style::Strikethrough,
+        }
+    }
+
+    fn raw_text(text: &str) -> TextRun {
+        TextRun {
+            text: text.to_string(),
+            style: Style::Raw,
+        }
     }
 
     struct DocmentBuilder {
@@ -527,6 +581,7 @@ mod test {
             self.text_runs.push(TextRun { text, style });
         }
 
+        //TODO: Have `with_run` accept a run
         fn with_run(mut self, text: &str) -> Self {
             self.push_run(text, Style::None);
             self
@@ -569,6 +624,59 @@ mod test {
         }
     }
 
+    struct ListBuilder {
+        items: Vec<ListItem>,
+    }
+
+    impl ListBuilder {
+        fn new() -> Self {
+            Self { items: Vec::new() }
+        }
+
+        fn with<T: Into<ListItem>>(mut self, item: T) -> Self {
+            self.items.push(item.into());
+            self
+        }
+
+        fn build(self) -> Box<[ListItem]> {
+            self.items.into_boxed_slice()
+        }
+    }
+
+    impl Into<Block> for ListBuilder {
+        fn into(self) -> Block {
+            Block::List(self.build())
+        }
+    }
+
+    struct ListItemBuilder {
+        level: usize,
+        runs: Vec<TextRun>,
+    }
+
+    impl ListItemBuilder {
+        fn new() -> Self {
+            Self {
+                level: 0,
+                runs: Vec::new(),
+            }
+        }
+
+        fn with(mut self, text: TextRun) -> Self {
+            self.runs.push(text);
+            self
+        }
+    }
+
+    impl Into<ListItem> for ListItemBuilder {
+        fn into(self) -> ListItem {
+            ListItem {
+                level: self.level,
+                runs: self.runs.into_boxed_slice(),
+            }
+        }
+    }
+
     struct ContainerBuilder {
         content: Vec<ContainedBlock>,
         kind: ContainerKind,
@@ -596,6 +704,9 @@ mod test {
             }
         }
     }
+
+    //TODO: Reduce test verbosity some more, e.g assert_fails, given().expect().
+    //TODO: See if we can group / order these ever growing tests...
 
     #[test]
     fn complete_doc_test() {
@@ -1457,6 +1568,7 @@ mod test {
         assert_eq!(actual, expected);
     }
 
+    //TODO: Pretty varient (e.g #== [ info ] ==)?
     #[test]
     fn multi_paragraph_info() {
         let input = concat!(
@@ -1466,6 +1578,7 @@ mod test {
             "...about the cats!\n",
             "#="
         );
+        //TODO: Maybe just a lone '#' would be prettier?
 
         let expected = document()
             .with_container(
@@ -1479,6 +1592,7 @@ mod test {
         assert_eq!(actual, expected);
     }
 
+    //TODO: We could allow this after all?
     #[test]
     fn unterminated_container_is_rejected() {
         let input = concat!(
@@ -1524,6 +1638,28 @@ mod test {
         let expected = Err(ParseError::UnexpectedInput);
 
         let actual = parse_str(input);
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    #[ignore]
+    fn simple_list() {
+        let input = concat!(
+            "- Dry food is ok\n",
+            "- Wet food is much better\n",
+            "- Water is important also\n"
+        );
+
+        let expected = document()
+            .with_block(
+                list()
+                    .with(list_item().with(text("Dry food is ok")))
+                    .with(list_item().with(text("Wet food is much better")))
+                    .with(list_item().with(text("Water is important also"))),
+            )
+            .build();
+
+        let actual = parse_str(input).unwrap();
         assert_eq!(actual, expected);
     }
 }
