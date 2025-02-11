@@ -15,6 +15,7 @@ pub enum Token<'a> {
     MetaText(&'a str),
     Colon,
     RawFragment(&'a str),
+    ListBullet,
     Unknown,
 }
 
@@ -129,6 +130,27 @@ impl<'a> Scanner<'a> {
         let context = self.context_stack.last().unwrap_or(&ScanContext::Base);
 
         dbg!(self.current_char);
+        // FIXME: This wont work for list bullets...
+        // Where we need to examine newline and whitespace seperately
+        //
+        // e.g
+        // - foo
+        //   - bar
+        //
+        // we need to see that foo ends with a linebreak
+        // then that there are two spaces before '- bar'
+        //
+        // Blockbreak is defined as
+        // (newline whitespace*) * n where n >= 2
+        //
+        // This will greedily eat both the newline and the spaces
+        //
+        // So...options.
+        // - Specialise newline handling for lists (meh?)
+        // - Enforce that blockbreak is two new lines (no whitespace in between)
+        // - Remove the concept of blockbreak as a token (too complicated)
+        //
+
         let token = match self.current_char {
             // New line handling is the same across all contexts
             None => Token::EndOfFile,

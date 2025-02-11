@@ -57,6 +57,8 @@ impl Paragraph {
     }
 }
 
+//TODO: Is this the best way to represent a list, what would be easy to render?
+//TODO: Could have a list item be an enum with sublist as a varient?
 #[derive(PartialEq, Eq, Debug)]
 pub struct ListItem {
     level: usize,
@@ -664,6 +666,11 @@ mod test {
 
         fn with(mut self, text: TextRun) -> Self {
             self.runs.push(text);
+            self
+        }
+
+        fn at_sub_level(mut self, level: usize) -> Self {
+            self.level = level;
             self
         }
     }
@@ -1656,6 +1663,32 @@ mod test {
                     .with(list_item().with(text("Dry food is ok")))
                     .with(list_item().with(text("Wet food is much better")))
                     .with(list_item().with(text("Water is important also"))),
+            )
+            .build();
+
+        let actual = parse_str(input).unwrap();
+        assert_eq!(actual, expected);
+    }
+
+    //TODO: Would be cool to optionaly give lists a title
+
+    #[test]
+    #[ignore]
+    fn list_with_sublist() {
+        let input = concat!(
+            "- Nice things to eat\n",
+            "  - Tuna\n",
+            "  - Chicken\n",
+            "  - Beef\n",
+        );
+
+        let expected = document()
+            .with_block(
+                list()
+                    .with(list_item().with(text("Nice things to eat")))
+                    .with(list_item().at_sub_level(1).with(text("Tuna")))
+                    .with(list_item().at_sub_level(1).with(text("Chicken")))
+                    .with(list_item().at_sub_level(1).with(text("Beef"))),
             )
             .build();
 
