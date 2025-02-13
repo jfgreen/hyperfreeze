@@ -1525,6 +1525,33 @@ mod test {
     }
 
     #[test]
+    fn test_new_line_and_space_between_styled_and_plain_text_runs() {
+        let input = "*Cat*\n cat";
+
+        let expected = document()
+            .with_block(paragraph().with_strong_run("Cat").with_run(" cat"))
+            .build();
+
+        let actual = parse_str(input).unwrap();
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn test_leading_whitespace_on_paragraph_is_ignored() {
+        let input = "Cat\n\n  cat";
+
+        let expected = document()
+            .with_block(paragraph().with_run("Cat"))
+            .with_block(paragraph().with_run("cat"))
+            .build();
+
+        let actual = parse_str(input).unwrap();
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
     fn doc_metadata() {
         let input = concat!(
             "#metadata\n",

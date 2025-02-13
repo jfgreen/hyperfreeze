@@ -16,6 +16,7 @@ pub enum Token<'a> {
     Colon,
     RawFragment(&'a str),
     ListBullet,
+    //TODO: Unknown token is a bit of a smell right?
     Unknown,
 }
 
@@ -39,6 +40,8 @@ const EQUALS: char = '=';
 const LEFT_SQUARE_BRACKET: char = '[';
 const RIGHT_SQUARE_BRACKET: char = ']';
 
+//TODO: We should have our own ext func for 'is_whitespace_but_not_new_line'
+//OR we stop accepting all whitespace and only treat space as whitespace
 trait CharExt {
     fn usable_in_text(&self) -> bool;
     fn usable_in_raw(&self) -> bool;
