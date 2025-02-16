@@ -11,7 +11,8 @@ pub enum Token<'a> {
     Text(&'a str),
     Whitespace,
     Identifier(&'a str),
-    Delimiter(Delimiter),
+    StyleDelimiter(StyleDelimiter),
+    InlineRawDelimiter,
     MetaText(&'a str),
     Colon,
     RawFragment(&'a str),
@@ -21,11 +22,10 @@ pub enum Token<'a> {
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Copy)]
-pub enum Delimiter {
-    Backtick,
-    Asterisk,
-    Tilde,
-    Underscore,
+pub enum StyleDelimiter {
+    Strong,
+    Strikethrough,
+    Emphasis,
 }
 
 const NEW_LINE: char = '\n';
@@ -271,19 +271,19 @@ impl<'a> Scanner<'a> {
             }
             BACKTICK => {
                 self.read_next_char();
-                Token::Delimiter(Delimiter::Backtick)
+                Token::InlineRawDelimiter
             }
             ASTERISK => {
                 self.read_next_char();
-                Token::Delimiter(Delimiter::Asterisk)
+                Token::StyleDelimiter(StyleDelimiter::Strong)
             }
             TILDE => {
                 self.read_next_char();
-                Token::Delimiter(Delimiter::Tilde)
+                Token::StyleDelimiter(StyleDelimiter::Strikethrough)
             }
             UNDERSCORE => {
                 self.read_next_char();
-                Token::Delimiter(Delimiter::Underscore)
+                Token::StyleDelimiter(StyleDelimiter::Emphasis)
             }
             _ => Token::Unknown,
         }
@@ -297,7 +297,7 @@ impl<'a> Scanner<'a> {
             }
             BACKTICK => {
                 self.read_next_char();
-                Token::Delimiter(Delimiter::Backtick)
+                Token::InlineRawDelimiter
             }
             _ => Token::Unknown,
         }

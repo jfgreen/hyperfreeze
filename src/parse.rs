@@ -1,6 +1,6 @@
 use std::fmt::Display;
 
-use crate::scan::{Delimiter, Scanner, Token};
+use crate::scan::{Scanner, StyleDelimiter, Token};
 
 //TODO: Can we simplify / flatten this at all?
 //TODO: Container could just be a kind of block that has other blocks in it?
@@ -71,7 +71,7 @@ pub struct TextRun {
     pub style: Style,
 }
 
-#[derive(PartialEq, Eq, Debug)]
+#[derive(PartialEq, Eq, Debug, Clone, Copy)]
 pub enum Style {
     None,
     Strong,
@@ -84,7 +84,6 @@ pub enum Style {
 #[derive(PartialEq, Eq, Debug)]
 pub enum ParseError {
     UnexpectedInput,
-    UnmatchedDelimiter,
     LooseDelimiter,
     EmptyDelimitedText,
     UnknownMetadata,
@@ -98,7 +97,6 @@ impl Display for ParseError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             ParseError::UnexpectedInput => write!(f, "unexpected input"),
-            ParseError::UnmatchedDelimiter => write!(f, "unmatched delimiter"),
             ParseError::LooseDelimiter => write!(f, "loose delimiter"),
             ParseError::EmptyDelimitedText => write!(f, "empty delimited text"),
             ParseError::UnknownMetadata => write!(f, "unknown metadata"),
@@ -141,7 +139,6 @@ macro_rules! token_eater {
 
 token_eater!(eat_colon, Colon);
 token_eater!(eat_linebreak, Linebreak);
-token_eater!(eat_delimiter, Delimiter, Delimiter);
 token_eater!(eat_block_header, BlockHeader, &'a str);
 token_eater!(eat_container_header, ContainerHeader, &'a str);
 token_eater!(eat_identifier, Identifier, &'a str);
@@ -176,7 +173,7 @@ pub fn parse_str(input: &str) -> ParseResult<Document> {
                 elements.push(element);
             }
             Token::EndOfFile => break,
-            Token::Text(_) | Token::Delimiter(_) => {
+            Token::Text(_) | Token::StyleDelimiter(_) | Token::InlineRawDelimiter => {
                 // Infer paragraph missing header (a valid sugar)
                 let element = parse_paragraph_block(scanner)?;
                 elements.push(element);
@@ -191,6 +188,7 @@ pub fn parse_str(input: &str) -> ParseResult<Document> {
     })
 }
 
+//TODO: can we just handle container in the normal block parsing flow?
 fn parse_container(scanner: &mut Scanner) -> ParseResult<Element> {
     let container_name = eat_container_header(scanner)?;
     let container_kind = container_kind_from_name(container_name)?;
@@ -204,7 +202,10 @@ fn parse_container(scanner: &mut Scanner) -> ParseResult<Element> {
                 scanner.next();
                 break;
             }
-            Token::Text(_) | Token::Whitespace | Token::Delimiter(_) => {
+            Token::Text(_)
+            | Token::Whitespace
+            | Token::StyleDelimiter(_)
+            | Token::InlineRawDelimiter => {
                 let para = parse_paragraph(scanner)?;
                 let block = ContainedBlock::Paragraph(para);
                 blocks.push(block);
@@ -294,42 +295,95 @@ fn parse_paragraph_block(scanner: &mut Scanner) -> ParseResult<Element> {
     Ok(element)
 }
 
+//TODO: Is there a nicer abstraction for this? NewType pattern?
+fn push_run(text_runs: &mut Vec<TextRun>, run: &mut String, style: Style) -> ParseResult<()> {
+    // TODO: Not sure if this belongs here.. check for style is sus
+    if run.is_empty() && style != Style::None {
+        return Err(ParseError::EmptyDelimitedText);
+    }
+
+    // TODO: Empty check feels like a bit of a hack?
+    if !run.is_empty() {
+        let completed_run = std::mem::take(run);
+        text_runs.push(TextRun {
+            text: completed_run,
+            style,
+        });
+    }
+
+    Ok(())
+}
+
+fn style_from_delimiter(delimiter: StyleDelimiter) -> Style {
+    match delimiter {
+        StyleDelimiter::Strong => Style::Strong,
+        StyleDelimiter::Emphasis => Style::Emphasis,
+        StyleDelimiter::Strikethrough => Style::Strikethrough,
+    }
+}
+
 fn parse_paragraph(scanner: &mut Scanner) -> ParseResult<Paragraph> {
     let mut text_runs = Vec::new();
     scanner.push_context_paragraph();
-
-    loop {
-        let run = match scanner.peek() {
-            Token::Text(_) | Token::Whitespace | Token::Linebreak => parse_plain_text(scanner)?,
-            Token::Delimiter(_) => parse_delimited_text(scanner)?,
-            Token::EndOfFile => break,
-            Token::Blockbreak => {
-                scanner.next();
-                break;
-            }
-            Token::ContainerFooter => break,
-            _ => return Err(ParseError::UnexpectedInput),
-        };
-        text_runs.push(run);
-    }
-
-    scanner.pop_context();
-    let para = Paragraph(text_runs.into_boxed_slice());
-    Ok(para)
-}
-
-fn parse_plain_text(scanner: &mut Scanner) -> ParseResult<TextRun> {
     let mut run = String::new();
-
     let mut pending_linebreak = false;
 
     loop {
         match scanner.peek() {
-            Token::Text(text) => {
-                // Last token was linebreak,
-                // and now we have more text.
-                // So treat as a space.
+            Token::StyleDelimiter(d1) => {
+                push_run(&mut text_runs, &mut run, Style::None)?;
+                let style = style_from_delimiter(d1);
+                scanner.next();
 
+                'styled_text: loop {
+                    match scanner.next() {
+                        Token::Text(text) => {
+                            run.push_str(text);
+                        }
+                        Token::Whitespace => {
+                            run.push(SPACE);
+                            if scanner.peek() == Token::Linebreak {
+                                scanner.next();
+                            }
+                        }
+                        Token::StyleDelimiter(d2) if d1 == d2 => {
+                            break 'styled_text;
+                        }
+                        Token::Linebreak => {
+                            run.push(SPACE);
+                        }
+                        _ => return Err(ParseError::UnexpectedInput),
+                    }
+                }
+
+                if run.starts_with(SPACE) || run.ends_with(SPACE) {
+                    return Err(ParseError::LooseDelimiter);
+                }
+
+                push_run(&mut text_runs, &mut run, style)?;
+            }
+            Token::InlineRawDelimiter => {
+                push_run(&mut text_runs, &mut run, Style::None)?;
+                scanner.push_context_inline_raw();
+                scanner.next();
+                'inline_raw: loop {
+                    match scanner.next() {
+                        Token::InlineRawDelimiter => {
+                            break 'inline_raw;
+                        }
+                        Token::RawFragment(text) => {
+                            run.push_str(text);
+                        }
+                        Token::Linebreak => {
+                            run.push(SPACE);
+                        }
+                        _ => return Err(ParseError::UnexpectedInput),
+                    }
+                }
+                push_run(&mut text_runs, &mut run, Style::Raw)?;
+                scanner.pop_context();
+            }
+            Token::Text(text) => {
                 if pending_linebreak {
                     pending_linebreak = false;
                     run.push(SPACE);
@@ -348,99 +402,24 @@ fn parse_plain_text(scanner: &mut Scanner) -> ParseResult<TextRun> {
             }
             Token::Linebreak => {
                 scanner.next();
-                // Wait to see if the next line is more text
                 pending_linebreak = true;
             }
-            _ => break,
-        }
-    }
-
-    Ok(TextRun {
-        text: run,
-        style: Style::None,
-    })
-}
-
-fn parse_delimited_text(scanner: &mut Scanner) -> ParseResult<TextRun> {
-    let delimiter = eat_delimiter(scanner)?;
-
-    use Delimiter::*;
-
-    let style = match delimiter {
-        Asterisk => Style::Strong,
-        Underscore => Style::Emphasis,
-        Tilde => Style::Strikethrough,
-        Backtick => Style::Raw,
-    };
-
-    let run = if delimiter == Backtick {
-        parse_raw_text_run(scanner)?
-    } else {
-        parse_styled_text_run(scanner, delimiter)?
-    };
-
-    if run.is_empty() {
-        return Err(ParseError::EmptyDelimitedText);
-    }
-
-    Ok(TextRun { text: run, style })
-}
-
-fn parse_styled_text_run(scanner: &mut Scanner, end: Delimiter) -> ParseResult<String> {
-    let mut run = String::new();
-
-    loop {
-        match scanner.next() {
-            Token::Text(text) => {
-                run.push_str(text);
-            }
-            Token::Whitespace => {
-                run.push(SPACE);
-                if scanner.peek() == Token::Linebreak {
-                    scanner.next();
-                }
-            }
-            Token::Delimiter(d) if d == end => {
+            Token::Blockbreak => {
+                scanner.next();
+                push_run(&mut text_runs, &mut run, Style::None)?;
                 break;
             }
-            Token::Delimiter(_) => {
-                return Err(ParseError::UnexpectedInput);
-            }
-            Token::Linebreak => {
-                run.push(SPACE);
-            }
-            _ => return Err(ParseError::UnmatchedDelimiter),
-        }
-    }
-
-    if run.starts_with(SPACE) || run.ends_with(SPACE) {
-        return Err(ParseError::LooseDelimiter);
-    }
-
-    Ok(run)
-}
-
-fn parse_raw_text_run(scanner: &mut Scanner) -> ParseResult<String> {
-    scanner.push_context_inline_raw();
-    let mut run = String::new();
-
-    loop {
-        match scanner.next() {
-            Token::Delimiter(Delimiter::Backtick) => {
+            Token::EndOfFile | Token::ContainerFooter => {
+                push_run(&mut text_runs, &mut run, Style::None)?;
                 break;
             }
-            Token::RawFragment(text) => {
-                run.push_str(text);
-            }
-            Token::Linebreak => {
-                run.push(SPACE);
-            }
-            _ => return Err(ParseError::UnmatchedDelimiter),
+            _ => return Err(ParseError::UnexpectedInput),
         }
     }
 
     scanner.pop_context();
-    Ok(run)
+    let para = Paragraph(text_runs.into_boxed_slice());
+    Ok(para)
 }
 
 #[cfg(test)]
@@ -589,6 +568,7 @@ mod test {
             self
         }
 
+        //TODO: remove these?
         fn with_emphasised_run(mut self, text: &str) -> Self {
             self.push_run(text, Style::Emphasis);
             self
@@ -1261,7 +1241,7 @@ mod test {
     }
 
     #[test]
-    fn test_newline_then_multiple_spaces_in_plain_text() {
+    fn newline_then_multiple_spaces_in_plain_text() {
         let input = "Cat\n  cat";
 
         let expected = document()
@@ -1274,7 +1254,7 @@ mod test {
     }
 
     #[test]
-    fn test_newline_then_multiple_spaces_in_styled() {
+    fn newline_then_multiple_spaces_in_styled() {
         let input = "*Cat\n  cat*";
 
         let expected = document()
@@ -1287,7 +1267,7 @@ mod test {
     }
 
     #[test]
-    fn test_newline_then_multiple_spaces_in_raw() {
+    fn newline_then_multiple_spaces_in_raw() {
         let input = "`Cat\n  cat`";
 
         let expected = document()
@@ -1300,7 +1280,7 @@ mod test {
     }
 
     #[test]
-    fn test_multiple_spaces_then_newline_in_plain_text() {
+    fn multiple_spaces_then_newline_in_plain_text() {
         let input = "Cat  \ncat";
 
         let expected = document()
@@ -1313,7 +1293,7 @@ mod test {
     }
 
     #[test]
-    fn test_multiple_spaces_then_newline_in_styled() {
+    fn multiple_spaces_then_newline_in_styled() {
         let input = "*Cat  \ncat*";
 
         let expected = document()
@@ -1326,7 +1306,7 @@ mod test {
     }
 
     #[test]
-    fn test_multiple_spaces_then_newline_in_raw() {
+    fn multiple_spaces_then_newline_in_raw() {
         let input = "`Cat  \ncat`";
 
         let expected = document()
@@ -1364,7 +1344,7 @@ mod test {
     fn raw_with_double_linebreak() {
         let input = "`Erm...\n\nmeow?`";
 
-        let expected = Err(ParseError::UnmatchedDelimiter);
+        let expected = Err(ParseError::UnexpectedInput);
 
         let actual = parse_str(input);
 
@@ -1375,7 +1355,7 @@ mod test {
     fn strikethrough_with_double_linebreak() {
         let input = "~Erm...\n\nmeow?~";
 
-        let expected = Err(ParseError::UnmatchedDelimiter);
+        let expected = Err(ParseError::UnexpectedInput);
 
         let actual = parse_str(input);
 
@@ -1386,7 +1366,7 @@ mod test {
     fn unmatched_emphasis_1() {
         let input = "_.";
 
-        let expected = Err(ParseError::UnmatchedDelimiter);
+        let expected = Err(ParseError::UnexpectedInput);
 
         let actual = parse_str(input);
 
@@ -1397,7 +1377,7 @@ mod test {
     fn unmatched_emphasis_2() {
         let input = "meow _meow.";
 
-        let expected = Err(ParseError::UnmatchedDelimiter);
+        let expected = Err(ParseError::UnexpectedInput);
 
         let actual = parse_str(input);
 
@@ -1408,7 +1388,7 @@ mod test {
     fn unmatched_emphasis_3() {
         let input = "meow meow_";
 
-        let expected = Err(ParseError::UnmatchedDelimiter);
+        let expected = Err(ParseError::UnexpectedInput);
 
         let actual = parse_str(input);
 
@@ -1525,7 +1505,7 @@ mod test {
     }
 
     #[test]
-    fn test_new_line_and_space_between_styled_and_plain_text_runs() {
+    fn new_line_and_space_between_styled_and_plain_text_runs() {
         let input = "*Cat*\n cat";
 
         let expected = document()
@@ -1538,7 +1518,7 @@ mod test {
     }
 
     #[test]
-    fn test_leading_whitespace_on_paragraph_is_ignored() {
+    fn leading_whitespace_on_paragraph_is_ignored() {
         let input = "Cat\n\n  cat";
 
         let expected = document()
@@ -1627,6 +1607,8 @@ mod test {
     }
 
     //TODO: We could allow this after all?
+    //Challenge: we would not know untill the end of the doc
+    // (or start of next container) what is supposed to be inside
     #[test]
     fn unterminated_container_is_rejected() {
         let input = concat!(
