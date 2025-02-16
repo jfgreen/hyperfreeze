@@ -6,6 +6,7 @@ use crate::parse::{parse_str, ParseError};
 use crate::render::render_html;
 
 mod parse;
+#[allow(dead_code)]
 mod read;
 mod render;
 mod scan;

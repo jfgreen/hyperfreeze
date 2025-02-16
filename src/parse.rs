@@ -22,10 +22,9 @@ pub enum Element {
     Container(Container),
 }
 
-//TODO: Paragraph could just be Paragraph(Box<[TextRun])>?
 #[derive(PartialEq, Eq, Debug)]
 pub enum Block {
-    Paragraph(Paragraph),
+    Paragraph(Box<[TextRun]>),
     List(Box<[ListItem]>),
 }
 
@@ -39,15 +38,6 @@ pub struct Container {
 pub enum ContainerKind {
     Info,
     //TODO: Other kinds of alert
-}
-
-#[derive(PartialEq, Eq, Debug)]
-pub struct Paragraph(Box<[TextRun]>);
-
-impl Paragraph {
-    pub fn runs(&self) -> &[TextRun] {
-        &self.0
-    }
 }
 
 //TODO: Is this the best way to represent a list, what would be easy to render?
@@ -404,7 +394,7 @@ fn parse_paragraph(scanner: &mut Scanner) -> ParseResult<Block> {
     }
 
     scanner.pop_context();
-    let para = Paragraph(text_runs.into_boxed_slice());
+    let para = text_runs.into_boxed_slice();
     Ok(Block::Paragraph(para))
 }
 
@@ -575,8 +565,8 @@ mod test {
             self
         }
 
-        fn build(self) -> Paragraph {
-            Paragraph(self.text_runs.into_boxed_slice())
+        fn build(self) -> Box<[TextRun]> {
+            self.text_runs.into_boxed_slice()
         }
     }
 
