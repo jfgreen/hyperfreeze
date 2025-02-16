@@ -229,7 +229,7 @@ fn parse_block(scanner: &mut Scanner) -> ParseResult<Block> {
             let element = parse_paragraph(scanner)?;
             Ok(element)
         }
-        _ => return Err(ParseError::UnexpectedInput),
+        _ => Err(ParseError::UnexpectedInput),
     }
 }
 

@@ -247,7 +247,7 @@ impl<'a> Scanner<'a> {
             HASH if self.column == 1 => {
                 self.read_next_char();
                 let eq = self.eat_while(|c| c == EQUALS);
-                if eq.len() > 0 {
+                if !eq.is_empty() {
                     Token::ContainerFooter
                 } else {
                     Token::Unknown

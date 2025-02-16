@@ -38,7 +38,7 @@ fn render_block(block: &Block, out: &mut impl io::Write) -> io::Result<()> {
     Ok(())
 }
 
-fn render_paragraph(text_runs: &Box<[TextRun]>, out: &mut impl io::Write) -> io::Result<()> {
+fn render_paragraph(text_runs: &[TextRun], out: &mut impl io::Write) -> io::Result<()> {
     writeln!(out, "    <p>")?;
     writeln!(out, "      ")?;
     for run in text_runs.iter() {
