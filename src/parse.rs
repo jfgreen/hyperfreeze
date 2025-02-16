@@ -2,8 +2,6 @@ use std::fmt::Display;
 
 use crate::scan::{Scanner, StyleDelimiter, Token};
 
-//TODO: Can we simplify / flatten this at all?
-//TODO: Container could just be a kind of block that has other blocks in it?
 //TODO: Fuzz test?
 
 #[derive(PartialEq, Eq, Debug)]
@@ -54,7 +52,6 @@ impl Paragraph {
 
 //TODO: Is this the best way to represent a list, what would be easy to render?
 //TODO: Could have a list item be an enum with sublist as a varient?
-//TODO: have newtype pattern for list (i.e around Box<[ListItem]>)
 #[derive(PartialEq, Eq, Debug)]
 pub struct ListItem {
     level: usize,
@@ -160,21 +157,17 @@ pub fn parse_str(input: &str) -> ParseResult<Document> {
 
     loop {
         match scanner.peek() {
-            Token::BlockHeader(_) => {
-                let element = parse_named_block(scanner)?;
-                elements.push(element);
-            }
             Token::ContainerHeader(_) => {
-                let element = parse_container(scanner)?;
+                let container = parse_container(scanner)?;
+                let element = Element::Container(container);
                 elements.push(element);
             }
             Token::EndOfFile => break,
-            Token::Text(_) | Token::StyleDelimiter(_) | Token::InlineRawDelimiter => {
-                // Infer paragraph missing header (a valid sugar)
-                let element = parse_paragraph_block(scanner)?;
+            _ => {
+                let block = parse_block(scanner)?;
+                let element = Element::Block(block);
                 elements.push(element);
             }
-            _ => return Err(ParseError::UnexpectedInput),
         }
     }
 
@@ -184,7 +177,7 @@ pub fn parse_str(input: &str) -> ParseResult<Document> {
     })
 }
 
-fn parse_container(scanner: &mut Scanner) -> ParseResult<Element> {
+fn parse_container(scanner: &mut Scanner) -> ParseResult<Container> {
     let container_name = eat_container_header(scanner)?;
     let container_kind = container_kind_from_name(container_name)?;
     eat_linebreak(scanner)?;
@@ -197,17 +190,13 @@ fn parse_container(scanner: &mut Scanner) -> ParseResult<Element> {
                 scanner.next();
                 break;
             }
-            //TODO: extract common stuff between this and base parse loop
-            // e.g parse_block
-            Token::Text(_)
-            | Token::Whitespace
-            | Token::StyleDelimiter(_)
-            | Token::InlineRawDelimiter => {
-                let para = parse_paragraph(scanner)?;
-                let block = Block::Paragraph(para);
+            Token::EndOfFile => {
+                return Err(ParseError::UnterminatedContainer);
+            }
+            _ => {
+                let block = parse_block(scanner)?;
                 blocks.push(block);
             }
-            _ => return Err(ParseError::UnterminatedContainer),
         }
     }
 
@@ -222,8 +211,8 @@ fn parse_container(scanner: &mut Scanner) -> ParseResult<Element> {
         content: blocks.into_boxed_slice(),
         kind: container_kind,
     };
-    let element = Element::Container(container);
-    Ok(element)
+
+    Ok(container)
 }
 
 fn container_kind_from_name(name: &str) -> ParseResult<ContainerKind> {
@@ -233,18 +222,25 @@ fn container_kind_from_name(name: &str) -> ParseResult<ContainerKind> {
     }
 }
 
-fn parse_named_block(scanner: &mut Scanner) -> ParseResult<Element> {
-    let block_name = eat_block_header(scanner)?;
-
-    eat_linebreak(scanner)?;
-
-    let element = match block_name {
-        "metadata" => return Err(ParseError::MetadataNotAtStart),
-        "paragraph" => parse_paragraph_block(scanner)?,
-        _ => return Err(ParseError::UnknownBlock),
-    };
-
-    Ok(element)
+fn parse_block(scanner: &mut Scanner) -> ParseResult<Block> {
+    match scanner.peek() {
+        Token::BlockHeader(block_name) => {
+            scanner.next();
+            eat_linebreak(scanner)?;
+            let block = match block_name {
+                "metadata" => return Err(ParseError::MetadataNotAtStart),
+                "paragraph" => parse_paragraph(scanner)?,
+                _ => return Err(ParseError::UnknownBlock),
+            };
+            Ok(block)
+        }
+        Token::Text(_) | Token::StyleDelimiter(_) | Token::InlineRawDelimiter => {
+            // Infer paragraph missing header (a valid sugar)
+            let element = parse_paragraph(scanner)?;
+            Ok(element)
+        }
+        _ => return Err(ParseError::UnexpectedInput),
+    }
 }
 
 fn parse_metadata_block(scanner: &mut Scanner) -> ParseResult<Metadata> {
@@ -285,13 +281,6 @@ fn parse_metadata_block(scanner: &mut Scanner) -> ParseResult<Metadata> {
     Ok(metadata)
 }
 
-fn parse_paragraph_block(scanner: &mut Scanner) -> ParseResult<Element> {
-    let paragraph = parse_paragraph(scanner)?;
-    let block = Block::Paragraph(paragraph);
-    let element = Element::Block(block);
-    Ok(element)
-}
-
 //TODO: Is there a nicer abstraction for this? NewType pattern?
 fn push_run(text_runs: &mut Vec<TextRun>, run: &mut String, style: Style) -> ParseResult<()> {
     // TODO: Not sure if this belongs here.. check for style is sus
@@ -319,7 +308,7 @@ fn style_from_delimiter(delimiter: StyleDelimiter) -> Style {
     }
 }
 
-fn parse_paragraph(scanner: &mut Scanner) -> ParseResult<Paragraph> {
+fn parse_paragraph(scanner: &mut Scanner) -> ParseResult<Block> {
     let mut text_runs = Vec::new();
     scanner.push_context_paragraph();
     let mut run = String::new();
@@ -416,7 +405,7 @@ fn parse_paragraph(scanner: &mut Scanner) -> ParseResult<Paragraph> {
 
     scanner.pop_context();
     let para = Paragraph(text_runs.into_boxed_slice());
-    Ok(para)
+    Ok(Block::Paragraph(para))
 }
 
 #[cfg(test)]
