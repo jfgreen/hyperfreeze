@@ -33,13 +33,8 @@ pub enum Block {
 
 #[derive(PartialEq, Eq, Debug)]
 pub struct Container {
-    pub content: Box<[ContainedBlock]>,
+    pub content: Box<[Block]>,
     pub kind: ContainerKind,
-}
-
-#[derive(PartialEq, Eq, Debug)]
-pub enum ContainedBlock {
-    Paragraph(Paragraph),
 }
 
 #[derive(PartialEq, Eq, Debug)]
@@ -59,6 +54,7 @@ impl Paragraph {
 
 //TODO: Is this the best way to represent a list, what would be easy to render?
 //TODO: Could have a list item be an enum with sublist as a varient?
+//TODO: have newtype pattern for list (i.e around Box<[ListItem]>)
 #[derive(PartialEq, Eq, Debug)]
 pub struct ListItem {
     level: usize,
@@ -188,7 +184,6 @@ pub fn parse_str(input: &str) -> ParseResult<Document> {
     })
 }
 
-//TODO: can we just handle container in the normal block parsing flow?
 fn parse_container(scanner: &mut Scanner) -> ParseResult<Element> {
     let container_name = eat_container_header(scanner)?;
     let container_kind = container_kind_from_name(container_name)?;
@@ -202,12 +197,14 @@ fn parse_container(scanner: &mut Scanner) -> ParseResult<Element> {
                 scanner.next();
                 break;
             }
+            //TODO: extract common stuff between this and base parse loop
+            // e.g parse_block
             Token::Text(_)
             | Token::Whitespace
             | Token::StyleDelimiter(_)
             | Token::InlineRawDelimiter => {
                 let para = parse_paragraph(scanner)?;
-                let block = ContainedBlock::Paragraph(para);
+                let block = Block::Paragraph(para);
                 blocks.push(block);
             }
             _ => return Err(ParseError::UnterminatedContainer),
@@ -600,12 +597,6 @@ mod test {
         }
     }
 
-    impl Into<ContainedBlock> for ParagraphBuilder {
-        fn into(self) -> ContainedBlock {
-            ContainedBlock::Paragraph(self.build())
-        }
-    }
-
     struct ListBuilder {
         items: Vec<ListItem>,
     }
@@ -665,7 +656,7 @@ mod test {
     }
 
     struct ContainerBuilder {
-        content: Vec<ContainedBlock>,
+        content: Vec<Block>,
         kind: ContainerKind,
     }
 
@@ -677,7 +668,7 @@ mod test {
             }
         }
 
-        fn with<T: Into<ContainedBlock>>(mut self, block: T) -> Self {
+        fn with<T: Into<Block>>(mut self, block: T) -> Self {
             self.content.push(block.into());
             self
         }

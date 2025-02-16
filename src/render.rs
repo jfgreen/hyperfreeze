@@ -1,6 +1,7 @@
 use std::io;
 
-use crate::parse::{Document, Paragraph, Style};
+use crate::parse::Element::*;
+use crate::parse::{Block, Document, Paragraph, Style};
 
 //TODO: Have some kind of helper for writing HTML, with indent
 pub fn render_html(document: &Document, out: &mut impl io::Write) -> io::Result<()> {
@@ -12,19 +13,12 @@ pub fn render_html(document: &Document, out: &mut impl io::Write) -> io::Result<
     writeln!(out, "  </head>")?;
     writeln!(out, "  <body>")?;
 
-    use crate::parse::Block;
-    use crate::parse::ContainedBlock;
-    use crate::parse::Element::*;
-
     for element in document.contents.iter() {
         match element {
-            Block(Block::Paragraph(paragraph)) => render_paragraph(paragraph, out)?,
-            Block(Block::List(_)) => todo!(),
+            Block(block) => render_block(block, out)?,
             Container(container) => {
                 for block in container.content.iter() {
-                    match block {
-                        ContainedBlock::Paragraph(paragraph) => render_paragraph(paragraph, out)?,
-                    }
+                    render_block(block, out)?;
                 }
             }
         }
@@ -33,6 +27,14 @@ pub fn render_html(document: &Document, out: &mut impl io::Write) -> io::Result<
     writeln!(out, "  </body>")?;
     write!(out, "</html>")?;
 
+    Ok(())
+}
+
+fn render_block(block: &Block, out: &mut impl io::Write) -> io::Result<()> {
+    match block {
+        Block::Paragraph(paragraph) => render_paragraph(paragraph, out)?,
+        Block::List(_) => todo!(),
+    };
     Ok(())
 }
 
