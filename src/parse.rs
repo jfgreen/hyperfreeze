@@ -533,35 +533,8 @@ mod test {
             }
         }
 
-        fn push_run(&mut self, text: &str, style: Style) {
-            let text = text.to_string();
-            self.text_runs.push(TextRun { text, style });
-        }
-
-        //TODO: Have `with_run` accept a run
-        fn with_run(mut self, text: &str) -> Self {
-            self.push_run(text, Style::None);
-            self
-        }
-
-        //TODO: remove these?
-        fn with_emphasised_run(mut self, text: &str) -> Self {
-            self.push_run(text, Style::Emphasis);
-            self
-        }
-
-        fn with_strong_run(mut self, text: &str) -> Self {
-            self.push_run(text, Style::Strong);
-            self
-        }
-
-        fn with_strikethrough_run(mut self, text: &str) -> Self {
-            self.push_run(text, Style::Strikethrough);
-            self
-        }
-
-        fn with_raw_run(mut self, text: &str) -> Self {
-            self.push_run(text, Style::Raw);
+        fn with<T: Into<TextRun>>(mut self, text: T) -> Self {
+            self.text_runs.push(text.into());
             self
         }
 
@@ -690,12 +663,12 @@ mod test {
             .with_container(
                 info().with(
                     paragraph()
-                        .with_run("Did you know flower pots are for ")
-                        .with_strong_run("more")
-                        .with_run(" than simply knocking on the floor?"),
+                        .with(text("Did you know flower pots are for "))
+                        .with(strong_text("more"))
+                        .with(text(" than simply knocking on the floor?")),
                 ),
             )
-            .with_block(paragraph().with_run("Opposable thumbs are useful?"))
+            .with_block(paragraph().with(text("Opposable thumbs are useful?")))
             .build();
 
         let actual = parse_str(input).unwrap();
@@ -708,7 +681,7 @@ mod test {
         let input = "We like cats very much";
 
         let expected = document()
-            .with_block(paragraph().with_run("We like cats very much"))
+            .with_block(paragraph().with(text("We like cats very much")))
             .build();
 
         let actual = parse_str(input).unwrap();
@@ -721,7 +694,7 @@ mod test {
         let input = "#paragraph\nCats go meeow!";
 
         let expected = document()
-            .with_block(paragraph().with_run("Cats go meeow!"))
+            .with_block(paragraph().with(text("Cats go meeow!")))
             .build();
 
         let actual = parse_str(input).unwrap();
@@ -767,7 +740,7 @@ mod test {
         let input = "Nice  kitty!";
 
         let expected = document()
-            .with_block(paragraph().with_run("Nice kitty!"))
+            .with_block(paragraph().with(text("Nice kitty!")))
             .build();
 
         let actual = parse_str(input).unwrap();
@@ -780,7 +753,7 @@ mod test {
         let input = "Cats\nwhiskers";
 
         let expected = document()
-            .with_block(paragraph().with_run("Cats whiskers"))
+            .with_block(paragraph().with(text("Cats whiskers")))
             .build();
 
         let actual = parse_str(input).unwrap();
@@ -791,7 +764,7 @@ mod test {
     fn new_line_with_extra_whitespace_collapses() {
         let input = "Cats    \n    whiskers";
         let expected = document()
-            .with_block(paragraph().with_run("Cats whiskers"))
+            .with_block(paragraph().with(text("Cats whiskers")))
             .build();
 
         let actual = parse_str(input).unwrap();
@@ -804,8 +777,8 @@ mod test {
         let input = "Cats\n\nwhiskers";
 
         let expected = document()
-            .with_block(paragraph().with_run("Cats"))
-            .with_block(paragraph().with_run("whiskers"))
+            .with_block(paragraph().with(text("Cats")))
+            .with_block(paragraph().with(text("whiskers")))
             .build();
 
         let actual = parse_str(input).unwrap();
@@ -818,8 +791,8 @@ mod test {
         let input = "Cats\n\n\nwhiskers";
 
         let expected = document()
-            .with_block(paragraph().with_run("Cats"))
-            .with_block(paragraph().with_run("whiskers"))
+            .with_block(paragraph().with(text("Cats")))
+            .with_block(paragraph().with(text("whiskers")))
             .build();
 
         let actual = parse_str(input).unwrap();
@@ -831,8 +804,8 @@ mod test {
     fn two_new_lines_with_whitespace_is_treated_as_blockbreak() {
         let input = "Cats\n \nwhiskers";
         let expected = document()
-            .with_block(paragraph().with_run("Cats"))
-            .with_block(paragraph().with_run("whiskers"))
+            .with_block(paragraph().with(text("Cats")))
+            .with_block(paragraph().with(text("whiskers")))
             .build();
 
         let actual = parse_str(input).unwrap();
@@ -843,8 +816,8 @@ mod test {
     fn blockbreak_with_extra_whitespace() {
         let input = "Cats  \n    \n  whiskers";
         let expected = document()
-            .with_block(paragraph().with_run("Cats"))
-            .with_block(paragraph().with_run("whiskers"))
+            .with_block(paragraph().with(text("Cats")))
+            .with_block(paragraph().with(text("whiskers")))
             .build();
 
         let actual = parse_str(input).unwrap();
@@ -871,7 +844,7 @@ mod test {
         let input = "My cat does backflips #coolcat";
 
         let expected = document()
-            .with_block(paragraph().with_run("My cat does backflips #coolcat"))
+            .with_block(paragraph().with(text("My cat does backflips #coolcat")))
             .build();
 
         let actual = parse_str(input).unwrap();
@@ -884,7 +857,7 @@ mod test {
         let input = "cat\\_case";
 
         let expected = document()
-            .with_block(paragraph().with_run("cat_case"))
+            .with_block(paragraph().with(text("cat_case")))
             .build();
 
         let actual = parse_str(input).unwrap();
@@ -897,7 +870,7 @@ mod test {
         let input = "_cat\\_case_";
 
         let expected = document()
-            .with_block(paragraph().with_emphasised_run("cat_case"))
+            .with_block(paragraph().with(emphasised_text("cat_case")))
             .build();
 
         let actual = parse_str(input).unwrap();
@@ -910,7 +883,7 @@ mod test {
         let input = "`cat\\_case`";
 
         let expected = document()
-            .with_block(paragraph().with_raw_run("cat\\_case"))
+            .with_block(paragraph().with(raw_text("cat\\_case")))
             .build();
 
         let actual = parse_str(input).unwrap();
@@ -925,9 +898,9 @@ mod test {
         let expected = document()
             .with_block(
                 paragraph()
-                    .with_run("We ")
-                    .with_emphasised_run("totally adore")
-                    .with_run(" them"),
+                    .with(text("We "))
+                    .with(emphasised_text("totally adore"))
+                    .with(text(" them")),
             )
             .build();
 
@@ -943,9 +916,9 @@ mod test {
         let expected = document()
             .with_block(
                 paragraph()
-                    .with_run("Cats like to ")
-                    .with_emphasised_run("zoom")
-                    .with_run(" around"),
+                    .with(text("Cats like to "))
+                    .with(emphasised_text("zoom"))
+                    .with(text(" around")),
             )
             .build();
 
@@ -961,9 +934,9 @@ mod test {
         let expected = document()
             .with_block(
                 paragraph()
-                    .with_run("I ")
-                    .with_strong_run("need to pet that cat")
-                    .with_run(" right away."),
+                    .with(text("I "))
+                    .with(strong_text("need to pet that cat"))
+                    .with(text(" right away.")),
             )
             .build();
 
@@ -979,9 +952,9 @@ mod test {
         let expected = document()
             .with_block(
                 paragraph()
-                    .with_run("I said: mee")
-                    .with_strong_run("ooOOo")
-                    .with_run("ww!"),
+                    .with(text("I said: mee"))
+                    .with(strong_text("ooOOo"))
+                    .with(text("ww!")),
             )
             .build();
 
@@ -995,7 +968,7 @@ mod test {
         let input = "*me\now*";
 
         let expected = document()
-            .with_block(paragraph().with_strong_run("me ow"))
+            .with_block(paragraph().with(strong_text("me ow")))
             .build();
 
         let actual = parse_str(input).unwrap();
@@ -1010,9 +983,9 @@ mod test {
         let expected = document()
             .with_block(
                 paragraph()
-                    .with_run("Cats are ")
-                    .with_strikethrough_run("ok i guess")
-                    .with_run(" magnificant"),
+                    .with(text("Cats are "))
+                    .with(strikethrough_text("ok i guess"))
+                    .with(text(" magnificant")),
             )
             .build();
 
@@ -1028,9 +1001,9 @@ mod test {
         let expected = document()
             .with_block(
                 paragraph()
-                    .with_run("Robot cat says ")
-                    .with_raw_run("bleep bloop")
-                    .with_run("!"),
+                    .with(text("Robot cat says "))
+                    .with(raw_text("bleep bloop"))
+                    .with(text("!")),
             )
             .build();
 
@@ -1046,9 +1019,9 @@ mod test {
         let expected = document()
             .with_block(
                 paragraph()
-                    .with_run("Bl")
-                    .with_raw_run("eeee")
-                    .with_run("p!"),
+                    .with(text("Bl"))
+                    .with(raw_text("eeee"))
+                    .with(text("p!")),
             )
             .build();
 
@@ -1064,9 +1037,9 @@ mod test {
         let expected = document()
             .with_block(
                 paragraph()
-                    .with_run("Set ")
-                    .with_raw_run("PURR_LOUDLY")
-                    .with_run(" to true"),
+                    .with(text("Set "))
+                    .with(raw_text("PURR_LOUDLY"))
+                    .with(text(" to true")),
             )
             .build();
 
@@ -1080,7 +1053,7 @@ mod test {
         let input = "`Keep your       distance`";
 
         let expected = document()
-            .with_block(paragraph().with_raw_run("Keep your       distance"))
+            .with_block(paragraph().with(raw_text("Keep your       distance")))
             .build();
 
         let actual = parse_str(input).unwrap();
@@ -1093,7 +1066,7 @@ mod test {
         let input = "`Great\ncats`";
 
         let expected = document()
-            .with_block(paragraph().with_raw_run("Great cats"))
+            .with_block(paragraph().with(raw_text("Great cats")))
             .build();
 
         let actual = parse_str(input).unwrap();
@@ -1106,7 +1079,7 @@ mod test {
         let input = "~Great\ndogs~";
 
         let expected = document()
-            .with_block(paragraph().with_strikethrough_run("Great dogs"))
+            .with_block(paragraph().with(strikethrough_text("Great dogs")))
             .build();
 
         let actual = parse_str(input).unwrap();
@@ -1119,7 +1092,7 @@ mod test {
         let input = "`\nMeow?`";
 
         let expected = document()
-            .with_block(paragraph().with_raw_run(" Meow?"))
+            .with_block(paragraph().with(raw_text(" Meow?")))
             .build();
 
         let actual = parse_str(input).unwrap();
@@ -1132,7 +1105,7 @@ mod test {
         let input = "`Meow\n`";
 
         let expected = document()
-            .with_block(paragraph().with_raw_run("Meow "))
+            .with_block(paragraph().with(raw_text("Meow ")))
             .build();
 
         let actual = parse_str(input).unwrap();
@@ -1145,7 +1118,7 @@ mod test {
         let input = "` Meow`";
 
         let expected = document()
-            .with_block(paragraph().with_raw_run(" Meow"))
+            .with_block(paragraph().with(raw_text(" Meow")))
             .build();
 
         let actual = parse_str(input).unwrap();
@@ -1158,7 +1131,7 @@ mod test {
         let input = "`Meow `";
 
         let expected = document()
-            .with_block(paragraph().with_raw_run("Meow "))
+            .with_block(paragraph().with(raw_text("Meow ")))
             .build();
 
         let actual = parse_str(input).unwrap();
@@ -1171,7 +1144,7 @@ mod test {
         let input = "`Great\ncats\nassemble!`";
 
         let expected = document()
-            .with_block(paragraph().with_raw_run("Great cats assemble!"))
+            .with_block(paragraph().with(raw_text("Great cats assemble!")))
             .build();
 
         let actual = parse_str(input).unwrap();
@@ -1184,7 +1157,7 @@ mod test {
         let input = "Felines - fantastic!";
 
         let expected = document()
-            .with_block(paragraph().with_run("Felines - fantastic!"))
+            .with_block(paragraph().with(text("Felines - fantastic!")))
             .build();
 
         let actual = parse_str(input).unwrap();
@@ -1199,9 +1172,9 @@ mod test {
         let expected = document()
             .with_block(
                 paragraph()
-                    .with_run("Cat cat")
-                    .with_emphasised_run("cat cat")
-                    .with_run(" cat."),
+                    .with(text("Cat cat"))
+                    .with(emphasised_text("cat cat"))
+                    .with(text(" cat.")),
             )
             .build();
 
@@ -1215,7 +1188,7 @@ mod test {
         let input = "Cat\n  cat";
 
         let expected = document()
-            .with_block(paragraph().with_run("Cat cat"))
+            .with_block(paragraph().with(text("Cat cat")))
             .build();
 
         let actual = parse_str(input).unwrap();
@@ -1228,7 +1201,7 @@ mod test {
         let input = "*Cat\n  cat*";
 
         let expected = document()
-            .with_block(paragraph().with_strong_run("Cat cat"))
+            .with_block(paragraph().with(strong_text("Cat cat")))
             .build();
 
         let actual = parse_str(input).unwrap();
@@ -1241,7 +1214,7 @@ mod test {
         let input = "`Cat\n  cat`";
 
         let expected = document()
-            .with_block(paragraph().with_raw_run("Cat cat"))
+            .with_block(paragraph().with(raw_text("Cat cat")))
             .build();
 
         let actual = parse_str(input).unwrap();
@@ -1254,7 +1227,7 @@ mod test {
         let input = "Cat  \ncat";
 
         let expected = document()
-            .with_block(paragraph().with_run("Cat cat"))
+            .with_block(paragraph().with(text("Cat cat")))
             .build();
 
         let actual = parse_str(input).unwrap();
@@ -1267,7 +1240,7 @@ mod test {
         let input = "*Cat  \ncat*";
 
         let expected = document()
-            .with_block(paragraph().with_strong_run("Cat cat"))
+            .with_block(paragraph().with(strong_text("Cat cat")))
             .build();
 
         let actual = parse_str(input).unwrap();
@@ -1280,7 +1253,7 @@ mod test {
         let input = "`Cat  \ncat`";
 
         let expected = document()
-            .with_block(paragraph().with_raw_run("Cat   cat"))
+            .with_block(paragraph().with(raw_text("Cat   cat")))
             .build();
 
         let actual = parse_str(input).unwrap();
@@ -1414,7 +1387,7 @@ mod test {
         let input = "\nCats cats cats";
 
         let expected = document()
-            .with_block(paragraph().with_run("Cats cats cats"))
+            .with_block(paragraph().with(text("Cats cats cats")))
             .build();
 
         let actual = parse_str(input).unwrap();
@@ -1427,7 +1400,7 @@ mod test {
         let input = "\n\nCats cats cats";
 
         let expected = document()
-            .with_block(paragraph().with_run("Cats cats cats"))
+            .with_block(paragraph().with(text("Cats cats cats")))
             .build();
 
         let actual = parse_str(input).unwrap();
@@ -1440,7 +1413,7 @@ mod test {
         let input = "   \nCats cats cats";
 
         let expected = document()
-            .with_block(paragraph().with_run("Cats cats cats"))
+            .with_block(paragraph().with(text("Cats cats cats")))
             .build();
 
         let actual = parse_str(input).unwrap();
@@ -1453,7 +1426,7 @@ mod test {
         let input = "Cats are friends\n";
 
         let expected = document()
-            .with_block(paragraph().with_run("Cats are friends"))
+            .with_block(paragraph().with(text("Cats are friends")))
             .build();
 
         let actual = parse_str(input).unwrap();
@@ -1466,7 +1439,7 @@ mod test {
         let input = "Feline friends\n\n";
 
         let expected = document()
-            .with_block(paragraph().with_run("Feline friends"))
+            .with_block(paragraph().with(text("Feline friends")))
             .build();
 
         let actual = parse_str(input).unwrap();
@@ -1479,7 +1452,7 @@ mod test {
         let input = "*Cat*\n cat";
 
         let expected = document()
-            .with_block(paragraph().with_strong_run("Cat").with_run(" cat"))
+            .with_block(paragraph().with(strong_text("Cat")).with(text(" cat")))
             .build();
 
         let actual = parse_str(input).unwrap();
@@ -1492,8 +1465,8 @@ mod test {
         let input = "Cat\n\n  cat";
 
         let expected = document()
-            .with_block(paragraph().with_run("Cat"))
-            .with_block(paragraph().with_run("cat"))
+            .with_block(paragraph().with(text("Cat")))
+            .with_block(paragraph().with(text("cat")))
             .build();
 
         let actual = parse_str(input).unwrap();
@@ -1567,8 +1540,8 @@ mod test {
         let expected = document()
             .with_container(
                 info()
-                    .with(paragraph().with_run("Here are some facts..."))
-                    .with(paragraph().with_run("...about the cats!")),
+                    .with(paragraph().with(text("Here are some facts...")))
+                    .with(paragraph().with(text("...about the cats!"))),
             )
             .build();
 
