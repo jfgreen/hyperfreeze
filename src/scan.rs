@@ -3,7 +3,6 @@ use std::str::CharIndices;
 #[derive(PartialEq, Eq, Debug, Clone, Copy)]
 pub enum Token<'a> {
     EndOfFile,
-    Blockbreak,
     Linebreak,
     BlockHeader(&'a str),
     ContainerHeader(&'a str),
@@ -29,6 +28,7 @@ pub enum StyleDelimiter {
 }
 
 const NEW_LINE: char = '\n';
+const SPACE: char = ' ';
 const BACKTICK: char = '`';
 const ASTERISK: char = '*';
 const TILDE: char = '~';
@@ -133,44 +133,15 @@ impl<'a> Scanner<'a> {
         let context = self.context_stack.last().unwrap_or(&ScanContext::Base);
 
         dbg!(self.current_char);
-        // FIXME: This wont work for list bullets...
-        // Where we need to examine newline and whitespace seperately
-        //
-        // e.g
-        // - foo
-        //   - bar
-        //
-        // we need to see that foo ends with a linebreak
-        // then that there are two spaces before '- bar'
-        //
-        // Blockbreak is defined as
-        // (newline whitespace*) * n where n >= 2
-        //
-        // This will greedily eat both the newline and the spaces
-        //
-        // So...options.
-        // - Specialise newline handling for lists (meh?)
-        // - Enforce that blockbreak is two new lines (no whitespace in between)
-        // - Remove the concept of blockbreak as a token (too complicated)
-        //
-
         let token = match self.current_char {
-            // New line handling is the same across all contexts
             None => Token::EndOfFile,
             Some(NEW_LINE) => {
                 self.read_next_char();
+                Token::Linebreak
+            }
+            Some(SPACE) => {
                 self.skip_non_newline_whitespace();
-                match self.current_char {
-                    Some(NEW_LINE) => {
-                        while self.current_char == Some(NEW_LINE) {
-                            self.read_next_char();
-                            self.skip_non_newline_whitespace();
-                        }
-                        Token::Blockbreak
-                    }
-                    None => Token::EndOfFile,
-                    _ => Token::Linebreak,
-                }
+                Token::Whitespace
             }
             Some(c) => match context {
                 ScanContext::Base => self.read_token_base(c),

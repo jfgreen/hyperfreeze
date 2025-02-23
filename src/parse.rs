@@ -134,10 +134,7 @@ pub fn parse_str(input: &str) -> ParseResult<Document> {
     let mut metadata = Metadata::default();
 
     // Trim start of doc if it has some kind of whitespace
-    while matches!(
-        scanner.peek(),
-        Token::Linebreak | Token::Blockbreak | Token::Whitespace
-    ) {
+    while matches!(scanner.peek(), Token::Linebreak | Token::Whitespace) {
         scanner.next();
     }
 
@@ -153,6 +150,9 @@ pub fn parse_str(input: &str) -> ParseResult<Document> {
                 elements.push(element);
             }
             Token::EndOfFile => break,
+            Token::Whitespace | Token::Linebreak => {
+                scanner.next();
+            }
             _ => {
                 let block = parse_block(scanner)?;
                 let element = Element::Block(block);
@@ -190,11 +190,14 @@ fn parse_container(scanner: &mut Scanner) -> ParseResult<Container> {
         }
     }
 
-    let peek = scanner.peek();
-    if peek == Token::Blockbreak {
+    //TODO: Again, could we have a "maybe parse blockbreak" func?
+
+    if scanner.peek() != Token::EndOfFile {
+        eat_linebreak(scanner)?;
+    }
+
+    if scanner.peek() == Token::Linebreak {
         scanner.next();
-    } else if peek != Token::EndOfFile {
-        return Err(ParseError::UnexpectedInput);
     }
 
     let container = Container {
@@ -258,11 +261,23 @@ fn parse_metadata_block(scanner: &mut Scanner) -> ParseResult<Metadata> {
             _ => return Err(ParseError::UnknownMetadata),
         };
 
-        let next_token = scanner.next();
-
-        match next_token {
-            Token::EndOfFile | Token::Blockbreak => break,
-            Token::Linebreak => continue,
+        match scanner.peek() {
+            Token::Linebreak => {
+                scanner.next();
+                match scanner.peek() {
+                    //TODO: deal extra whitespace iterleaved in block break?
+                    // or... extract common func to handle block break?
+                    Token::Linebreak => {
+                        scanner.next();
+                        break;
+                    }
+                    Token::EndOfFile => break,
+                    _ => continue,
+                }
+            }
+            Token::EndOfFile => {
+                break;
+            }
             _ => return Err(ParseError::UnexpectedInput),
         }
     }
@@ -304,6 +319,7 @@ fn parse_paragraph(scanner: &mut Scanner) -> ParseResult<Block> {
     let mut run = String::new();
     let mut pending_linebreak = false;
 
+    //TODO: Extract styled and raw parsing code
     loop {
         match scanner.peek() {
             Token::StyleDelimiter(d1) => {
@@ -326,7 +342,13 @@ fn parse_paragraph(scanner: &mut Scanner) -> ParseResult<Block> {
                             break 'styled_text;
                         }
                         Token::Linebreak => {
-                            run.push(SPACE);
+                            // TODO: Shared logic with inline
+                            eat_optional_whitespace(scanner);
+                            if scanner.peek() == Token::Linebreak {
+                                return Err(ParseError::UnexpectedInput);
+                            } else {
+                                run.push(SPACE);
+                            }
                         }
                         _ => return Err(ParseError::UnexpectedInput),
                     }
@@ -350,7 +372,17 @@ fn parse_paragraph(scanner: &mut Scanner) -> ParseResult<Block> {
                         Token::RawFragment(text) => {
                             run.push_str(text);
                         }
+                        //TODO: What about rejecting blockbreak in raw?
                         Token::Linebreak => {
+                            // TODO: Shared logic with styled
+                            eat_optional_whitespace(scanner);
+                            if scanner.peek() == Token::Linebreak {
+                                return Err(ParseError::UnexpectedInput);
+                            } else {
+                                run.push(SPACE);
+                            }
+                        }
+                        Token::Whitespace => {
                             run.push(SPACE);
                         }
                         _ => return Err(ParseError::UnexpectedInput),
@@ -369,21 +401,31 @@ fn parse_paragraph(scanner: &mut Scanner) -> ParseResult<Block> {
             }
             Token::Whitespace => {
                 scanner.next();
-                if scanner.peek() != Token::Blockbreak {
-                    run.push(SPACE);
-                }
+                //TODO: Can this be simplifed? :/
                 if scanner.peek() == Token::Linebreak {
                     scanner.next();
+                    eat_optional_whitespace(scanner);
+                    if scanner.peek() == Token::Linebreak {
+                        scanner.next();
+                        push_run(&mut text_runs, &mut run, Style::None)?;
+                        break;
+                    } else {
+                        run.push(SPACE);
+                    }
+                } else {
+                    run.push(SPACE);
                 }
             }
             Token::Linebreak => {
                 scanner.next();
-                pending_linebreak = true;
-            }
-            Token::Blockbreak => {
-                scanner.next();
-                push_run(&mut text_runs, &mut run, Style::None)?;
-                break;
+                eat_optional_whitespace(scanner);
+                if scanner.peek() == Token::Linebreak {
+                    scanner.next();
+                    push_run(&mut text_runs, &mut run, Style::None)?;
+                    break;
+                } else {
+                    pending_linebreak = true;
+                }
             }
             Token::EndOfFile | Token::ContainerFooter => {
                 push_run(&mut text_runs, &mut run, Style::None)?;
@@ -812,6 +854,7 @@ mod test {
 
         assert_eq!(actual, expected);
     }
+
     #[test]
     fn blockbreak_with_extra_whitespace() {
         let input = "Cats  \n    \n  whiskers";
@@ -1474,6 +1517,8 @@ mod test {
         assert_eq!(actual, expected);
     }
 
+    //TODO: We should test an extended block break between meta and para
+
     #[test]
     fn doc_metadata() {
         let input = concat!(
@@ -1580,7 +1625,7 @@ mod test {
     fn only_container_header_is_rejected() {
         let input = concat!("#[info]\n",);
 
-        let expected = Err(ParseError::UnexpectedInput);
+        let expected = Err(ParseError::UnterminatedContainer);
 
         let actual = parse_str(input);
         assert_eq!(actual, expected);
