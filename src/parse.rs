@@ -40,12 +40,10 @@ pub enum ContainerKind {
     //TODO: Other kinds of alert
 }
 
-//TODO: Is this the best way to represent a list, what would be easy to render?
-//TODO: Could have a list item be an enum with sublist as a varient?
 #[derive(PartialEq, Eq, Debug)]
-pub struct ListItem {
-    level: usize,
-    runs: Box<[TextRun]>,
+pub enum ListItem {
+    Text(Box<[TextRun]>),
+    SubList(Box<[ListItem]>),
 }
 
 #[derive(PartialEq, Eq, Debug)]
@@ -265,8 +263,9 @@ fn parse_metadata_block(scanner: &mut Scanner) -> ParseResult<Metadata> {
             Token::Linebreak => {
                 scanner.next();
                 match scanner.peek() {
-                    //TODO: deal extra whitespace iterleaved in block break?
+                    //TODO: deal with extra whitespace iterleaved in block break?
                     // or... extract common func to handle block break?
+                    // or.. just reject whitespace at start of block break line
                     Token::Linebreak => {
                         scanner.next();
                         break;
@@ -460,10 +459,6 @@ mod test {
         ListBuilder::new()
     }
 
-    fn list_item() -> ListItemBuilder {
-        ListItemBuilder::new()
-    }
-
     fn info() -> ContainerBuilder {
         ContainerBuilder::new(ContainerKind::Info)
     }
@@ -591,6 +586,12 @@ mod test {
         }
     }
 
+    impl Into<ListItem> for ParagraphBuilder {
+        fn into(self) -> ListItem {
+            ListItem::Text(self.build())
+        }
+    }
+
     struct ListBuilder {
         items: Vec<ListItem>,
     }
@@ -616,36 +617,9 @@ mod test {
         }
     }
 
-    struct ListItemBuilder {
-        level: usize,
-        runs: Vec<TextRun>,
-    }
-
-    impl ListItemBuilder {
-        fn new() -> Self {
-            Self {
-                level: 0,
-                runs: Vec::new(),
-            }
-        }
-
-        fn with(mut self, text: TextRun) -> Self {
-            self.runs.push(text);
-            self
-        }
-
-        fn at_sub_level(mut self, level: usize) -> Self {
-            self.level = level;
-            self
-        }
-    }
-
-    impl Into<ListItem> for ListItemBuilder {
+    impl Into<ListItem> for ListBuilder {
         fn into(self) -> ListItem {
-            ListItem {
-                level: self.level,
-                runs: self.runs.into_boxed_slice(),
-            }
+            ListItem::SubList(self.build())
         }
     }
 
@@ -1657,9 +1631,9 @@ mod test {
         let expected = document()
             .with_block(
                 list()
-                    .with(list_item().with(text("Dry food is ok")))
-                    .with(list_item().with(text("Wet food is much better")))
-                    .with(list_item().with(text("Water is important also"))),
+                    .with(paragraph().with(text("Dry food is ok")))
+                    .with(paragraph().with(text("Wet food is much better")))
+                    .with(paragraph().with(text("Water is important also"))),
             )
             .build();
 
@@ -1682,10 +1656,13 @@ mod test {
         let expected = document()
             .with_block(
                 list()
-                    .with(list_item().with(text("Nice things to eat")))
-                    .with(list_item().at_sub_level(1).with(text("Tuna")))
-                    .with(list_item().at_sub_level(1).with(text("Chicken")))
-                    .with(list_item().at_sub_level(1).with(text("Beef"))),
+                    .with(paragraph().with(text("Nice things to eat")))
+                    .with(
+                        list()
+                            .with(paragraph().with(text("Tuna")))
+                            .with(paragraph().with(text("Chicken")))
+                            .with(paragraph().with(text("Beef"))),
+                    ),
             )
             .build();
 
