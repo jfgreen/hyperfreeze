@@ -15,6 +15,7 @@ pub enum Token<'a> {
     MetaText(&'a str),
     Colon,
     RawFragment(&'a str),
+    RawSpace(&'a str),
     ListBullet,
     //TODO: Unknown token is a bit of a smell right?
     Unknown,
@@ -35,6 +36,7 @@ const TILDE: char = '~';
 const UNDERSCORE: char = '_';
 const HASH: char = '#';
 const COLON: char = ':';
+const HYPHEN: char = '-';
 const BACKSLASH: char = '\\';
 const EQUALS: char = '=';
 const LEFT_SQUARE_BRACKET: char = '[';
@@ -55,7 +57,7 @@ impl CharExt for char {
     }
 
     fn usable_in_raw(&self) -> bool {
-        !(*self == NEW_LINE || *self == BACKTICK)
+        !(*self == NEW_LINE || *self == SPACE || *self == BACKTICK)
     }
 
     fn usable_in_identifier(&self) -> bool {
@@ -72,6 +74,7 @@ pub enum ScanContext {
     Base,
     Metadata,
     Paragraph,
+    List,
     InlineRaw,
 }
 
@@ -132,26 +135,19 @@ impl<'a> Scanner<'a> {
     fn read_token(&mut self) -> Token<'a> {
         let context = self.context_stack.last().unwrap_or(&ScanContext::Base);
 
-        dbg!(self.current_char);
+        //dbg!(self.current_char);
         let token = match self.current_char {
             None => Token::EndOfFile,
-            Some(NEW_LINE) => {
-                self.read_next_char();
-                Token::Linebreak
-            }
-            Some(SPACE) => {
-                self.skip_non_newline_whitespace();
-                Token::Whitespace
-            }
             Some(c) => match context {
                 ScanContext::Base => self.read_token_base(c),
                 ScanContext::Metadata => self.read_token_metadata(c),
                 ScanContext::Paragraph => self.read_token_paragraph(c),
+                ScanContext::List => self.read_token_list(c),
                 ScanContext::InlineRaw => self.read_token_inline_raw(c),
             },
         };
 
-        dbg!(token);
+        // dbg!(token);
         token
 
         //TODO: Track line and column in each token
@@ -180,6 +176,11 @@ impl<'a> Scanner<'a> {
             };
         }
 
+        if first_char == NEW_LINE {
+            self.read_next_char();
+            return Token::Linebreak;
+        }
+
         if first_char.is_whitespace() {
             self.eat_while(char::is_whitespace);
             return Token::Whitespace;
@@ -189,7 +190,12 @@ impl<'a> Scanner<'a> {
         // one context from another. But read_token_base also needs to
         // correctly infer the first token of a paragraph or list when
         // the block header is ommited (a valid syntactical sugar)
-        self.read_token_paragraph(first_char)
+        if first_char == HYPHEN && self.column == 1 {
+            self.eat_char();
+            Token::ListBullet
+        } else {
+            self.read_token_paragraph(first_char)
+        }
     }
 
     fn read_token_metadata(&mut self, first_char: char) -> Token<'a> {
@@ -197,6 +203,10 @@ impl<'a> Scanner<'a> {
             c if c.usable_in_identifier() && self.column == 1 => {
                 let identifier = self.eat_while(|c| c.usable_in_identifier());
                 Token::Identifier(identifier)
+            }
+            NEW_LINE => {
+                self.read_next_char();
+                Token::Linebreak
             }
             COLON => {
                 self.read_next_char();
@@ -223,6 +233,10 @@ impl<'a> Scanner<'a> {
                 } else {
                     Token::Unknown
                 }
+            }
+            NEW_LINE => {
+                self.read_next_char();
+                Token::Linebreak
             }
             BACKSLASH => {
                 self.read_next_char();
@@ -260,11 +274,28 @@ impl<'a> Scanner<'a> {
         }
     }
 
+    fn read_token_list(&mut self, first_char: char) -> Token<'a> {
+        if first_char == HYPHEN && self.column == 1 {
+            self.eat_char();
+            return Token::ListBullet;
+        }
+
+        self.read_token_paragraph(first_char)
+    }
+
     fn read_token_inline_raw(&mut self, first_char: char) -> Token<'a> {
         match first_char {
             c if c.usable_in_raw() => {
                 let fragment = self.eat_while(|c| c.usable_in_raw());
                 Token::RawFragment(fragment)
+            }
+            NEW_LINE => {
+                self.read_next_char();
+                Token::Linebreak
+            }
+            SPACE => {
+                let space = self.eat_while(|c| c == SPACE);
+                Token::RawSpace(space)
             }
             BACKTICK => {
                 self.read_next_char();
@@ -277,9 +308,15 @@ impl<'a> Scanner<'a> {
     pub fn push_context_metadata(&mut self) {
         self.context_stack.push(ScanContext::Metadata);
     }
+
     pub fn push_context_paragraph(&mut self) {
         self.context_stack.push(ScanContext::Paragraph);
     }
+
+    pub fn push_context_list(&mut self) {
+        self.context_stack.push(ScanContext::List);
+    }
+
     pub fn push_context_inline_raw(&mut self) {
         self.context_stack.push(ScanContext::InlineRaw);
     }
