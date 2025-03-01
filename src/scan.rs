@@ -1,5 +1,8 @@
 use std::str::CharIndices;
 
+//TODO: Slowly move towards the lexer not knowing the context of things
+// e.g it shouldn't care if '-' is a ListBullet or a dash
+
 #[derive(PartialEq, Eq, Debug, Clone, Copy)]
 pub enum Token<'a> {
     EndOfFile,

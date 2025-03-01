@@ -407,20 +407,31 @@ fn parse_paragraph(scanner: &mut Scanner) -> ParseResult<Block> {
     scanner.push_context_paragraph();
     let mut run = String::new();
     let mut pending_linebreak = false;
+    //TODO: mix of push_run and text_runs.push is not ideal
+    //TODO: repetative check of pending_linebreak...
 
     loop {
         match scanner.peek() {
             Token::StyleDelimiter(_) => {
+                if pending_linebreak {
+                    pending_linebreak = false;
+                    run.push(SPACE);
+                }
                 push_run(&mut text_runs, &mut run, Style::None)?;
                 let styled_run = parse_styled_text_run(scanner)?;
                 text_runs.push(styled_run);
             }
             Token::InlineRawDelimiter => {
+                if pending_linebreak {
+                    pending_linebreak = false;
+                    run.push(SPACE);
+                }
                 push_run(&mut text_runs, &mut run, Style::None)?;
                 let inline_raw_run = parse_inline_raw_text_run(scanner)?;
                 text_runs.push(inline_raw_run);
             }
             Token::Text(text) => {
+                //TODO: Should we not do this for styled also? Write failing test?
                 if pending_linebreak {
                     pending_linebreak = false;
                     run.push(SPACE);
@@ -428,9 +439,17 @@ fn parse_paragraph(scanner: &mut Scanner) -> ParseResult<Block> {
                 scanner.next();
                 run.push_str(text);
             }
+            //TODO: Try a simpler model - all whitespace is pending until it hits something
+            //TODO: Try unifying handling of linebreak and whitespace?
             Token::Whitespace => {
                 scanner.next();
-                //TODO: Can this be simplifed? :/
+                //TODO: Can this be simplifed? (or extracted?):/
+                // Whitespace -> SPACE
+                // Whitespace, Linebreak -> Space
+                // Whitespace, Linebreak, Whitespace -> Space
+                // Whitespace, Linebreak, Linebreak -> Break
+                // Whitespace, Linebreak, Whitespace, Linebreak -> Break
+
                 if scanner.peek() == Token::Linebreak {
                     scanner.next();
                     eat_optional_whitespace(scanner);
@@ -446,6 +465,10 @@ fn parse_paragraph(scanner: &mut Scanner) -> ParseResult<Block> {
                 }
             }
             Token::Linebreak => {
+                // Linebreak => set pending break
+                // Linebreak, Whitesapce -> set pending
+                // Linebreak, Linebreak -> break
+                // Linebreak, Whitespace Linebreak -> break
                 scanner.next();
                 eat_optional_whitespace(scanner);
                 if scanner.peek() == Token::Linebreak {
@@ -839,6 +862,41 @@ mod test {
 
         assert_eq!(actual, expected);
     }
+
+    #[test]
+    fn new_line_becomes_whitespace_given_plain_then_styled() {
+        let input = "Cats\n*whiskers*";
+
+        let expected = document()
+            .with_block(
+                paragraph()
+                    .with(text("Cats "))
+                    .with(strong_text("whiskers")),
+            )
+            .build();
+
+        let actual = parse_str(input).unwrap();
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn new_line_becomes_whitespace_given_plain_then_raw() {
+        let input = "Cats\n`nice whiskers`";
+
+        let expected = document()
+            .with_block(
+                paragraph()
+                    .with(text("Cats "))
+                    .with(raw_text("nice whiskers")),
+            )
+            .build();
+
+        let actual = parse_str(input).unwrap();
+
+        assert_eq!(actual, expected);
+    }
+
     #[test]
     fn new_line_with_extra_whitespace_collapses() {
         let input = "Cats    \n    whiskers";
