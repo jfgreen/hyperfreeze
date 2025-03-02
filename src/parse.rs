@@ -99,6 +99,19 @@ fn eat_optional_whitespace(scanner: &mut Scanner) {
     }
 }
 
+fn eat_optional_linebreak(scanner: &mut Scanner) {
+    if scanner.peek() == Token::Linebreak {
+        scanner.next();
+    }
+}
+
+fn is_paragraph_text(token: Token) -> bool {
+    matches!(
+        token,
+        Token::Text(_) | Token::StyleDelimiter(_) | Token::InlineRawDelimiter
+    )
+}
+
 macro_rules! token_eater {
     ($eater:ident, $token:ident, $return:ty) => {
         fn $eater<'a>(scanner: &mut Scanner<'a>) -> ParseResult<$return> {
@@ -406,77 +419,36 @@ fn parse_paragraph(scanner: &mut Scanner) -> ParseResult<Block> {
     let mut text_runs = Vec::new();
     scanner.push_context_paragraph();
     let mut run = String::new();
-    let mut pending_linebreak = false;
     //TODO: mix of push_run and text_runs.push is not ideal
-    //TODO: repetative check of pending_linebreak...
 
     loop {
         match scanner.peek() {
             Token::StyleDelimiter(_) => {
-                if pending_linebreak {
-                    pending_linebreak = false;
-                    run.push(SPACE);
-                }
                 push_run(&mut text_runs, &mut run, Style::None)?;
                 let styled_run = parse_styled_text_run(scanner)?;
                 text_runs.push(styled_run);
             }
             Token::InlineRawDelimiter => {
-                if pending_linebreak {
-                    pending_linebreak = false;
-                    run.push(SPACE);
-                }
                 push_run(&mut text_runs, &mut run, Style::None)?;
                 let inline_raw_run = parse_inline_raw_text_run(scanner)?;
                 text_runs.push(inline_raw_run);
             }
             Token::Text(text) => {
-                //TODO: Should we not do this for styled also? Write failing test?
-                if pending_linebreak {
-                    pending_linebreak = false;
-                    run.push(SPACE);
-                }
                 scanner.next();
                 run.push_str(text);
             }
-            //TODO: Try a simpler model - all whitespace is pending until it hits something
-            //TODO: Try unifying handling of linebreak and whitespace?
-            Token::Whitespace => {
-                scanner.next();
-                //TODO: Can this be simplifed? (or extracted?):/
-                // Whitespace -> SPACE
-                // Whitespace, Linebreak -> Space
-                // Whitespace, Linebreak, Whitespace -> Space
-                // Whitespace, Linebreak, Linebreak -> Break
-                // Whitespace, Linebreak, Whitespace, Linebreak -> Break
-
-                if scanner.peek() == Token::Linebreak {
-                    scanner.next();
-                    eat_optional_whitespace(scanner);
-                    if scanner.peek() == Token::Linebreak {
-                        scanner.next();
-                        push_run(&mut text_runs, &mut run, Style::None)?;
-                        break;
-                    } else {
-                        run.push(SPACE);
-                    }
-                } else {
-                    run.push(SPACE);
-                }
-            }
-            Token::Linebreak => {
-                // Linebreak => set pending break
-                // Linebreak, Whitesapce -> set pending
-                // Linebreak, Linebreak -> break
-                // Linebreak, Whitespace Linebreak -> break
-                scanner.next();
+            Token::Linebreak | Token::Whitespace => {
                 eat_optional_whitespace(scanner);
-                if scanner.peek() == Token::Linebreak {
+                eat_optional_linebreak(scanner);
+                eat_optional_whitespace(scanner);
+
+                let peek = scanner.peek();
+                if is_paragraph_text(peek) {
+                    run.push(SPACE);
+                } else if peek == Token::Linebreak {
                     scanner.next();
                     push_run(&mut text_runs, &mut run, Style::None)?;
                     break;
-                } else {
-                    pending_linebreak = true;
                 }
             }
             Token::EndOfFile | Token::ContainerFooter => {
@@ -843,6 +815,32 @@ mod test {
 
         let expected = document()
             .with_block(paragraph().with(text("Nice kitty!")))
+            .build();
+
+        let actual = parse_str(input).unwrap();
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn trailing_newline_is_ignored() {
+        let input = "Cats\n";
+
+        let expected = document()
+            .with_block(paragraph().with(text("Cats")))
+            .build();
+
+        let actual = parse_str(input).unwrap();
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn space_then_trailing_newline_is_ignored() {
+        let input = "Cats \n";
+
+        let expected = document()
+            .with_block(paragraph().with(text("Cats")))
             .build();
 
         let actual = parse_str(input).unwrap();
