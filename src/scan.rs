@@ -1,35 +1,19 @@
 use std::str::CharIndices;
 
-//TODO: Slowly move towards the lexer not knowing the context of things
-// e.g it shouldn't care if '-' is a ListBullet or a dash
-
-#[derive(PartialEq, Eq, Debug, Clone, Copy)]
-pub enum Token<'a> {
-    EndOfFile,
-    Linebreak,
-    BlockHeader(&'a str),
-    ContainerHeader(&'a str),
-    ContainerFooter,
-    Text(&'a str),
-    Whitespace,
-    Identifier(&'a str),
-    StyleDelimiter(StyleDelimiter),
-    InlineRawDelimiter,
-    MetaText(&'a str),
-    Colon,
-    RawFragment(&'a str),
-    RawSpace(&'a str),
-    ListBullet,
-    //TODO: Unknown token is a bit of a smell right?
-    Unknown,
-}
-
 #[derive(PartialEq, Eq, Debug, Clone, Copy)]
 pub enum StyleDelimiter {
     Strong,
     Strikethrough,
     Emphasis,
 }
+
+#[derive(PartialEq, Eq, Debug)]
+pub enum ScanError {
+    UnexpectedInput,
+}
+
+type ScanResult<T> = Result<T, ScanError>;
+type CharPredicate = fn(char) -> bool;
 
 const NEW_LINE: char = '\n';
 const SPACE: char = ' ';
@@ -45,53 +29,25 @@ const EQUALS: char = '=';
 const LEFT_SQUARE_BRACKET: char = '[';
 const RIGHT_SQUARE_BRACKET: char = ']';
 
-//TODO: We should have our own ext func for 'is_whitespace_but_not_new_line'
-//OR we stop accepting all whitespace and only treat space as whitespace
-trait CharExt {
-    fn usable_in_text(&self) -> bool;
-    fn usable_in_raw(&self) -> bool;
-    fn usable_in_identifier(&self) -> bool;
-    fn is_delimiter(&self) -> bool;
+const EXCLUDED_FROM_TEXT_FRAGMENT: [char; 8] = [
+    UNDERSCORE, BACKTICK, ASTERISK, TILDE, SPACE, NEW_LINE, HASH, BACKSLASH,
+];
+
+const EXCLUDED_FROM_RAW_FRAGMENT: [char; 3] = [BACKTICK, SPACE, NEW_LINE];
+
+#[derive(Default, Copy, Clone)]
+struct Position {
+    char: Option<char>,
+    index: usize,
+    col: usize,
+    row: usize,
 }
-
-impl CharExt for char {
-    fn usable_in_text(&self) -> bool {
-        !(self.is_delimiter() || self.is_whitespace() || *self == BACKSLASH)
-    }
-
-    fn usable_in_raw(&self) -> bool {
-        !(*self == NEW_LINE || *self == SPACE || *self == BACKTICK)
-    }
-
-    fn usable_in_identifier(&self) -> bool {
-        self.is_alphanumeric()
-    }
-
-    fn is_delimiter(&self) -> bool {
-        *self == UNDERSCORE || *self == BACKTICK || *self == ASTERISK || *self == TILDE
-    }
-}
-
-#[derive(PartialEq, Eq, Clone, Copy, Debug)]
-pub enum ScanContext {
-    Base,
-    Metadata,
-    Paragraph,
-    List,
-    InlineRaw,
-}
-
-type CharPredicate = fn(char) -> bool;
 
 pub struct Scanner<'a> {
     input: &'a str,
     chars: CharIndices<'a>,
-    current_char: Option<char>,
-    current_index: usize,
-    context_stack: Vec<ScanContext>,
-    peeked_token: Option<Token<'a>>,
-    column: usize,
-    row: usize,
+    current: Position,
+    next: Position,
 }
 
 impl<'a> Scanner<'a> {
@@ -99,273 +55,246 @@ impl<'a> Scanner<'a> {
         let mut scanner = Self {
             input,
             chars: input.char_indices(),
-            current_char: None,
-            current_index: 0,
-            context_stack: vec![],
-            peeked_token: None,
-            column: 0,
-            row: 0,
+            current: Position::default(),
+            next: Position::default(),
         };
 
-        // Place the first char of the input into `next_char`
+        // Place the first char of the input into `next`
+        // Then propigate to `current`
+        scanner.read_next_char();
         scanner.read_next_char();
 
         scanner
     }
 
-    pub fn peek(&mut self) -> Token<'a> {
-        match self.peeked_token {
-            Some(token) => token,
-            None => {
-                let token = self.read_token();
-                self.peeked_token = Some(token);
-                token
-            }
-        }
+    //TODO: a lot of the 'on_' methods are only true in context...
+    // ...figure out if that matters, maybe just call them after actual chars instead?
+
+    pub fn on_space(&self) -> bool {
+        self.current_char_equals(SPACE)
     }
 
-    pub fn next(&mut self) -> Token<'a> {
-        match self.peeked_token {
-            Some(token) => {
-                self.peeked_token = None;
-                token
-            }
-            None => self.read_token(),
-        }
+    pub fn on_escaped(&self) -> bool {
+        self.current_char_equals(BACKSLASH)
     }
 
-    //TODO: Get finer grained with tokens. Be less clever / "convenient" in scanner.
-    fn read_token(&mut self) -> Token<'a> {
-        let context = self.context_stack.last().unwrap_or(&ScanContext::Base);
+    pub fn on_linebreak(&self) -> bool {
+        self.current_char_equals(NEW_LINE)
+    }
 
-        //dbg!(self.current_char);
-        let token = match self.current_char {
-            None => Token::EndOfFile,
-            Some(c) => match context {
-                ScanContext::Base => self.read_token_base(c),
-                ScanContext::Metadata => self.read_token_metadata(c),
-                ScanContext::Paragraph => self.read_token_paragraph(c),
-                ScanContext::List => self.read_token_list(c),
-                ScanContext::InlineRaw => self.read_token_inline_raw(c),
-            },
+    pub fn on_container_header(&self) -> bool {
+        self.current_char_equals(HASH) && self.next_char_equals(LEFT_SQUARE_BRACKET)
+    }
+
+    pub fn on_container_footer(&self) -> bool {
+        self.current_char_equals(HASH) && self.next_char_equals(EQUALS)
+    }
+
+    pub fn on_metadata_header(&self) -> bool {
+        self.current_char_equals(HASH) && self.next_char_equals('m')
+    }
+
+    //TODO: this should really be 'on_hash'?
+    pub fn on_block_header(&self) -> bool {
+        self.current_char_equals(HASH)
+    }
+
+    pub fn on_style_delimiter(&self) -> bool {
+        self.current_char_in(&[ASTERISK, TILDE, UNDERSCORE])
+    }
+
+    pub fn on_inline_raw_delimiter(&self) -> bool {
+        self.current_char_equals(BACKTICK)
+    }
+
+    //TODO: more honest name would be 'on_char_usable_in_text'?
+    pub fn on_text(&self) -> bool {
+        self.current
+            .char
+            .is_some_and(|c| !EXCLUDED_FROM_TEXT_FRAGMENT.contains(&c))
+    }
+
+    //TODO: more honest name would be 'on_char_usable_in_raw'?
+    pub fn on_raw_fragment(&self) -> bool {
+        self.current
+            .char
+            .is_some_and(|c| !EXCLUDED_FROM_RAW_FRAGMENT.contains(&c))
+    }
+
+    pub fn has_input(&mut self) -> bool {
+        self.current.char.is_some()
+    }
+
+    pub fn eat_block_header(&mut self) -> ScanResult<&'a str> {
+        self.eat_char(HASH)?;
+        self.eat_while(char::is_alphanumeric)
+    }
+
+    pub fn eat_container_header(&mut self) -> ScanResult<&'a str> {
+        self.eat_char(HASH)?;
+        self.eat_char(LEFT_SQUARE_BRACKET)?;
+        let name = self.eat_while(char::is_alphanumeric)?;
+        self.eat_char(RIGHT_SQUARE_BRACKET)?;
+        Ok(name)
+    }
+
+    pub fn eat_container_footer(&mut self) -> ScanResult<()> {
+        self.eat_char(HASH)?;
+        self.eat_char(EQUALS)?;
+        self.skip_while(|c| c == EQUALS);
+        Ok(())
+    }
+
+    pub fn eat_linebreak(&mut self) -> ScanResult<()> {
+        self.eat_char(NEW_LINE)
+    }
+
+    pub fn eat_space(&mut self) -> ScanResult<()> {
+        self.eat_char(SPACE)?;
+        self.skip_while(|c| c == SPACE);
+        Ok(())
+    }
+
+    pub fn eat_style_delimiter(&mut self) -> ScanResult<StyleDelimiter> {
+        let style = match self.current.char {
+            Some(TILDE) => StyleDelimiter::Strikethrough,
+            Some(UNDERSCORE) => StyleDelimiter::Emphasis,
+            Some(ASTERISK) => StyleDelimiter::Strong,
+            _ => return Err(ScanError::UnexpectedInput),
         };
-
-        // dbg!(token);
-        token
-
-        //TODO: Track line and column in each token
-        //TODO: Test we report correct line number
-    }
-
-    fn read_token_base(&mut self, first_char: char) -> Token<'a> {
-        if first_char == HASH && self.column == 1 {
-            self.read_next_char();
-            return match self.current_char {
-                Some(LEFT_SQUARE_BRACKET) => {
-                    self.read_next_char();
-                    let name = self.eat_while(char::is_alphanumeric);
-                    match self.current_char {
-                        Some(RIGHT_SQUARE_BRACKET) => {
-                            self.read_next_char();
-                            Token::ContainerHeader(name)
-                        }
-                        _ => Token::Unknown,
-                    }
-                }
-                _ => {
-                    let name = self.eat_while(char::is_alphanumeric);
-                    Token::BlockHeader(name)
-                }
-            };
-        }
-
-        if first_char == NEW_LINE {
-            self.read_next_char();
-            return Token::Linebreak;
-        }
-
-        if first_char.is_whitespace() {
-            self.eat_while(char::is_whitespace);
-            return Token::Whitespace;
-        }
-
-        // NOTE: Each mode needs to detect sentinal tokens that delimit
-        // one context from another. But read_token_base also needs to
-        // correctly infer the first token of a paragraph or list when
-        // the block header is ommited (a valid syntactical sugar)
-        if first_char == HYPHEN && self.column == 1 {
-            self.eat_char();
-            Token::ListBullet
-        } else {
-            self.read_token_paragraph(first_char)
-        }
-    }
-
-    fn read_token_metadata(&mut self, first_char: char) -> Token<'a> {
-        match first_char {
-            c if c.usable_in_identifier() && self.column == 1 => {
-                let identifier = self.eat_while(|c| c.usable_in_identifier());
-                Token::Identifier(identifier)
-            }
-            NEW_LINE => {
-                self.read_next_char();
-                Token::Linebreak
-            }
-            COLON => {
-                self.read_next_char();
-                Token::Colon
-            }
-            c if c.is_whitespace() => {
-                self.eat_while(char::is_whitespace);
-                Token::Whitespace
-            }
-            _ => {
-                let text = self.eat_while(|c| c != '\n');
-                Token::MetaText(text)
-            }
-        }
-    }
-
-    fn read_token_paragraph(&mut self, first_char: char) -> Token<'a> {
-        match first_char {
-            HASH if self.column == 1 => {
-                self.read_next_char();
-                let eq = self.eat_while(|c| c == EQUALS);
-                if !eq.is_empty() {
-                    Token::ContainerFooter
-                } else {
-                    Token::Unknown
-                }
-            }
-            NEW_LINE => {
-                self.read_next_char();
-                Token::Linebreak
-            }
-            BACKSLASH => {
-                self.read_next_char();
-                if self.current_char.is_some() {
-                    Token::Text(self.eat_char())
-                } else {
-                    Token::EndOfFile
-                }
-            }
-            c if c.is_whitespace() => {
-                self.skip_non_newline_whitespace();
-                Token::Whitespace
-            }
-            c if c.usable_in_text() => {
-                let text = self.eat_while(|c| c.usable_in_text());
-                Token::Text(text)
-            }
-            BACKTICK => {
-                self.read_next_char();
-                Token::InlineRawDelimiter
-            }
-            ASTERISK => {
-                self.read_next_char();
-                Token::StyleDelimiter(StyleDelimiter::Strong)
-            }
-            TILDE => {
-                self.read_next_char();
-                Token::StyleDelimiter(StyleDelimiter::Strikethrough)
-            }
-            UNDERSCORE => {
-                self.read_next_char();
-                Token::StyleDelimiter(StyleDelimiter::Emphasis)
-            }
-            _ => Token::Unknown,
-        }
-    }
-
-    fn read_token_list(&mut self, first_char: char) -> Token<'a> {
-        if first_char == HYPHEN && self.column == 1 {
-            self.eat_char();
-            return Token::ListBullet;
-        }
-
-        self.read_token_paragraph(first_char)
-    }
-
-    fn read_token_inline_raw(&mut self, first_char: char) -> Token<'a> {
-        match first_char {
-            c if c.usable_in_raw() => {
-                let fragment = self.eat_while(|c| c.usable_in_raw());
-                Token::RawFragment(fragment)
-            }
-            NEW_LINE => {
-                self.read_next_char();
-                Token::Linebreak
-            }
-            SPACE => {
-                let space = self.eat_while(|c| c == SPACE);
-                Token::RawSpace(space)
-            }
-            BACKTICK => {
-                self.read_next_char();
-                Token::InlineRawDelimiter
-            }
-            _ => Token::Unknown,
-        }
-    }
-
-    pub fn push_context_metadata(&mut self) {
-        self.context_stack.push(ScanContext::Metadata);
-    }
-
-    pub fn push_context_paragraph(&mut self) {
-        self.context_stack.push(ScanContext::Paragraph);
-    }
-
-    pub fn push_context_list(&mut self) {
-        self.context_stack.push(ScanContext::List);
-    }
-
-    pub fn push_context_inline_raw(&mut self) {
-        self.context_stack.push(ScanContext::InlineRaw);
-    }
-
-    pub fn pop_context(&mut self) {
-        self.context_stack.pop();
-    }
-
-    fn eat_while(&mut self, predicate: CharPredicate) -> &'a str {
-        let i1 = self.current_index;
-        self.skip_while(predicate);
-        let i2 = self.current_index;
-        &self.input[i1..i2]
-    }
-
-    fn eat_char(&mut self) -> &'a str {
-        let i1 = self.current_index;
         self.read_next_char();
-        let i2 = self.current_index;
-        &self.input[i1..i2]
+        Ok(style)
+    }
+
+    pub fn eat_inline_raw_delimiter(&mut self) -> ScanResult<()> {
+        self.eat_char(BACKTICK)
+    }
+
+    pub fn eat_escaped(&mut self) -> ScanResult<&'a str> {
+        self.eat_char(BACKSLASH)?;
+        let escaped = self.current_char_as_str()?;
+        self.read_next_char();
+        Ok(escaped)
+    }
+
+    //TODO: Needed? - just use eat_optional_whitespace?
+    pub fn eat_optional_space(&mut self) {
+        self.skip_while(|c| c == SPACE);
+    }
+
+    //TODO: Needed? - just use eat_optional_whitespace?
+    pub fn eat_optional_linebreak(&mut self) {
+        if self.current_char_equals(NEW_LINE) {
+            self.read_next_char();
+        }
+    }
+
+    pub fn eat_optional_whitespace(&mut self) {
+        self.skip_while(|c| c == SPACE || c == NEW_LINE)
+    }
+
+    pub fn eat_identifier(&mut self) -> ScanResult<&'a str> {
+        self.eat_while(char::is_alphanumeric)
+    }
+
+    pub fn eat_meta_text(&mut self) -> ScanResult<&'a str> {
+        self.eat_while(|c| c != '\n')
+    }
+
+    pub fn eat_colon(&mut self) -> ScanResult<()> {
+        self.eat_char(COLON)
+    }
+
+    pub fn eat_text(&mut self) -> ScanResult<&'a str> {
+        self.eat_while(|c| !EXCLUDED_FROM_TEXT_FRAGMENT.contains(&c))
+    }
+
+    pub fn eat_raw_fragment(&mut self) -> ScanResult<&'a str> {
+        self.eat_while(|c| !EXCLUDED_FROM_RAW_FRAGMENT.contains(&c))
+    }
+
+    pub fn eat_raw_space(&mut self) -> ScanResult<&'a str> {
+        self.eat_while(|c| c == SPACE)
+    }
+
+    fn current_char_equals(&self, c: char) -> bool {
+        self.current.char == Some(c)
+    }
+
+    fn current_char_in(&self, chars: &[char]) -> bool {
+        self.current.char.is_some_and(|c| chars.contains(&c))
+    }
+
+    fn current_char_as_str(&self) -> ScanResult<&'a str> {
+        if self.current.char.is_some() {
+            //TODO: should test for escaped at end of file
+            Ok(&self.input[self.current.index..self.next.index])
+        } else {
+            Err(ScanError::UnexpectedInput)
+        }
+    }
+
+    fn next_char_equals(&self, c: char) -> bool {
+        self.next.char == Some(c)
+    }
+
+    fn eat_char(&mut self, c: char) -> ScanResult<()> {
+        if self.current_char_equals(c) {
+            self.read_next_char();
+            Ok(())
+        } else {
+            Err(ScanError::UnexpectedInput)
+        }
+    }
+
+    fn eat_while(&mut self, predicate: CharPredicate) -> ScanResult<&'a str> {
+        let i1 = self.current.index;
+        self.skip_while(predicate);
+        let i2 = self.current.index;
+        let string = &self.input[i1..i2];
+
+        if string.is_empty() {
+            Err(ScanError::UnexpectedInput)
+        } else {
+            Ok(string)
+        }
     }
 
     fn skip_while(&mut self, predicate: CharPredicate) {
-        while self.current_char.is_some_and(predicate) {
+        while self.current.char.is_some_and(predicate) {
             self.read_next_char();
         }
     }
 
-    fn skip_non_newline_whitespace(&mut self) {
-        self.skip_while(|c| c.is_whitespace() && c != NEW_LINE)
-    }
-
     fn read_next_char(&mut self) {
-        if let Some((i, c)) = self.chars.next() {
-            if c == '\n' {
-                self.column = 0;
-                self.row += 1;
-            } else {
-                self.column += 1;
-            }
+        self.current = self.next;
+        let last_col = self.current.col;
+        let last_row = self.current.row;
 
-            self.current_char = Some(c);
-            self.current_index = i;
+        if let Some((index, c)) = self.chars.next() {
+            let (col, row) = if c == '\n' {
+                (0, last_row + 1)
+            } else {
+                (last_col + 1, last_row)
+            };
+
+            self.next = Position {
+                char: Some(c),
+                index,
+                col,
+                row,
+            };
         } else {
-            self.current_char = None;
-            self.current_index = self.input.len();
+            self.next = Position {
+                char: None,
+                index: self.input.len(),
+                col: last_col,
+                row: last_row,
+            };
+        }
+
+        if let Some(c) = self.current.char {
+            print!("{}", c);
         }
     }
 }

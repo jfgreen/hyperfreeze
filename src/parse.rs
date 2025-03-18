@@ -1,6 +1,6 @@
 use std::fmt::Display;
 
-use crate::scan::{Scanner, StyleDelimiter, Token};
+use crate::scan::{ScanError, Scanner, StyleDelimiter};
 
 //TODO: Fuzz test?
 
@@ -89,57 +89,18 @@ impl Display for ParseError {
     }
 }
 
+// TODO: Is this a smell? Just have both parse and scan in one module?
+// IDEA: what if parser did know about chars and scanner didnt have the 'on' stuff?
+// Just really smush things together... actually clearer?
+impl From<ScanError> for ParseError {
+    fn from(_: ScanError) -> Self {
+        ParseError::UnexpectedInput
+    }
+}
+
 type ParseResult<T> = Result<T, ParseError>;
 
 const SPACE: char = ' ';
-
-fn eat_optional_whitespace(scanner: &mut Scanner) {
-    if scanner.peek() == Token::Whitespace {
-        scanner.next();
-    }
-}
-
-fn eat_optional_linebreak(scanner: &mut Scanner) {
-    if scanner.peek() == Token::Linebreak {
-        scanner.next();
-    }
-}
-
-fn is_paragraph_text(token: Token) -> bool {
-    matches!(
-        token,
-        Token::Text(_) | Token::StyleDelimiter(_) | Token::InlineRawDelimiter
-    )
-}
-
-macro_rules! token_eater {
-    ($eater:ident, $token:ident, $return:ty) => {
-        fn $eater<'a>(scanner: &mut Scanner<'a>) -> ParseResult<$return> {
-            match scanner.next() {
-                Token::$token(contents) => Ok(contents),
-                _ => Err(ParseError::UnexpectedInput),
-            }
-        }
-    };
-    ($eater:ident, $token:ident) => {
-        fn $eater(scanner: &mut Scanner) -> ParseResult<()> {
-            match scanner.next() {
-                Token::$token => Ok(()),
-                _ => Err(ParseError::UnexpectedInput),
-            }
-        }
-    };
-}
-
-token_eater!(eat_colon, Colon);
-token_eater!(eat_linebreak, Linebreak);
-token_eater!(eat_inline_raw_delimiter, InlineRawDelimiter);
-token_eater!(eat_list_bullet, ListBullet);
-token_eater!(eat_block_header, BlockHeader, &'a str);
-token_eater!(eat_container_header, ContainerHeader, &'a str);
-token_eater!(eat_identifier, Identifier, &'a str);
-token_eater!(eat_meta_text, MetaText, &'a str);
-token_eater!(eat_style_delimiter, StyleDelimiter, StyleDelimiter);
 
 pub fn parse_str(input: &str) -> ParseResult<Document> {
     let scanner = &mut Scanner::new(input);
@@ -147,31 +108,25 @@ pub fn parse_str(input: &str) -> ParseResult<Document> {
 
     let mut metadata = Metadata::default();
 
-    // Trim start of doc if it has some kind of whitespace
-    while matches!(scanner.peek(), Token::Linebreak | Token::Whitespace) {
-        scanner.next();
-    }
+    scanner.eat_optional_whitespace();
 
-    if matches!(scanner.peek(), Token::BlockHeader("metadata")) {
+    if scanner.on_metadata_header() {
         metadata = parse_metadata_block(scanner)?;
     }
 
-    loop {
-        match scanner.peek() {
-            Token::ContainerHeader(_) => {
-                let container = parse_container(scanner)?;
-                let element = Element::Container(container);
-                elements.push(element);
-            }
-            Token::EndOfFile => break,
-            Token::Whitespace | Token::Linebreak => {
-                scanner.next();
-            }
-            _ => {
-                let block = parse_block(scanner)?;
-                let element = Element::Block(block);
-                elements.push(element);
-            }
+    while scanner.has_input() {
+        if scanner.on_container_header() {
+            let container = parse_container(scanner)?;
+            let element = Element::Container(container);
+            elements.push(element);
+        } else if scanner.on_space() {
+            scanner.eat_space()?;
+        } else if scanner.on_linebreak() {
+            scanner.eat_linebreak()?;
+        } else {
+            let block = parse_block(scanner)?;
+            let element = Element::Block(block);
+            elements.push(element);
         }
     }
 
@@ -181,37 +136,83 @@ pub fn parse_str(input: &str) -> ParseResult<Document> {
     })
 }
 
+fn parse_metadata_block(scanner: &mut Scanner) -> ParseResult<Metadata> {
+    if scanner.eat_block_header()? != "metadata" {
+        // FIXME: Bit of a hack - 'on_metadata_header' should either use lookahead
+        // or should deal with metadata in main loop so we dont need lookahead
+        return Err(ParseError::UnknownBlock);
+    }
+
+    scanner.eat_linebreak()?;
+
+    let mut metadata = Metadata::default();
+
+    loop {
+        let key = scanner.eat_identifier()?;
+        scanner.eat_optional_space();
+        scanner.eat_colon()?;
+        scanner.eat_optional_space();
+
+        // For now, the value is just everything untill the end of line
+        // This might get more complicated in the future
+        // e.g treating value as int, bool, list, etc?
+
+        let value = scanner.eat_meta_text()?;
+
+        match key {
+            "id" => metadata.id.push_str(value),
+            "title" => metadata.title.push_str(value),
+            _ => return Err(ParseError::UnknownMetadata),
+        };
+
+        //TODO: deal with extra whitespace iterleaved in block break?
+        // or... extract common func to handle block break?
+        // or.. just reject whitespace at start of block break line
+
+        //TODO: is there a more elegant way?
+        if !scanner.has_input() {
+            break;
+        } else if scanner.on_linebreak() {
+            scanner.eat_linebreak()?;
+            if !scanner.has_input() {
+                break;
+            } else if scanner.on_linebreak() {
+                scanner.eat_linebreak()?;
+                break;
+            }
+        }
+    }
+
+    Ok(metadata)
+}
+
 fn parse_container(scanner: &mut Scanner) -> ParseResult<Container> {
-    let container_name = eat_container_header(scanner)?;
+    let container_name = scanner.eat_container_header()?;
     let container_kind = container_kind_from_name(container_name)?;
-    eat_linebreak(scanner)?;
+    scanner.eat_linebreak()?;
 
     let mut blocks = Vec::new();
 
     loop {
-        match scanner.peek() {
-            Token::ContainerFooter => {
-                scanner.next();
-                break;
-            }
-            Token::EndOfFile => {
-                return Err(ParseError::UnterminatedContainer);
-            }
-            _ => {
-                let block = parse_block(scanner)?;
-                blocks.push(block);
-            }
+        if scanner.on_container_footer() {
+            scanner.eat_container_footer()?;
+            break;
+        } else if !scanner.has_input() {
+            return Err(ParseError::UnterminatedContainer);
+        } else {
+            let block = parse_block(scanner)?;
+            blocks.push(block);
         }
     }
 
     //TODO: Again, could we have a "maybe parse blockbreak" func?
 
-    if scanner.peek() != Token::EndOfFile {
-        eat_linebreak(scanner)?;
+    if scanner.has_input() {
+        scanner.eat_linebreak()?;
     }
 
-    if scanner.peek() == Token::Linebreak {
-        scanner.next();
+    if scanner.on_linebreak() {
+        scanner.eat_linebreak()?;
     }
 
     let container = Container {
@@ -230,79 +231,79 @@ fn container_kind_from_name(name: &str) -> ParseResult<ContainerKind> {
 }
 
 fn parse_block(scanner: &mut Scanner) -> ParseResult<Block> {
-    match scanner.peek() {
-        Token::BlockHeader(block_name) => {
-            scanner.next();
-            eat_linebreak(scanner)?;
-            let block = match block_name {
-                "metadata" => return Err(ParseError::MetadataNotAtStart),
-                "paragraph" => parse_paragraph(scanner)?,
-                _ => return Err(ParseError::UnknownBlock),
-            };
-            Ok(block)
-        }
-        Token::Text(_) | Token::StyleDelimiter(_) | Token::InlineRawDelimiter => {
-            // Infer paragraph missing header (a valid sugar)
-            let block = parse_paragraph(scanner)?;
-            Ok(block)
-        }
-        //Token::ListBullet => {
-        //    let block = parse_list(scanner)?;
-        //    Ok(block)
-        //}
-        _ => Err(ParseError::UnexpectedInput),
+    if scanner.on_block_header() {
+        let block_name = scanner.eat_block_header()?;
+        scanner.eat_linebreak()?;
+
+        let block = match block_name {
+            "metadata" => return Err(ParseError::MetadataNotAtStart),
+            "paragraph" => parse_paragraph(scanner)?,
+            _ => return Err(ParseError::UnknownBlock),
+        };
+        Ok(block)
+    } else {
+        // Infer paragraph missing header (a valid sugar)
+        let block = parse_paragraph(scanner)?;
+        Ok(block)
     }
+
+    //TODO: bullet sugar
 }
 
-fn parse_metadata_block(scanner: &mut Scanner) -> ParseResult<Metadata> {
-    eat_block_header(scanner)?;
-    eat_linebreak(scanner)?;
-
-    let mut metadata = Metadata::default();
-    scanner.push_context_metadata();
+fn parse_paragraph(scanner: &mut Scanner) -> ParseResult<Block> {
+    let mut text_runs = Vec::new();
+    let mut run = String::new();
+    //TODO: mix of push_run and text_runs.push is not ideal
+    //TODO: try having eat_raw_text_run, eat_text_run and eat_styled_text run on scanner
+    //NOTE: eat_raw_text_run would probably have to report if on blockbreak...
+    //NOTE: ... or we keep state in scanner and ask it nicely
 
     loop {
-        let key = eat_identifier(scanner)?;
-        eat_optional_whitespace(scanner);
-        eat_colon(scanner)?;
-        eat_optional_whitespace(scanner);
+        if scanner.on_style_delimiter() {
+            push_run(&mut text_runs, &mut run, Style::None)?;
+            //TODO: having scanner.eat_styled_text_run be better?
+            let styled_run = parse_styled_text_run(scanner)?;
+            text_runs.push(styled_run);
+        } else if scanner.on_inline_raw_delimiter() {
+            push_run(&mut text_runs, &mut run, Style::None)?;
+            //TODO: having scanner.eat_inline_raw_text_run be better?
+            let inline_raw_run = parse_inline_raw_text_run(scanner)?;
+            text_runs.push(inline_raw_run);
+        } else if scanner.on_text() {
+            //TODO: having scanner.eat_text_run_would be better?
+            let text = scanner.eat_text()?;
+            run.push_str(text);
+        } else if scanner.on_escaped() {
+            let text = scanner.eat_escaped()?;
+            run.push_str(text);
+        } else if scanner.on_space() || scanner.on_linebreak() {
+            scanner.eat_optional_space();
+            scanner.eat_optional_linebreak();
+            scanner.eat_optional_space();
 
-        // For now, the value is just everything untill the end of line
-        // This might get more complicated in the future
-        // e.g treating value as int, bool, list, etc?
-
-        let value = eat_meta_text(scanner)?;
-
-        match key {
-            "id" => metadata.id.push_str(value),
-            "title" => metadata.title.push_str(value),
-            _ => return Err(ParseError::UnknownMetadata),
-        };
-
-        match scanner.peek() {
-            Token::Linebreak => {
-                scanner.next();
-                match scanner.peek() {
-                    //TODO: deal with extra whitespace iterleaved in block break?
-                    // or... extract common func to handle block break?
-                    // or.. just reject whitespace at start of block break line
-                    Token::Linebreak => {
-                        scanner.next();
-                        break;
-                    }
-                    Token::EndOfFile => break,
-                    _ => continue,
-                }
-            }
-            Token::EndOfFile => {
+            // TODO: Feels a bit meh
+            if scanner.on_text()
+                || scanner.on_style_delimiter()
+                || scanner.on_inline_raw_delimiter()
+                || scanner.on_escaped()
+            {
+                run.push(SPACE);
+            } else if scanner.on_linebreak() {
+                scanner.eat_linebreak()?;
+                push_run(&mut text_runs, &mut run, Style::None)?;
                 break;
             }
-            _ => return Err(ParseError::UnexpectedInput),
+            //TODO: what does else mean?
+        } else if scanner.on_container_footer() | !scanner.has_input() {
+            push_run(&mut text_runs, &mut run, Style::None)?;
+            break;
+        } else {
+            return Err(ParseError::UnexpectedInput);
         }
     }
 
-    scanner.pop_context();
-    Ok(metadata)
+    let para = text_runs.into_boxed_slice();
+    Ok(Block::Paragraph(para))
 }
 
 //TODO: Is there a nicer abstraction for this? NewType pattern?
@@ -319,43 +320,46 @@ fn push_run(text_runs: &mut Vec<TextRun>, run: &mut String, style: Style) -> Par
     Ok(())
 }
 
-fn style_from_delimiter(delimiter: StyleDelimiter) -> Style {
-    match delimiter {
-        StyleDelimiter::Strong => Style::Strong,
-        StyleDelimiter::Emphasis => Style::Emphasis,
-        StyleDelimiter::Strikethrough => Style::Strikethrough,
-    }
-}
-
 fn parse_styled_text_run(scanner: &mut Scanner) -> Result<TextRun, ParseError> {
-    let d1 = eat_style_delimiter(scanner)?;
+    let d1 = scanner.eat_style_delimiter()?;
     let style = style_from_delimiter(d1);
     let mut run = String::new();
 
+    //TODO: Would scanner.eat_styled_text_run be easier?
+
     loop {
-        match scanner.next() {
-            Token::Text(text) => {
-                run.push_str(text);
+        if scanner.on_text() {
+            let text = scanner.eat_text()?;
+            run.push_str(text);
+        } else if scanner.on_escaped() {
+            let text = scanner.eat_escaped()?;
+            run.push_str(text);
+        } else if scanner.on_space() {
+            scanner.eat_space()?;
+            run.push(SPACE);
+            if scanner.on_linebreak() {
+                scanner.eat_linebreak()?;
             }
-            Token::Whitespace => {
-                run.push(SPACE);
-                if scanner.peek() == Token::Linebreak {
-                    scanner.next();
-                }
-            }
-            Token::StyleDelimiter(d2) if d1 == d2 => {
+        } else if scanner.on_style_delimiter() {
+            let d2 = scanner.eat_style_delimiter()?;
+            if d1 == d2 {
                 break;
+            } else {
+                //TODO: More specific error message 'unmatched delimiter'?
+                return Err(ParseError::UnexpectedInput);
             }
-            Token::Linebreak => {
-                // TODO: Shared logic with inline
-                eat_optional_whitespace(scanner);
-                if scanner.peek() == Token::Linebreak {
-                    return Err(ParseError::UnexpectedInput);
-                } else {
-                    run.push(SPACE);
-                }
+        } else if scanner.on_linebreak() {
+            // TODO: can we do the trick that parse plain run does
+            // TODO: Shared logic with inline
+            scanner.eat_linebreak()?;
+            scanner.eat_optional_space();
+            if scanner.on_linebreak() {
+                return Err(ParseError::UnexpectedInput);
+            } else {
+                run.push(SPACE);
             }
-            _ => return Err(ParseError::UnexpectedInput),
+        } else {
+            return Err(ParseError::UnexpectedInput);
         }
     }
 
@@ -370,36 +374,43 @@ fn parse_styled_text_run(scanner: &mut Scanner) -> Result<TextRun, ParseError> {
     Ok(TextRun { text: run, style })
 }
 
+fn style_from_delimiter(delimiter: StyleDelimiter) -> Style {
+    match delimiter {
+        StyleDelimiter::Strong => Style::Strong,
+        StyleDelimiter::Emphasis => Style::Emphasis,
+        StyleDelimiter::Strikethrough => Style::Strikethrough,
+    }
+}
 fn parse_inline_raw_text_run(scanner: &mut Scanner) -> Result<TextRun, ParseError> {
     let mut run = String::new();
-    scanner.push_context_inline_raw();
-    eat_inline_raw_delimiter(scanner)?;
+    scanner.eat_inline_raw_delimiter()?;
 
+    //TODO: Would scanner.eat_raw_text_run be easier?
+
+    //TODO: Do we need things like 'on_raw_fragment' - could be implicit?
     loop {
-        match scanner.next() {
-            Token::InlineRawDelimiter => {
-                break;
+        if scanner.on_inline_raw_delimiter() {
+            scanner.eat_inline_raw_delimiter()?;
+            break;
+        } else if scanner.on_raw_fragment() {
+            let text = scanner.eat_raw_fragment()?;
+            run.push_str(text);
+        } else if scanner.on_linebreak() {
+            // TODO: can we do the trick that parse plain run does
+            // TODO: Shared logic with styled
+            scanner.eat_linebreak()?;
+
+            scanner.eat_optional_space();
+            if scanner.on_linebreak() {
+                return Err(ParseError::UnexpectedInput);
+            } else {
+                run.push(SPACE);
             }
-            Token::RawFragment(text) => {
-                run.push_str(text);
-            }
-            //TODO: What about rejecting blockbreak in raw?
-            Token::Linebreak => {
-                if matches!(scanner.peek(), Token::RawSpace(_)) {
-                    scanner.next();
-                }
-                // TODO: Shared logic with styled
-                eat_optional_whitespace(scanner);
-                if scanner.peek() == Token::Linebreak {
-                    return Err(ParseError::UnexpectedInput);
-                } else {
-                    run.push(SPACE);
-                }
-            }
-            Token::RawSpace(space) => {
-                run.push_str(space);
-            }
-            _ => return Err(ParseError::UnexpectedInput),
+        } else if scanner.on_space() {
+            let space = scanner.eat_raw_space()?;
+            run.push_str(space)
+        } else {
+            return Err(ParseError::UnexpectedInput);
         }
     }
 
@@ -407,95 +418,11 @@ fn parse_inline_raw_text_run(scanner: &mut Scanner) -> Result<TextRun, ParseErro
         return Err(ParseError::EmptyDelimitedText);
     }
 
-    scanner.pop_context();
-
     Ok(TextRun {
         text: run,
         style: Style::Raw,
     })
 }
-
-fn parse_paragraph(scanner: &mut Scanner) -> ParseResult<Block> {
-    let mut text_runs = Vec::new();
-    scanner.push_context_paragraph();
-    let mut run = String::new();
-    //TODO: mix of push_run and text_runs.push is not ideal
-
-    loop {
-        match scanner.peek() {
-            Token::StyleDelimiter(_) => {
-                push_run(&mut text_runs, &mut run, Style::None)?;
-                let styled_run = parse_styled_text_run(scanner)?;
-                text_runs.push(styled_run);
-            }
-            Token::InlineRawDelimiter => {
-                push_run(&mut text_runs, &mut run, Style::None)?;
-                let inline_raw_run = parse_inline_raw_text_run(scanner)?;
-                text_runs.push(inline_raw_run);
-            }
-            Token::Text(text) => {
-                scanner.next();
-                run.push_str(text);
-            }
-            Token::Linebreak | Token::Whitespace => {
-                eat_optional_whitespace(scanner);
-                eat_optional_linebreak(scanner);
-                eat_optional_whitespace(scanner);
-
-                let peek = scanner.peek();
-                if is_paragraph_text(peek) {
-                    run.push(SPACE);
-                } else if peek == Token::Linebreak {
-                    scanner.next();
-                    push_run(&mut text_runs, &mut run, Style::None)?;
-                    break;
-                }
-            }
-            Token::EndOfFile | Token::ContainerFooter => {
-                push_run(&mut text_runs, &mut run, Style::None)?;
-                break;
-            }
-            _ => return Err(ParseError::UnexpectedInput),
-        }
-    }
-
-    scanner.pop_context();
-    let para = text_runs.into_boxed_slice();
-    Ok(Block::Paragraph(para))
-}
-
-// TODO:
-// ok, so list is basically the same as a para, but with the following differences
-//
-// when we get a new line we...
-// eat up any whitespace, keeping track of its size
-// if the next token is a list bullet
-//   use the whitespace before hand (if any) to determine if next item or sub list
-// if anything else, continue parsing para..
-//
-// cant just add to existing logic on its own, as we only want to do this if
-// the very first token is a list
-//
-//
-// Approaches:
-// - Completely disjoint implementations, then merge common
-// - Add conditional logic to if statement
-// - ??
-//
-/*
-fn parse_list(scanner: &mut Scanner) -> ParseResult<Block> {
-    scanner.push_context_list();
-    let mut list_items = Vec::new();
-
-    loop {
-        eat_list_bullet(scanner)?;
-    }
-
-    scanner.pop_context();
-    let list = list_items.into_boxed_slice();
-    Ok(Block::List(list))
-}
-*/
 
 #[cfg(test)]
 mod test {
@@ -778,6 +705,17 @@ mod test {
 
     #[test]
     fn unknown_block_is_rejected() {
+        let input = "#feline\nMeow?";
+
+        let expected = Err(ParseError::UnknownBlock);
+
+        let actual = parse_str(input);
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn unknown_block_starting_with_m_is_rejected() {
         let input = "#meowograph\nCats go meeow!";
 
         let expected = Err(ParseError::UnknownBlock);
@@ -791,7 +729,7 @@ mod test {
     fn empty_block_name_is_rejected() {
         let input = "#\nHi";
 
-        let expected = Err(ParseError::UnknownBlock);
+        let expected = Err(ParseError::UnexpectedInput);
 
         let actual = parse_str(input);
 
@@ -976,8 +914,8 @@ mod test {
     }
 
     #[test]
-    fn hash_in_markup() {
-        let input = "My cat does backflips #coolcat";
+    fn escaped_hash_in_markup() {
+        let input = "My cat does backflips \\#coolcat";
 
         let expected = document()
             .with_block(paragraph().with(text("My cat does backflips #coolcat")))
