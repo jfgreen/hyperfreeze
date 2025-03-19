@@ -18,11 +18,13 @@ mod scan;
 // TODO:
 // Features to build
 // - References
-// - Support windows style newlines
 // - Better error reporting -> what went wrong, where
-// - Enforce a system for IDs, e.g J Decimal
-// - Enforce basic metadata?
+// - Consider enforcing a system for IDs, e.g J Decimal
+// - Consider enforcing basic metadata?
 // - Strip leading/trailing whitespace from para
+//
+// Approaches to try out
+// - Fuzz testing
 
 #[derive(Debug)]
 enum Error {

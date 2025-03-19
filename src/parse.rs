@@ -2,8 +2,6 @@ use std::fmt::Display;
 
 use crate::scan::{ScanError, Scanner, StyleDelimiter};
 
-//TODO: Fuzz test?
-
 #[derive(PartialEq, Eq, Debug)]
 pub struct Document {
     pub metadata: Metadata,
@@ -252,25 +250,44 @@ fn parse_block(scanner: &mut Scanner) -> ParseResult<Block> {
 
 fn parse_paragraph(scanner: &mut Scanner) -> ParseResult<Block> {
     let mut text_runs = Vec::new();
-    let mut run = String::new();
-    //TODO: mix of push_run and text_runs.push is not ideal
     //TODO: try having eat_raw_text_run, eat_text_run and eat_styled_text run on scanner
-    //NOTE: eat_raw_text_run would probably have to report if on blockbreak...
-    //NOTE: ... or we keep state in scanner and ask it nicely
 
     loop {
         if scanner.on_style_delimiter() {
-            push_run(&mut text_runs, &mut run, Style::None)?;
             //TODO: having scanner.eat_styled_text_run be better?
             let styled_run = parse_styled_text_run(scanner)?;
             text_runs.push(styled_run);
         } else if scanner.on_inline_raw_delimiter() {
-            push_run(&mut text_runs, &mut run, Style::None)?;
             //TODO: having scanner.eat_inline_raw_text_run be better?
             let inline_raw_run = parse_inline_raw_text_run(scanner)?;
             text_runs.push(inline_raw_run);
-        } else if scanner.on_text() {
+        } else if scanner.on_text()
+            || scanner.on_escaped()
+            || scanner.on_space()
+            || scanner.on_linebreak()
+        {
             //TODO: having scanner.eat_text_run_would be better?
+            let (text_run, end_of_para) = parse_text_run(scanner)?;
+            text_runs.push(text_run);
+            if end_of_para {
+                break;
+            }
+        } else if scanner.on_container_footer() | !scanner.has_input() {
+            break;
+        } else {
+            return Err(ParseError::UnexpectedInput);
+        }
+    }
+
+    let para = text_runs.into_boxed_slice();
+    Ok(Block::Paragraph(para))
+}
+
+fn parse_text_run(scanner: &mut Scanner) -> ParseResult<(TextRun, bool)> {
+    let mut run = String::new();
+    let mut end_of_para = false;
+    loop {
+        if scanner.on_text() {
             let text = scanner.eat_text()?;
             run.push_str(text);
         } else if scanner.on_escaped() {
@@ -290,37 +307,22 @@ fn parse_paragraph(scanner: &mut Scanner) -> ParseResult<Block> {
                 run.push(SPACE);
             } else if scanner.on_linebreak() {
                 scanner.eat_linebreak()?;
-                push_run(&mut text_runs, &mut run, Style::None)?;
+                end_of_para = true;
                 break;
             }
-            //TODO: what does else mean?
-        } else if scanner.on_container_footer() | !scanner.has_input() {
-            push_run(&mut text_runs, &mut run, Style::None)?;
-            break;
         } else {
-            return Err(ParseError::UnexpectedInput);
+            break;
         }
     }
+    let run = TextRun {
+        text: run,
+        style: Style::None,
+    };
 
-    let para = text_runs.into_boxed_slice();
-    Ok(Block::Paragraph(para))
+    Ok((run, end_of_para))
 }
 
-//TODO: Is there a nicer abstraction for this? NewType pattern?
-fn push_run(text_runs: &mut Vec<TextRun>, run: &mut String, style: Style) -> ParseResult<()> {
-    // TODO: Empty check feels like a bit of a hack?
-    if !run.is_empty() {
-        let completed_run = std::mem::take(run);
-        text_runs.push(TextRun {
-            text: completed_run,
-            style,
-        });
-    }
-
-    Ok(())
-}
-
-fn parse_styled_text_run(scanner: &mut Scanner) -> Result<TextRun, ParseError> {
+fn parse_styled_text_run(scanner: &mut Scanner) -> ParseResult<TextRun> {
     let d1 = scanner.eat_style_delimiter()?;
     let style = style_from_delimiter(d1);
     let mut run = String::new();
@@ -381,7 +383,7 @@ fn style_from_delimiter(delimiter: StyleDelimiter) -> Style {
         StyleDelimiter::Strikethrough => Style::Strikethrough,
     }
 }
-fn parse_inline_raw_text_run(scanner: &mut Scanner) -> Result<TextRun, ParseError> {
+fn parse_inline_raw_text_run(scanner: &mut Scanner) -> ParseResult<TextRun> {
     let mut run = String::new();
     scanner.eat_inline_raw_delimiter()?;
 
