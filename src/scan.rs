@@ -91,7 +91,7 @@ impl<'a> Scanner<'a> {
     }
 
     pub fn on_metadata_header(&self) -> bool {
-        self.current_char_equals(HASH) && self.next_char_equals('m')
+        self.is_on("#metadata")
     }
 
     //TODO: this should really be 'on_hash'?
@@ -264,6 +264,10 @@ impl<'a> Scanner<'a> {
         while self.current.char.is_some_and(predicate) {
             self.read_next_char();
         }
+    }
+
+    fn is_on(&self, s: &str) -> bool {
+        self.input[self.current.index..].starts_with(s)
     }
 
     fn read_next_char(&mut self) {

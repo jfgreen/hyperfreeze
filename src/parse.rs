@@ -135,11 +135,8 @@ pub fn parse_str(input: &str) -> ParseResult<Document> {
 }
 
 fn parse_metadata_block(scanner: &mut Scanner) -> ParseResult<Metadata> {
-    if scanner.eat_block_header()? != "metadata" {
-        // FIXME: Bit of a hack - 'on_metadata_header' should either use lookahead
-        // or should deal with metadata in main loop so we dont need lookahead
-        return Err(ParseError::UnknownBlock);
-    }
+    let block_name = scanner.eat_block_header()?;
+    assert_eq!(block_name, "metadata");
 
     scanner.eat_linebreak()?;
 
