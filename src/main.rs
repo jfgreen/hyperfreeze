@@ -14,6 +14,7 @@ mod scan;
 // Implementation ideas we could look into:
 // - Stream processing (as opposed loading whole input into memory)
 // - Pre allocate sensible vec capacities?
+// - SIMD prefix matching - byte patterns - 'is_alphanumeric' could be range check?
 
 // TODO:
 // Features to build

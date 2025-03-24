@@ -94,8 +94,7 @@ impl<'a> Scanner<'a> {
         self.is_on("#metadata")
     }
 
-    //TODO: this should really be 'on_hash'?
-    pub fn on_block_header(&self) -> bool {
+    pub fn on_hash(&self) -> bool {
         self.current_char_equals(HASH)
     }
 
@@ -107,15 +106,17 @@ impl<'a> Scanner<'a> {
         self.current_char_equals(BACKTICK)
     }
 
-    //TODO: more honest name would be 'on_char_usable_in_text'?
-    pub fn on_text(&self) -> bool {
+    pub fn on_char_usable_in_text(&self) -> bool {
         self.current
             .char
             .is_some_and(|c| !EXCLUDED_FROM_TEXT_FRAGMENT.contains(&c))
     }
 
-    //TODO: more honest name would be 'on_char_usable_in_raw'?
-    pub fn on_raw_fragment(&self) -> bool {
+    pub fn on_char_usable_in_identifier(&self) -> bool {
+        self.current.char.is_some_and(char::is_alphanumeric)
+    }
+
+    pub fn on_char_usable_in_raw(&self) -> bool {
         self.current
             .char
             .is_some_and(|c| !EXCLUDED_FROM_RAW_FRAGMENT.contains(&c))
@@ -177,12 +178,10 @@ impl<'a> Scanner<'a> {
         Ok(escaped)
     }
 
-    //TODO: Needed? - just use eat_optional_whitespace?
     pub fn eat_optional_space(&mut self) {
         self.skip_while(|c| c == SPACE);
     }
 
-    //TODO: Needed? - just use eat_optional_whitespace?
     pub fn eat_optional_linebreak(&mut self) {
         if self.current_char_equals(NEW_LINE) {
             self.read_next_char();
@@ -227,7 +226,6 @@ impl<'a> Scanner<'a> {
 
     fn current_char_as_str(&self) -> ScanResult<&'a str> {
         if self.current.char.is_some() {
-            //TODO: should test for escaped at end of file
             Ok(&self.input[self.current.index..self.next.index])
         } else {
             Err(ScanError::UnexpectedInput)
@@ -266,6 +264,7 @@ impl<'a> Scanner<'a> {
         }
     }
 
+    //TODO: This could replace the lookahead?
     fn is_on(&self, s: &str) -> bool {
         self.input[self.current.index..].starts_with(s)
     }

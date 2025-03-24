@@ -117,6 +117,8 @@ pub fn parse_str(input: &str) -> ParseResult<Document> {
             let container = parse_container(scanner)?;
             let element = Element::Container(container);
             elements.push(element);
+        // TODO: The following two branches could be collapsed into
+        // one if we embraced merging much of scanner and parser
         } else if scanner.on_space() {
             scanner.eat_space()?;
         } else if scanner.on_linebreak() {
@@ -160,19 +162,9 @@ fn parse_metadata_block(scanner: &mut Scanner) -> ParseResult<Metadata> {
             _ => return Err(ParseError::UnknownMetadata),
         };
 
-        //TODO: deal with extra whitespace iterleaved in block break?
-        // or... extract common func to handle block break?
-        // or.. just reject whitespace at start of block break line
-
-        //TODO: is there a more elegant way?
-        if !scanner.has_input() {
-            break;
-        } else if scanner.on_linebreak() {
+        if scanner.has_input() {
             scanner.eat_linebreak()?;
-            if !scanner.has_input() {
-                break;
-            } else if scanner.on_linebreak() {
-                scanner.eat_linebreak()?;
+            if !scanner.on_char_usable_in_identifier() {
                 break;
             }
         }
@@ -191,23 +183,20 @@ fn parse_container(scanner: &mut Scanner) -> ParseResult<Container> {
     loop {
         if scanner.on_container_footer() {
             scanner.eat_container_footer()?;
+            if scanner.has_input() {
+                scanner.eat_linebreak()?;
+            }
             break;
         } else if !scanner.has_input() {
             return Err(ParseError::UnterminatedContainer);
+        } else if scanner.on_space() {
+            scanner.eat_space()?;
+        } else if scanner.on_linebreak() {
+            scanner.eat_linebreak()?;
         } else {
             let block = parse_block(scanner)?;
             blocks.push(block);
         }
-    }
-
-    //TODO: Again, could we have a "maybe parse blockbreak" func?
-
-    if scanner.has_input() {
-        scanner.eat_linebreak()?;
-    }
-
-    if scanner.on_linebreak() {
-        scanner.eat_linebreak()?;
     }
 
     let container = Container {
@@ -226,7 +215,7 @@ fn container_kind_from_name(name: &str) -> ParseResult<ContainerKind> {
 }
 
 fn parse_block(scanner: &mut Scanner) -> ParseResult<Block> {
-    if scanner.on_block_header() {
+    if scanner.on_hash() {
         let block_name = scanner.eat_block_header()?;
         scanner.eat_linebreak()?;
 
@@ -247,23 +236,19 @@ fn parse_block(scanner: &mut Scanner) -> ParseResult<Block> {
 
 fn parse_paragraph(scanner: &mut Scanner) -> ParseResult<Block> {
     let mut text_runs = Vec::new();
-    //TODO: try having eat_raw_text_run, eat_text_run and eat_styled_text run on scanner
 
     loop {
         if scanner.on_style_delimiter() {
-            //TODO: having scanner.eat_styled_text_run be better?
             let styled_run = parse_styled_text_run(scanner)?;
             text_runs.push(styled_run);
         } else if scanner.on_inline_raw_delimiter() {
-            //TODO: having scanner.eat_inline_raw_text_run be better?
             let inline_raw_run = parse_inline_raw_text_run(scanner)?;
             text_runs.push(inline_raw_run);
-        } else if scanner.on_text()
+        } else if scanner.on_char_usable_in_text()
             || scanner.on_escaped()
             || scanner.on_space()
             || scanner.on_linebreak()
         {
-            //TODO: having scanner.eat_text_run_would be better?
             let (text_run, end_of_para) = parse_text_run(scanner)?;
             text_runs.push(text_run);
             if end_of_para {
@@ -284,28 +269,20 @@ fn parse_text_run(scanner: &mut Scanner) -> ParseResult<(TextRun, bool)> {
     let mut run = String::new();
     let mut end_of_para = false;
     loop {
-        if scanner.on_text() {
+        if scanner.on_char_usable_in_text() {
             let text = scanner.eat_text()?;
             run.push_str(text);
         } else if scanner.on_escaped() {
             let text = scanner.eat_escaped()?;
             run.push_str(text);
         } else if scanner.on_space() || scanner.on_linebreak() {
-            scanner.eat_optional_space();
-            scanner.eat_optional_linebreak();
-            scanner.eat_optional_space();
+            eat_text_space(scanner);
 
-            // TODO: Feels a bit meh
-            if scanner.on_text()
-                || scanner.on_style_delimiter()
-                || scanner.on_inline_raw_delimiter()
-                || scanner.on_escaped()
-            {
-                run.push(SPACE);
-            } else if scanner.on_linebreak() {
-                scanner.eat_linebreak()?;
+            if scanner.on_linebreak() {
                 end_of_para = true;
                 break;
+            } else if !scanner.on_container_footer() && scanner.has_input() {
+                run.push(SPACE);
             }
         } else {
             break;
@@ -324,34 +301,23 @@ fn parse_styled_text_run(scanner: &mut Scanner) -> ParseResult<TextRun> {
     let style = style_from_delimiter(d1);
     let mut run = String::new();
 
-    //TODO: Would scanner.eat_styled_text_run be easier?
-
     loop {
-        if scanner.on_text() {
+        if scanner.on_char_usable_in_text() {
             let text = scanner.eat_text()?;
             run.push_str(text);
         } else if scanner.on_escaped() {
             let text = scanner.eat_escaped()?;
             run.push_str(text);
-        } else if scanner.on_space() {
-            scanner.eat_space()?;
-            run.push(SPACE);
-            if scanner.on_linebreak() {
-                scanner.eat_linebreak()?;
-            }
         } else if scanner.on_style_delimiter() {
             let d2 = scanner.eat_style_delimiter()?;
             if d1 == d2 {
                 break;
             } else {
-                //TODO: More specific error message 'unmatched delimiter'?
                 return Err(ParseError::UnexpectedInput);
             }
-        } else if scanner.on_linebreak() {
-            // TODO: can we do the trick that parse plain run does
-            // TODO: Shared logic with inline
-            scanner.eat_linebreak()?;
-            scanner.eat_optional_space();
+        } else if scanner.on_space() || scanner.on_linebreak() {
+            eat_text_space(scanner);
+
             if scanner.on_linebreak() {
                 return Err(ParseError::UnexpectedInput);
             } else {
@@ -380,26 +346,18 @@ fn style_from_delimiter(delimiter: StyleDelimiter) -> Style {
         StyleDelimiter::Strikethrough => Style::Strikethrough,
     }
 }
+
 fn parse_inline_raw_text_run(scanner: &mut Scanner) -> ParseResult<TextRun> {
     let mut run = String::new();
     scanner.eat_inline_raw_delimiter()?;
 
-    //TODO: Would scanner.eat_raw_text_run be easier?
-
-    //TODO: Do we need things like 'on_raw_fragment' - could be implicit?
     loop {
         if scanner.on_inline_raw_delimiter() {
             scanner.eat_inline_raw_delimiter()?;
             break;
-        } else if scanner.on_raw_fragment() {
-            let text = scanner.eat_raw_fragment()?;
-            run.push_str(text);
         } else if scanner.on_linebreak() {
-            // TODO: can we do the trick that parse plain run does
-            // TODO: Shared logic with styled
             scanner.eat_linebreak()?;
 
-            scanner.eat_optional_space();
             if scanner.on_linebreak() {
                 return Err(ParseError::UnexpectedInput);
             } else {
@@ -407,7 +365,10 @@ fn parse_inline_raw_text_run(scanner: &mut Scanner) -> ParseResult<TextRun> {
             }
         } else if scanner.on_space() {
             let space = scanner.eat_raw_space()?;
-            run.push_str(space)
+            run.push_str(space);
+        } else if scanner.on_char_usable_in_raw() {
+            let text = scanner.eat_raw_fragment()?;
+            run.push_str(text);
         } else {
             return Err(ParseError::UnexpectedInput);
         }
@@ -421,6 +382,12 @@ fn parse_inline_raw_text_run(scanner: &mut Scanner) -> ParseResult<TextRun> {
         text: run,
         style: Style::Raw,
     })
+}
+
+fn eat_text_space(scanner: &mut Scanner) {
+    scanner.eat_optional_space();
+    scanner.eat_optional_linebreak();
+    scanner.eat_optional_space();
 }
 
 #[cfg(test)]
@@ -911,6 +878,16 @@ mod test {
         let actual = parse_str(input);
         assert_eq!(actual, expected);
     }
+    #[test]
+    fn escaped_char() {
+        let input = "\\A";
+
+        let expected = document().with_block(paragraph().with(text("A"))).build();
+
+        let actual = parse_str(input).unwrap();
+
+        assert_eq!(actual, expected);
+    }
 
     #[test]
     fn escaped_hash_in_markup() {
@@ -1287,7 +1264,7 @@ mod test {
         let input = "`Cat\n  cat`";
 
         let expected = document()
-            .with_block(paragraph().with(raw_text("Cat cat")))
+            .with_block(paragraph().with(raw_text("Cat   cat")))
             .build();
 
         let actual = parse_str(input).unwrap();
@@ -1610,7 +1587,6 @@ mod test {
             "...about the cats!\n",
             "#="
         );
-        //TODO: Maybe just a lone '#' would be prettier?
 
         let expected = document()
             .with_container(
@@ -1624,9 +1600,10 @@ mod test {
         assert_eq!(actual, expected);
     }
 
-    //TODO: We could allow this after all?
-    //Challenge: we would not know untill the end of the doc
+    //TODO: We should probably allow this after all.
+    // Challenge: we would not know until the end of the doc
     // (or start of next container) what is supposed to be inside
+    // Unless we reserved the #=[info]= form for multiblock?
     #[test]
     fn unterminated_container_is_rejected() {
         let input = concat!(
@@ -1731,6 +1708,6 @@ mod test {
     //  ba`r
     //  - baz
 
-    //TODO: test named list
+    //TODO: test explicit list
     //TODO: lists with different styles
 }
