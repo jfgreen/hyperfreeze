@@ -9,7 +9,6 @@ mod parse;
 #[allow(dead_code)]
 mod read;
 mod render;
-mod scan;
 
 // Implementation ideas we could look into:
 // - Stream processing (as opposed loading whole input into memory)
