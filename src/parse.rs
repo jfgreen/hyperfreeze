@@ -110,18 +110,18 @@ fn char_usable_in_identifier(c: char) -> bool {
     c.is_alphanumeric()
 }
 
-fn char_usable_in_plain_word(c: char) -> bool {
+fn char_usable_in_text_frag(c: char) -> bool {
     ![
         UNDERSCORE, BACKTICK, ASTERISK, TILDE, SPACE, NEW_LINE, HASH, BACKSLASH,
     ]
     .contains(&c)
 }
 
-fn char_usable_in_para_word(c: char) -> bool {
+fn char_usable_in_para_frag(c: char) -> bool {
     ![NEW_LINE, HASH, SPACE].contains(&c)
 }
 
-fn char_usable_in_raw_fragment(c: char) -> bool {
+fn char_usable_in_raw_frag(c: char) -> bool {
     ![BACKTICK, SPACE, NEW_LINE].contains(&c)
 }
 
@@ -164,7 +164,7 @@ fn parse_metadata_block(scanner: &mut Scanner) -> ParseResult<Metadata> {
     let mut metadata = Metadata::default();
 
     loop {
-        let key = scanner.eat_while(char::is_alphanumeric)?;
+        let key = scanner.eat_while(char_usable_in_identifier)?;
         scanner.skip_while_on_char(SPACE);
         scanner.expect_char(COLON)?;
         scanner.skip_while_on_char(SPACE);
@@ -181,11 +181,12 @@ fn parse_metadata_block(scanner: &mut Scanner) -> ParseResult<Metadata> {
             _ => return Err(ParseError::UnknownMetadata),
         };
 
-        if scanner.has_input() {
-            scanner.expect_char(NEW_LINE)?;
-            if !scanner.is_on(char_usable_in_identifier) {
-                break;
-            }
+        let mut peek = scanner.peek();
+        peek.skip_if_on_char(NEW_LINE);
+        if peek.is_on(char_usable_in_identifier) {
+            scanner.advance_to(&peek)
+        } else {
+            break;
         }
     }
 
@@ -205,9 +206,6 @@ fn parse_container(scanner: &mut Scanner) -> ParseResult<Container> {
         if scanner.is_on_str(CONTAINER_FOOTER) {
             scanner.skip_char();
             scanner.skip_char(); //TODO: eat while '='
-            if scanner.has_input() {
-                scanner.expect_char(NEW_LINE)?;
-            }
             break;
         } else if !scanner.has_input() {
             return Err(ParseError::UnterminatedContainer);
@@ -217,6 +215,10 @@ fn parse_container(scanner: &mut Scanner) -> ParseResult<Container> {
             let block = parse_block(scanner)?;
             blocks.push(block);
         }
+    }
+
+    if scanner.has_input() {
+        scanner.expect_char(NEW_LINE)?;
     }
 
     let container = Container {
@@ -235,21 +237,33 @@ fn container_kind_from_name(name: &str) -> ParseResult<ContainerKind> {
 }
 
 fn parse_block(scanner: &mut Scanner) -> ParseResult<Block> {
-    if scanner.is_on_char(HASH) {
+    let block = if scanner.is_on_char(HASH) {
         scanner.skip_char();
         let block_name = scanner.eat_while(char_usable_in_identifier)?;
         scanner.expect_char(NEW_LINE)?;
 
         match block_name {
-            "metadata" => return Err(ParseError::MetadataNotAtStart),
+            "metadata" => Err(ParseError::MetadataNotAtStart),
             "paragraph" => parse_paragraph(scanner),
-            _ => return Err(ParseError::UnknownBlock),
+            _ => Err(ParseError::UnknownBlock),
         }
     } else if scanner.is_on_char(DASH) {
         parse_list(scanner)
     } else {
         parse_paragraph(scanner)
+    }?;
+
+    if scanner.has_input() {
+        scanner.skip_while_on_char(SPACE);
+        scanner.expect_char(NEW_LINE)?;
     }
+
+    if scanner.has_input() && !scanner.is_on_str(CONTAINER_FOOTER) {
+        scanner.skip_while_on_char(SPACE);
+        scanner.expect_char(NEW_LINE)?;
+    }
+
+    Ok(block)
 
     //TODO: bullet sugar
 }
@@ -257,35 +271,13 @@ fn parse_block(scanner: &mut Scanner) -> ParseResult<Block> {
 fn parse_paragraph(scanner: &mut Scanner) -> ParseResult<Block> {
     let mut text_runs = Vec::new();
 
-    //TODO: Can eating/enforcing block break be up one level
-    //TODO: whats our general strategy for detecting end of thing...
-    // option 1 - look for known endings (block break, container footer)
-    // option 2 - be greedy any just bail if its nothing usable
-
     if scanner.is_on_any(WHITESPACE_CHARS) {
         return Err(ParseError::UnexpectedInput);
     }
 
-    while scanner.has_input() {
-        //TODO: is the try peek pattern useful here?
-        if scanner.is_on_any(WHITESPACE_CHARS) && !text_runs.is_empty() {
-            let mut peek = scanner.peek();
-            eat_text_space(&mut peek);
-
-            if peek.is_on(char_usable_in_para_word) {
-                let run = parse_text_run(scanner)?;
-                text_runs.push(run);
-            } else if peek.is_on_str(CONTAINER_FOOTER) || !peek.has_input() {
-                break;
-            } else {
-                peek.expect_char(NEW_LINE)?;
-                scanner.catchup_with(&peek);
-                break;
-            }
-        } else {
-            let run = parse_text_run(scanner)?;
-            text_runs.push(run);
-        }
+    while on_text_run(scanner) {
+        let run = parse_text_run(scanner)?;
+        text_runs.push(run);
     }
 
     let para = text_runs.into_boxed_slice();
@@ -329,11 +321,11 @@ fn parse_plain_text_run(scanner: &mut Scanner) -> ParseResult<TextRun> {
             scanner.skip_char();
             let escaped = scanner.eat_char()?;
             run.push(escaped);
-        } else if scanner.is_on(char_usable_in_plain_word) {
-            let text = scanner.eat_while(char_usable_in_plain_word)?;
+        } else if scanner.is_on(char_usable_in_text_frag) {
+            let text = scanner.eat_while(char_usable_in_text_frag)?;
             run.push_str(text);
         } else if let Some(position) = try_eat_text_space(scanner) {
-            scanner.catchup_with(&position);
+            scanner.advance_to(&position);
             run.push(SPACE);
         } else {
             break;
@@ -358,14 +350,14 @@ fn parse_styled_text_run(scanner: &mut Scanner) -> ParseResult<TextRun> {
             scanner.skip_char();
             let escaped = scanner.eat_char()?;
             run.push(escaped);
-        } else if scanner.is_on(char_usable_in_plain_word) {
-            let text = scanner.eat_while(char_usable_in_plain_word)?;
+        } else if scanner.is_on(char_usable_in_text_frag) {
+            let text = scanner.eat_while(char_usable_in_text_frag)?;
             run.push_str(text);
         } else if scanner.is_on_char(delimiter) {
             scanner.skip_char();
             break;
         } else if let Some(position) = try_eat_text_space(scanner) {
-            scanner.catchup_with(&position);
+            scanner.advance_to(&position);
             run.push(SPACE);
         } else {
             return Err(ParseError::UnexpectedInput);
@@ -383,12 +375,16 @@ fn parse_styled_text_run(scanner: &mut Scanner) -> ParseResult<TextRun> {
     Ok(TextRun { text: run, style })
 }
 
+fn on_text_run(scanner: &Scanner) -> bool {
+    scanner.is_on(char_usable_in_para_frag) || try_eat_text_space(scanner).is_some()
+}
+
 fn try_eat_text_space<'a>(scanner: &Scanner<'a>) -> Option<Scanner<'a>> {
     if scanner.is_on_any(WHITESPACE_CHARS) {
         let mut peek = scanner.peek();
         eat_text_space(&mut peek);
 
-        if peek.is_on(char_usable_in_para_word) {
+        if peek.is_on(char_usable_in_para_frag) {
             return Some(peek);
         }
     }
@@ -424,8 +420,8 @@ fn parse_inline_raw_text_run(scanner: &mut Scanner) -> ParseResult<TextRun> {
         } else if scanner.is_on_char(SPACE) {
             let space = scanner.eat_while_char(SPACE)?;
             run.push_str(space);
-        } else if scanner.is_on(char_usable_in_raw_fragment) {
-            let text = scanner.eat_while(char_usable_in_raw_fragment)?;
+        } else if scanner.is_on(char_usable_in_raw_frag) {
+            let text = scanner.eat_while(char_usable_in_raw_frag)?;
             run.push_str(text);
         } else {
             return Err(ParseError::UnexpectedInput);
@@ -496,7 +492,7 @@ impl<'a> Scanner<'a> {
         Scanner::new(&self.input[self.current_index..])
     }
 
-    fn catchup_with(&mut self, other: &Scanner<'a>) {
+    fn advance_to(&mut self, other: &Scanner<'a>) {
         *self = Scanner::new(&other.input[other.current_index..]);
     }
 
