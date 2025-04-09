@@ -58,35 +58,51 @@ pub enum Style {
     Raw,
 }
 
-//TODO: Errors should describe where things went wrong, and what was expected
+#[derive(Debug)]
+pub struct ParseError {
+    kind: ErrorKind,
+    column: usize,
+    row: usize,
+    line: String,
+}
+
 #[derive(PartialEq, Eq, Debug)]
-pub enum ParseError {
-    UnexpectedInput,
+enum ErrorKind {
+    UnexpectedInput, //TODO: Should describe what was expected
     LooseDelimiter,
     EmptyDelimitedText,
-    UnknownMetadata,
+    UnknownMetadata, //TODO: Should describe the unknown metadata
     MetadataNotAtStart,
-    UnknownBlock,
-    UnknownContainer,
+    UnknownBlock,     //TODO: Should describe the unknown block
+    UnknownContainer, //TODO: Should describe the unknown container
     UnterminatedContainer,
 }
 
 impl Display for ParseError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            ParseError::UnexpectedInput => write!(f, "unexpected input"),
-            ParseError::LooseDelimiter => write!(f, "loose delimiter"),
-            ParseError::EmptyDelimitedText => write!(f, "empty delimited text"),
-            ParseError::UnknownMetadata => write!(f, "unknown metadata"),
-            ParseError::MetadataNotAtStart => write!(f, "metadata not at start"),
-            ParseError::UnknownBlock => write!(f, "unknown block"),
-            ParseError::UnknownContainer => write!(f, "unknown container"),
-            ParseError::UnterminatedContainer => write!(f, "unknown container"),
+        match self.kind {
+            ErrorKind::UnexpectedInput => write!(f, "unexpected input"),
+            ErrorKind::LooseDelimiter => write!(f, "loose delimiter"),
+            ErrorKind::EmptyDelimitedText => write!(f, "empty delimited text"),
+            ErrorKind::UnknownMetadata => write!(f, "unknown metadata"),
+            ErrorKind::MetadataNotAtStart => write!(f, "metadata not at start"),
+            ErrorKind::UnknownBlock => write!(f, "unknown block"),
+            ErrorKind::UnknownContainer => write!(f, "unknown container"),
+            ErrorKind::UnterminatedContainer => write!(f, "unknown container"),
+        }?;
+
+        write!(f, " at line {} column {}:\n", self.column, self.row)?;
+        write!(f, "{}\n", self.line)?;
+        for _ in 0..self.column {
+            write!(f, " ")?;
         }
+        write!(f, "^")?;
+
+        Ok(())
     }
 }
 
-type ParseResult<T> = Result<T, ParseError>;
+type ParseResult<T> = Result<T, ErrorKind>;
 
 //TODO: What if we leant more into using unicode chars like '•' or '¶'
 // alt-gr < is •
@@ -130,8 +146,17 @@ fn char_usable_in_raw_frag(c: char) -> bool {
     ![BACKTICK, SPACE, NEW_LINE].contains(&c)
 }
 
-pub fn parse_str(input: &str) -> ParseResult<Document> {
+pub fn parse_str(input: &str) -> Result<Document, ParseError> {
     let scanner = &mut Scanner::new(input);
+    parse_document(scanner).map_err(|kind| ParseError {
+        kind,
+        column: scanner.column,
+        row: scanner.row,
+        line: scanner.current_row(),
+    })
+}
+
+fn parse_document(scanner: &mut Scanner) -> ParseResult<Document> {
     let mut elements = Vec::new();
 
     let mut metadata = Metadata::default();
@@ -183,7 +208,7 @@ fn parse_metadata_block(scanner: &mut Scanner) -> ParseResult<Metadata> {
         match key {
             "id" => metadata.id.push_str(value),
             "title" => metadata.title.push_str(value),
-            _ => return Err(ParseError::UnknownMetadata),
+            _ => return Err(ErrorKind::UnknownMetadata),
         };
 
         if scanner.has_input() {
@@ -215,7 +240,7 @@ fn parse_container(scanner: &mut Scanner) -> ParseResult<Container> {
             scanner.skip_char(); //TODO: eat while '='
             break;
         } else if !scanner.has_input() {
-            return Err(ParseError::UnterminatedContainer);
+            return Err(ErrorKind::UnterminatedContainer);
         } else if scanner.is_on_any(WHITESPACE_CHARS) {
             scanner.skip_char();
         } else {
@@ -239,7 +264,7 @@ fn parse_container(scanner: &mut Scanner) -> ParseResult<Container> {
 fn container_kind_from_name(name: &str) -> ParseResult<ContainerKind> {
     match name {
         "info" => Ok(ContainerKind::Info),
-        _ => Err(ParseError::UnknownContainer),
+        _ => Err(ErrorKind::UnknownContainer),
     }
 }
 
@@ -250,9 +275,9 @@ fn parse_block(scanner: &mut Scanner) -> ParseResult<Block> {
         scanner.expect_char(NEW_LINE)?;
 
         match block_name {
-            "metadata" => Err(ParseError::MetadataNotAtStart),
+            "metadata" => Err(ErrorKind::MetadataNotAtStart),
             "paragraph" => parse_paragraph(scanner),
-            _ => Err(ParseError::UnknownBlock),
+            _ => Err(ErrorKind::UnknownBlock),
         }
     } else if scanner.is_on_char(DASH) {
         parse_list(scanner)
@@ -277,7 +302,7 @@ fn parse_paragraph(scanner: &mut Scanner) -> ParseResult<Block> {
     let mut text_runs = Vec::new();
 
     if scanner.is_on_any(WHITESPACE_CHARS) {
-        return Err(ParseError::UnexpectedInput);
+        return Err(ErrorKind::UnexpectedInput);
     }
 
     while on_text_run(scanner) {
@@ -382,16 +407,16 @@ fn parse_styled_text_run(scanner: &mut Scanner) -> ParseResult<TextRun> {
             scanner.advance_to(&position);
             run.push(SPACE);
         } else {
-            return Err(ParseError::UnexpectedInput);
+            return Err(ErrorKind::UnexpectedInput);
         }
     }
 
     if run.starts_with(SPACE) || run.ends_with(SPACE) {
-        return Err(ParseError::LooseDelimiter);
+        return Err(ErrorKind::LooseDelimiter);
     }
 
     if run.is_empty() {
-        return Err(ParseError::EmptyDelimitedText);
+        return Err(ErrorKind::EmptyDelimitedText);
     }
 
     Ok(TextRun { text: run, style })
@@ -433,7 +458,7 @@ fn style_from_delimiter(delimiter: char) -> ParseResult<Style> {
         ASTERISK => Ok(Style::Strong),
         UNDERSCORE => Ok(Style::Emphasis),
         TILDE => Ok(Style::Strikethrough),
-        _ => Err(ParseError::UnexpectedInput),
+        _ => Err(ErrorKind::UnexpectedInput),
     }
 }
 
@@ -449,7 +474,7 @@ fn parse_inline_raw_text_run(scanner: &mut Scanner) -> ParseResult<TextRun> {
             scanner.skip_char();
 
             if scanner.is_on_char(NEW_LINE) {
-                return Err(ParseError::UnexpectedInput);
+                return Err(ErrorKind::UnexpectedInput);
             } else {
                 run.push(SPACE);
             }
@@ -460,12 +485,12 @@ fn parse_inline_raw_text_run(scanner: &mut Scanner) -> ParseResult<TextRun> {
             let text = scanner.eat_while(char_usable_in_raw_frag)?;
             run.push_str(text);
         } else {
-            return Err(ParseError::UnexpectedInput);
+            return Err(ErrorKind::UnexpectedInput);
         }
     }
 
     if run.is_empty() {
-        return Err(ParseError::EmptyDelimitedText);
+        return Err(ErrorKind::EmptyDelimitedText);
     }
 
     Ok(TextRun {
@@ -474,12 +499,14 @@ fn parse_inline_raw_text_run(scanner: &mut Scanner) -> ParseResult<TextRun> {
     })
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct Scanner<'a> {
     input: &'a str,
     chars: CharIndices<'a>,
     current_char: Option<char>,
     current_index: usize,
+    column: usize,
+    row: usize,
 }
 
 impl<'a> Scanner<'a> {
@@ -489,6 +516,8 @@ impl<'a> Scanner<'a> {
             chars: input.char_indices(),
             current_char: None,
             current_index: 0,
+            column: 0,
+            row: 1,
         };
 
         // Place the first char of the input into `next`
@@ -519,21 +548,15 @@ impl<'a> Scanner<'a> {
     }
 
     fn peek(&self) -> Scanner<'a> {
-        Scanner::new(&self.input[self.current_index..])
+        self.clone()
     }
 
     fn advance_to(&mut self, other: &Scanner<'a>) {
-        *self = Scanner::new(&other.input[other.current_index..]);
+        *self = other.clone()
     }
 
     fn skip_char(&mut self) {
         self.read_next_char();
-    }
-
-    fn skip_if_on_char(&mut self, c: char) {
-        if self.current_char == Some(c) {
-            self.read_next_char();
-        }
     }
 
     fn skip_while_on_char(&mut self, c1: char) {
@@ -555,7 +578,7 @@ impl<'a> Scanner<'a> {
             self.read_next_char();
             Ok(())
         } else {
-            Err(ParseError::UnexpectedInput)
+            Err(ErrorKind::UnexpectedInput)
         }
     }
 
@@ -568,7 +591,7 @@ impl<'a> Scanner<'a> {
             }
             Ok(())
         } else {
-            Err(ParseError::UnexpectedInput)
+            Err(ErrorKind::UnexpectedInput)
         }
     }
 
@@ -578,7 +601,7 @@ impl<'a> Scanner<'a> {
                 self.read_next_char();
                 Ok(c)
             }
-            None => Err(ParseError::UnexpectedInput),
+            None => Err(ErrorKind::UnexpectedInput),
         }
     }
 
@@ -591,7 +614,7 @@ impl<'a> Scanner<'a> {
         let string = &self.input[i1..i2];
 
         if string.is_empty() {
-            Err(ParseError::UnexpectedInput)
+            Err(ErrorKind::UnexpectedInput)
         } else {
             Ok(string)
         }
@@ -607,12 +630,27 @@ impl<'a> Scanner<'a> {
 
     fn read_next_char(&mut self) {
         if let Some((index, c)) = self.chars.next() {
+            if c == '\n' {
+                self.column = 0;
+                self.row += 1;
+            } else {
+                self.column += 1;
+            }
+
             self.current_char = Some(c);
             self.current_index = index;
         } else {
             self.current_char = None;
             self.current_index = self.input.len();
         }
+    }
+
+    fn current_row(&self) -> String {
+        self.input
+            .lines()
+            .nth(self.row - 1)
+            .unwrap_or("")
+            .to_owned()
     }
 }
 
@@ -899,9 +937,9 @@ mod test {
     fn explicit_paragraph_with_block_break_before_text_is_rejected() {
         let input = "#paragraph\n\nCats go meeow!";
 
-        let expected = Err(ParseError::UnexpectedInput);
+        let expected = ErrorKind::UnexpectedInput;
 
-        let actual = parse_str(input);
+        let actual = parse_str(input).unwrap_err().kind;
 
         assert_eq!(actual, expected);
     }
@@ -910,9 +948,9 @@ mod test {
     fn unknown_block_is_rejected() {
         let input = "#feline\nMeow?";
 
-        let expected = Err(ParseError::UnknownBlock);
+        let expected = ErrorKind::UnknownBlock;
 
-        let actual = parse_str(input);
+        let actual = parse_str(input).unwrap_err().kind;
 
         assert_eq!(actual, expected);
     }
@@ -921,9 +959,9 @@ mod test {
     fn unknown_block_starting_with_m_is_rejected() {
         let input = "#meowograph\nCats go meeow!";
 
-        let expected = Err(ParseError::UnknownBlock);
+        let expected = ErrorKind::UnknownBlock;
 
-        let actual = parse_str(input);
+        let actual = parse_str(input).unwrap_err().kind;
 
         assert_eq!(actual, expected);
     }
@@ -932,9 +970,9 @@ mod test {
     fn empty_block_name_is_rejected() {
         let input = "#\nHi";
 
-        let expected = Err(ParseError::UnexpectedInput);
+        let expected = ErrorKind::UnexpectedInput;
 
-        let actual = parse_str(input);
+        let actual = parse_str(input).unwrap_err().kind;
 
         assert_eq!(actual, expected);
     }
@@ -943,9 +981,9 @@ mod test {
     fn block_header_without_newline_is_rejected() {
         let input = "#paragraph";
 
-        let expected = Err(ParseError::UnexpectedInput);
+        let expected = ErrorKind::UnexpectedInput;
 
-        let actual = parse_str(input);
+        let actual = parse_str(input).unwrap_err().kind;
 
         assert_eq!(actual, expected);
     }
@@ -1110,9 +1148,9 @@ mod test {
             "ever so surprising\n"
         );
 
-        let expected = Err(ParseError::UnexpectedInput);
+        let expected = ErrorKind::UnexpectedInput;
 
-        let actual = parse_str(input);
+        let actual = parse_str(input).unwrap_err().kind;
         assert_eq!(actual, expected);
     }
     #[test]
@@ -1566,9 +1604,9 @@ mod test {
     fn empty_emphasis() {
         let input = "Rules cats must follow: __.";
 
-        let expected = Err(ParseError::EmptyDelimitedText);
+        let expected = ErrorKind::EmptyDelimitedText;
 
-        let actual = parse_str(input);
+        let actual = parse_str(input).unwrap_err().kind;
 
         assert_eq!(actual, expected);
     }
@@ -1577,9 +1615,9 @@ mod test {
     fn empty_raw() {
         let input = "Robot cat says: ``!.";
 
-        let expected = Err(ParseError::EmptyDelimitedText);
+        let expected = ErrorKind::EmptyDelimitedText;
 
-        let actual = parse_str(input);
+        let actual = parse_str(input).unwrap_err().kind;
 
         assert_eq!(actual, expected);
     }
@@ -1588,9 +1626,9 @@ mod test {
     fn raw_with_double_linebreak() {
         let input = "`Erm...\n\nmeow?`";
 
-        let expected = Err(ParseError::UnexpectedInput);
+        let expected = ErrorKind::UnexpectedInput;
 
-        let actual = parse_str(input);
+        let actual = parse_str(input).unwrap_err().kind;
 
         assert_eq!(actual, expected);
     }
@@ -1599,9 +1637,9 @@ mod test {
     fn strikethrough_with_double_linebreak() {
         let input = "~Erm...\n\nmeow?~";
 
-        let expected = Err(ParseError::UnexpectedInput);
+        let expected = ErrorKind::UnexpectedInput;
 
-        let actual = parse_str(input);
+        let actual = parse_str(input).unwrap_err().kind;
 
         assert_eq!(actual, expected);
     }
@@ -1610,9 +1648,9 @@ mod test {
     fn unmatched_emphasis_1() {
         let input = "_.";
 
-        let expected = Err(ParseError::UnexpectedInput);
+        let expected = ErrorKind::UnexpectedInput;
 
-        let actual = parse_str(input);
+        let actual = parse_str(input).unwrap_err().kind;
 
         assert_eq!(actual, expected);
     }
@@ -1621,9 +1659,9 @@ mod test {
     fn unmatched_emphasis_2() {
         let input = "meow _meow.";
 
-        let expected = Err(ParseError::UnexpectedInput);
+        let expected = ErrorKind::UnexpectedInput;
 
-        let actual = parse_str(input);
+        let actual = parse_str(input).unwrap_err().kind;
 
         assert_eq!(actual, expected);
     }
@@ -1632,9 +1670,9 @@ mod test {
     fn unmatched_emphasis_3() {
         let input = "meow meow_";
 
-        let expected = Err(ParseError::UnexpectedInput);
+        let expected = ErrorKind::UnexpectedInput;
 
-        let actual = parse_str(input);
+        let actual = parse_str(input).unwrap_err().kind;
 
         assert_eq!(actual, expected);
     }
@@ -1643,9 +1681,9 @@ mod test {
     fn loose_strong_delimiter_start() {
         let input = "* meow meow*";
 
-        let expected = Err(ParseError::LooseDelimiter);
+        let expected = ErrorKind::LooseDelimiter;
 
-        let actual = parse_str(input);
+        let actual = parse_str(input).unwrap_err().kind;
 
         assert_eq!(actual, expected);
     }
@@ -1654,9 +1692,9 @@ mod test {
     fn loose_strong_delimiter_end() {
         let input = "*meow meow *";
 
-        let expected = Err(ParseError::LooseDelimiter);
+        let expected = ErrorKind::LooseDelimiter;
 
-        let actual = parse_str(input);
+        let actual = parse_str(input).unwrap_err().kind;
 
         assert_eq!(actual, expected);
     }
@@ -1665,9 +1703,9 @@ mod test {
     fn raw_immediately_in_emphasis() {
         let input = "_``_";
 
-        let expected = Err(ParseError::UnexpectedInput);
+        let expected = ErrorKind::UnexpectedInput;
 
-        let actual = parse_str(input);
+        let actual = parse_str(input).unwrap_err().kind;
 
         assert_eq!(actual, expected);
     }
@@ -1676,9 +1714,9 @@ mod test {
     fn raw_within_in_emphasis() {
         let input = "_a``a_";
 
-        let expected = Err(ParseError::UnexpectedInput);
+        let expected = ErrorKind::UnexpectedInput;
 
-        let actual = parse_str(input);
+        let actual = parse_str(input).unwrap_err().kind;
 
         assert_eq!(actual, expected);
     }
@@ -1821,9 +1859,9 @@ mod test {
             "title: Some document\n",
         );
 
-        let expected = Err(ParseError::MetadataNotAtStart);
+        let expected = ErrorKind::MetadataNotAtStart;
 
-        let actual = parse_str(input);
+        let actual = parse_str(input).unwrap_err().kind;
 
         assert_eq!(actual, expected);
     }
@@ -1863,9 +1901,9 @@ mod test {
             "\n",
         );
 
-        let expected = Err(ParseError::UnterminatedContainer);
+        let expected = ErrorKind::UnterminatedContainer;
 
-        let actual = parse_str(input);
+        let actual = parse_str(input).unwrap_err().kind;
         assert_eq!(actual, expected);
     }
 
@@ -1873,9 +1911,9 @@ mod test {
     fn container_missing_start_is_rejected() {
         let input = concat!("Silly cat\n", "#=");
 
-        let expected = Err(ParseError::UnexpectedInput);
+        let expected = ErrorKind::UnexpectedInput;
 
-        let actual = parse_str(input);
+        let actual = parse_str(input).unwrap_err().kind;
         assert_eq!(actual, expected);
     }
 
@@ -1883,9 +1921,9 @@ mod test {
     fn only_container_header_is_rejected() {
         let input = concat!("#[info]\n",);
 
-        let expected = Err(ParseError::UnterminatedContainer);
+        let expected = ErrorKind::UnterminatedContainer;
 
-        let actual = parse_str(input);
+        let actual = parse_str(input).unwrap_err().kind;
         assert_eq!(actual, expected);
     }
 
@@ -1897,9 +1935,9 @@ mod test {
             "#=toy"
         );
 
-        let expected = Err(ParseError::UnexpectedInput);
+        let expected = ErrorKind::UnexpectedInput;
 
-        let actual = parse_str(input);
+        let actual = parse_str(input).unwrap_err().kind;
         assert_eq!(actual, expected);
     }
 
@@ -2019,6 +2057,17 @@ mod test {
             .build();
 
         let actual = parse_str(input).unwrap();
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn error_specifies_correct_row_and_column() {
+        let input = "Silly cat\ngoes *_*";
+
+        let expected = (7, 2);
+
+        let error = parse_str(input).unwrap_err();
+        let actual = (error.column, error.row);
         assert_eq!(actual, expected);
     }
 
