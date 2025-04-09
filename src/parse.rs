@@ -88,6 +88,11 @@ impl Display for ParseError {
 
 type ParseResult<T> = Result<T, ParseError>;
 
+//TODO: What if we leant more into using unicode chars like '•' or '¶'
+// alt-gr < is •
+// alt-gr r is ¶
+// is there anything cool we could use for containers?
+
 const SPACE: char = ' ';
 const NEW_LINE: char = '\n';
 const COLON: char = ':';
@@ -181,12 +186,14 @@ fn parse_metadata_block(scanner: &mut Scanner) -> ParseResult<Metadata> {
             _ => return Err(ParseError::UnknownMetadata),
         };
 
-        let mut peek = scanner.peek();
-        peek.skip_if_on_char(NEW_LINE);
-        if peek.is_on(char_usable_in_identifier) {
-            scanner.advance_to(&peek)
-        } else {
-            break;
+        if scanner.has_input() {
+            let mut peek = scanner.peek();
+            peek.expect_char(NEW_LINE)?;
+            if peek.is_on(char_usable_in_identifier) {
+                scanner.advance_to(&peek)
+            } else {
+                break;
+            }
         }
     }
 
@@ -264,8 +271,6 @@ fn parse_block(scanner: &mut Scanner) -> ParseResult<Block> {
     }
 
     Ok(block)
-
-    //TODO: bullet sugar
 }
 
 fn parse_paragraph(scanner: &mut Scanner) -> ParseResult<Block> {
@@ -295,22 +300,39 @@ fn parse_text_run(scanner: &mut Scanner) -> ParseResult<TextRun> {
 }
 
 fn parse_list(scanner: &mut Scanner) -> ParseResult<Block> {
-    /*
     let mut items = Vec::new();
 
+    // IDEA: Parsing a list item is just like parsing a para
+    // but instead of only stopping once we get to a block break
+    // or container footer, we also stop when we get to a line that
+    // starts with bullet (or space then bullet)
+
+    //TODO: "while on_list_item(scanner)"
     loop {
         if scanner.is_on_char(DASH) {
             scanner.skip_char();
             scanner.skip_while_on_char(SPACE);
-            let text = parse
+            let mut text_runs = Vec::new();
 
+            while on_text_run(scanner) {
+                let run = parse_text_run(scanner)?;
+                text_runs.push(run);
+            }
+
+            let item = ListItem::Text(text_runs.into_boxed_slice());
+            items.push(item);
+
+            //TODO: should we only eat this if next line has a list item
+            if scanner.is_on_char(NEW_LINE) {
+                scanner.skip_char();
+            }
+        } else {
+            break;
         }
     }
 
     let list = items.into_boxed_slice();
     Ok(Block::List(list))
-    */
-    todo!()
 }
 
 fn parse_plain_text_run(scanner: &mut Scanner) -> ParseResult<TextRun> {
@@ -382,7 +404,21 @@ fn on_text_run(scanner: &Scanner) -> bool {
 fn try_eat_text_space<'a>(scanner: &Scanner<'a>) -> Option<Scanner<'a>> {
     if scanner.is_on_any(WHITESPACE_CHARS) {
         let mut peek = scanner.peek();
-        eat_text_space(&mut peek);
+        let mut has_new_line = false;
+
+        //FIXME: this wont accept a dash after a new line in a regular para
+        //... and it should. Is generally a bit of a mess also...
+
+        peek.skip_while_on_char(SPACE);
+        if peek.is_on_char(NEW_LINE) {
+            has_new_line = true;
+            peek.skip_char();
+        }
+        peek.skip_while_on_char(SPACE);
+
+        if has_new_line && peek.is_on_char(DASH) {
+            return None;
+        }
 
         if peek.is_on(char_usable_in_para_frag) {
             return Some(peek);
@@ -436,12 +472,6 @@ fn parse_inline_raw_text_run(scanner: &mut Scanner) -> ParseResult<TextRun> {
         text: run,
         style: Style::Raw,
     })
-}
-
-fn eat_text_space(scanner: &mut Scanner) {
-    scanner.skip_while_on_char(SPACE);
-    scanner.skip_if_on_char(NEW_LINE);
-    scanner.skip_while_on_char(SPACE);
 }
 
 #[derive(Debug)]
@@ -1860,7 +1890,6 @@ mod test {
     }
 
     #[test]
-    #[ignore]
     fn simple_list() {
         let input = concat!(
             "- Dry food is ok\n",
@@ -1881,7 +1910,62 @@ mod test {
         assert_eq!(actual, expected);
     }
 
-    //TODO: Would be cool to optionaly give lists a title
+    #[test]
+    fn simple_list_with_continuations() {
+        let input = concat!(
+            "- Dry food\n",
+            "is ok\n",
+            "- Wet food\n",
+            "  is much better\n",
+            "- Water is\n",
+            "    important also\n"
+        );
+
+        let expected = document()
+            .with_block(
+                list()
+                    .with(paragraph().with(text("Dry food is ok")))
+                    .with(paragraph().with(text("Wet food is much better")))
+                    .with(paragraph().with(text("Water is important also"))),
+            )
+            .build();
+
+        let actual = parse_str(input).unwrap();
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn list_with_styled_text() {
+        let input = concat!(
+            "- Dry food is *ok*\n",
+            "- Wet food is _much better_\n",
+            "- Water is `important  also`\n"
+        );
+
+        let expected = document()
+            .with_block(
+                list()
+                    .with(
+                        paragraph()
+                            .with(text("Dry food is "))
+                            .with(strong_text("ok")),
+                    )
+                    .with(
+                        paragraph()
+                            .with(text("Wet food is "))
+                            .with(emphasised_text("much better")),
+                    )
+                    .with(
+                        paragraph()
+                            .with(text("Water is "))
+                            .with(raw_text("important  also")),
+                    ),
+            )
+            .build();
+
+        let actual = parse_str(input).unwrap();
+        assert_eq!(actual, expected);
+    }
 
     #[test]
     #[ignore]
@@ -1909,6 +1993,8 @@ mod test {
         let actual = parse_str(input).unwrap();
         assert_eq!(actual, expected);
     }
+
+    //TODO: Would be cool to optionaly give lists a title
 
     //TODO: Realy good test:
     //- f`oo
