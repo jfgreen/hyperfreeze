@@ -1453,6 +1453,20 @@ mod test {
     }
 
     #[test]
+    #[ignore]
+    fn paragraph_with_trailing_whitespace() {
+        let input = "Cool kitty   ";
+
+        let expected = document()
+            .with_block(paragraph().with(text("Cool kitty")))
+            .build();
+
+        let actual = parse_str(input).unwrap();
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
     fn underscore_in_awkward_places() {
         let input = "Cat cat_cat cat_ cat.";
 
@@ -1886,6 +1900,20 @@ mod test {
         let expected = Err(ParseError::UnexpectedInput);
 
         let actual = parse_str(input);
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    #[ignore]
+    fn dash_in_paragraph_is_treated_as_part_of_text() {
+        let input = "Ripley\n- Cat";
+
+        let expected = document()
+            .with_block(paragraph().with(text("Ripley - Cat")))
+            .build();
+
+        let actual = parse_str(input).unwrap();
+
         assert_eq!(actual, expected);
     }
 
