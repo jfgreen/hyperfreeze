@@ -148,7 +148,9 @@ fn char_usable_in_raw_frag(c: char) -> bool {
 
 pub fn parse_str(input: &str) -> Result<Document, ParseError> {
     let scanner = &mut Scanner::new(input);
-    parse_document(scanner).map_err(|kind| ParseError {
+    let result = parse_document(scanner);
+
+    result.map_err(|kind| ParseError {
         kind,
         column: scanner.column,
         row: scanner.row,
@@ -866,7 +868,54 @@ mod test {
         }
     }
 
-    //TODO: Reduce test verbosity some more, e.g assert_fails, given().expect().
+    fn assert_parses_succeeds<T: Into<Document>>(input: &'static str, expected: T) {
+        let expected = expected.into();
+        let result = parse_str(input);
+
+        if let Err(ref e) = result {
+            eprintln!("{}", e);
+        }
+
+        let actual = result.expect("parse should succeed");
+
+        assert_eq!(actual, expected);
+    }
+
+    fn assert_parse_fails(input: &'static str, expected: ErrorKind) {
+        let expected = expected.into();
+        let result = parse_str(input);
+
+        let err = result.expect_err("parse should fail");
+        let actual = err.kind;
+
+        assert_eq!(actual, expected);
+    }
+
+    //TODO: Fix naming of Docment builder
+    impl Into<Document> for DocmentBuilder {
+        fn into(self) -> Document {
+            self.build()
+        }
+    }
+
+    impl Into<Document> for ContainerBuilder {
+        fn into(self) -> Document {
+            document().with_container(self).build()
+        }
+    }
+
+    impl Into<Document> for ParagraphBuilder {
+        fn into(self) -> Document {
+            document().with_block(self).build()
+        }
+    }
+
+    impl Into<Document> for ListBuilder {
+        fn into(self) -> Document {
+            document().with_block(self).build()
+        }
+    }
+
     //TODO: See if we can group / order these ever growing tests...
 
     #[test]
@@ -902,35 +951,25 @@ mod test {
             .with_block(paragraph().with(text("Opposable thumbs are useful?")))
             .build();
 
-        let actual = parse_str(input).unwrap();
-
-        assert_eq!(actual, expected);
+        assert_parses_succeeds(input, expected);
     }
 
     #[test]
     fn one_line_paragraph() {
         let input = "We like cats very much";
 
-        let expected = document()
-            .with_block(paragraph().with(text("We like cats very much")))
-            .build();
+        let expected = paragraph().with(text("We like cats very much"));
 
-        let actual = parse_str(input).unwrap();
-
-        assert_eq!(actual, expected);
+        assert_parses_succeeds(input, expected);
     }
 
     #[test]
     fn explicit_paragraph() {
         let input = "#paragraph\nCats go meeow!";
 
-        let expected = document()
-            .with_block(paragraph().with(text("Cats go meeow!")))
-            .build();
+        let expected = paragraph().with(text("Cats go meeow!"));
 
-        let actual = parse_str(input).unwrap();
-
-        assert_eq!(actual, expected);
+        assert_parses_succeeds(input, expected);
     }
 
     #[test]
@@ -939,9 +978,7 @@ mod test {
 
         let expected = ErrorKind::UnexpectedInput;
 
-        let actual = parse_str(input).unwrap_err().kind;
-
-        assert_eq!(actual, expected);
+        assert_parse_fails(input, expected);
     }
 
     #[test]
@@ -950,9 +987,7 @@ mod test {
 
         let expected = ErrorKind::UnknownBlock;
 
-        let actual = parse_str(input).unwrap_err().kind;
-
-        assert_eq!(actual, expected);
+        assert_parse_fails(input, expected);
     }
 
     #[test]
@@ -961,9 +996,7 @@ mod test {
 
         let expected = ErrorKind::UnknownBlock;
 
-        let actual = parse_str(input).unwrap_err().kind;
-
-        assert_eq!(actual, expected);
+        assert_parse_fails(input, expected);
     }
 
     #[test]
@@ -972,9 +1005,7 @@ mod test {
 
         let expected = ErrorKind::UnexpectedInput;
 
-        let actual = parse_str(input).unwrap_err().kind;
-
-        assert_eq!(actual, expected);
+        assert_parse_fails(input, expected);
     }
 
     #[test]
@@ -983,107 +1014,73 @@ mod test {
 
         let expected = ErrorKind::UnexpectedInput;
 
-        let actual = parse_str(input).unwrap_err().kind;
-
-        assert_eq!(actual, expected);
+        assert_parse_fails(input, expected);
     }
 
     #[test]
     fn double_space() {
         let input = "Nice  kitty!";
 
-        let expected = document()
-            .with_block(paragraph().with(text("Nice kitty!")))
-            .build();
+        let expected = paragraph().with(text("Nice kitty!"));
 
-        let actual = parse_str(input).unwrap();
-
-        assert_eq!(actual, expected);
+        assert_parses_succeeds(input, expected);
     }
 
     #[test]
     fn trailing_newline_is_ignored() {
         let input = "Cats\n";
 
-        let expected = document()
-            .with_block(paragraph().with(text("Cats")))
-            .build();
+        let expected = paragraph().with(text("Cats"));
 
-        let actual = parse_str(input).unwrap();
-
-        assert_eq!(actual, expected);
+        assert_parses_succeeds(input, expected);
     }
 
     #[test]
     fn space_then_trailing_newline_is_ignored() {
         let input = "Cats \n";
 
-        let expected = document()
-            .with_block(paragraph().with(text("Cats")))
-            .build();
+        let expected = paragraph().with(text("Cats"));
 
-        let actual = parse_str(input).unwrap();
-
-        assert_eq!(actual, expected);
+        assert_parses_succeeds(input, expected);
     }
 
     #[test]
     fn new_line_becomes_whitespace() {
         let input = "Cats\nwhiskers";
 
-        let expected = document()
-            .with_block(paragraph().with(text("Cats whiskers")))
-            .build();
+        let expected = paragraph().with(text("Cats whiskers"));
 
-        let actual = parse_str(input).unwrap();
-
-        assert_eq!(actual, expected);
+        assert_parses_succeeds(input, expected);
     }
 
     #[test]
     fn new_line_becomes_whitespace_given_plain_then_styled() {
         let input = "Cats\n*whiskers*";
 
-        let expected = document()
-            .with_block(
-                paragraph()
-                    .with(text("Cats "))
-                    .with(strong_text("whiskers")),
-            )
-            .build();
+        let expected = paragraph()
+            .with(text("Cats "))
+            .with(strong_text("whiskers"));
 
-        let actual = parse_str(input).unwrap();
-
-        assert_eq!(actual, expected);
+        assert_parses_succeeds(input, expected);
     }
 
     #[test]
     fn new_line_becomes_whitespace_given_plain_then_raw() {
         let input = "Cats\n`nice whiskers`";
 
-        let expected = document()
-            .with_block(
-                paragraph()
-                    .with(text("Cats "))
-                    .with(raw_text("nice whiskers")),
-            )
-            .build();
+        let expected = paragraph()
+            .with(text("Cats "))
+            .with(raw_text("nice whiskers"));
 
-        let actual = parse_str(input).unwrap();
-
-        assert_eq!(actual, expected);
+        assert_parses_succeeds(input, expected);
     }
 
     #[test]
     fn new_line_with_extra_whitespace_collapses() {
         let input = "Cats    \n    whiskers";
-        let expected = document()
-            .with_block(paragraph().with(text("Cats whiskers")))
-            .build();
+        let expected = paragraph().with(text("Cats whiskers"));
 
-        let actual = parse_str(input).unwrap();
-
-        assert_eq!(actual, expected);
+        assert_parses_succeeds(input, expected);
     }
 
     #[test]
@@ -1092,12 +1089,9 @@ mod test {
 
         let expected = document()
             .with_block(paragraph().with(text("Cats")))
-            .with_block(paragraph().with(text("whiskers")))
-            .build();
+            .with_block(paragraph().with(text("whiskers")));
 
-        let actual = parse_str(input).unwrap();
-
-        assert_eq!(actual, expected);
+        assert_parses_succeeds(input, expected);
     }
 
     #[test]
@@ -1106,12 +1100,9 @@ mod test {
 
         let expected = document()
             .with_block(paragraph().with(text("Cats")))
-            .with_block(paragraph().with(text("whiskers")))
-            .build();
+            .with_block(paragraph().with(text("whiskers")));
 
-        let actual = parse_str(input).unwrap();
-
-        assert_eq!(actual, expected);
+        assert_parses_succeeds(input, expected);
     }
 
     #[test]
@@ -1119,12 +1110,9 @@ mod test {
         let input = "Cats\n \nwhiskers";
         let expected = document()
             .with_block(paragraph().with(text("Cats")))
-            .with_block(paragraph().with(text("whiskers")))
-            .build();
+            .with_block(paragraph().with(text("whiskers")));
 
-        let actual = parse_str(input).unwrap();
-
-        assert_eq!(actual, expected);
+        assert_parses_succeeds(input, expected);
     }
 
     #[test]
@@ -1132,12 +1120,9 @@ mod test {
         let input = "Cats  \n    \n  whiskers";
         let expected = document()
             .with_block(paragraph().with(text("Cats")))
-            .with_block(paragraph().with(text("whiskers")))
-            .build();
+            .with_block(paragraph().with(text("whiskers")));
 
-        let actual = parse_str(input).unwrap();
-
-        assert_eq!(actual, expected);
+        assert_parses_succeeds(input, expected);
     }
 
     #[test]
@@ -1150,344 +1135,237 @@ mod test {
 
         let expected = ErrorKind::UnexpectedInput;
 
-        let actual = parse_str(input).unwrap_err().kind;
-        assert_eq!(actual, expected);
+        assert_parse_fails(input, expected);
     }
     #[test]
     fn escaped_char() {
         let input = "\\A";
 
-        let expected = document().with_block(paragraph().with(text("A"))).build();
+        let expected = paragraph().with(text("A"));
 
-        let actual = parse_str(input).unwrap();
-
-        assert_eq!(actual, expected);
+        assert_parses_succeeds(input, expected);
     }
 
     #[test]
     fn escaped_hash_in_markup() {
         let input = "My cat does backflips \\#coolcat";
 
-        let expected = document()
-            .with_block(paragraph().with(text("My cat does backflips #coolcat")))
-            .build();
+        let expected = paragraph().with(text("My cat does backflips #coolcat"));
 
-        let actual = parse_str(input).unwrap();
-
-        assert_eq!(actual, expected);
+        assert_parses_succeeds(input, expected);
     }
 
     #[test]
     fn escaped_underscore() {
         let input = "cat\\_case";
 
-        let expected = document()
-            .with_block(paragraph().with(text("cat_case")))
-            .build();
+        let expected = paragraph().with(text("cat_case"));
 
-        let actual = parse_str(input).unwrap();
-
-        assert_eq!(actual, expected);
+        assert_parses_succeeds(input, expected);
     }
 
     #[test]
     fn escaped_underscore_in_emphasis() {
         let input = "_cat\\_case_";
 
-        let expected = document()
-            .with_block(paragraph().with(emphasised_text("cat_case")))
-            .build();
+        let expected = paragraph().with(emphasised_text("cat_case"));
 
-        let actual = parse_str(input).unwrap();
-
-        assert_eq!(actual, expected);
+        assert_parses_succeeds(input, expected);
     }
 
     #[test]
     fn escaped_ignored_in_raw() {
         let input = "`cat\\_case`";
 
-        let expected = document()
-            .with_block(paragraph().with(raw_text("cat\\_case")))
-            .build();
+        let expected = paragraph().with(raw_text("cat\\_case"));
 
-        let actual = parse_str(input).unwrap();
-
-        assert_eq!(actual, expected);
+        assert_parses_succeeds(input, expected);
     }
 
     #[test]
     fn emphasised_words() {
         let input = "We _totally adore_ them";
 
-        let expected = document()
-            .with_block(
-                paragraph()
-                    .with(text("We "))
-                    .with(emphasised_text("totally adore"))
-                    .with(text(" them")),
-            )
-            .build();
+        let expected = paragraph()
+            .with(text("We "))
+            .with(emphasised_text("totally adore"))
+            .with(text(" them"));
 
-        let actual = parse_str(input).unwrap();
-
-        assert_eq!(actual, expected);
+        assert_parses_succeeds(input, expected);
     }
 
     #[test]
     fn emphasis_at_end_of_line() {
         let input = "Cats like to _zoom_\naround";
 
-        let expected = document()
-            .with_block(
-                paragraph()
-                    .with(text("Cats like to "))
-                    .with(emphasised_text("zoom"))
-                    .with(text(" around")),
-            )
-            .build();
+        let expected = paragraph()
+            .with(text("Cats like to "))
+            .with(emphasised_text("zoom"))
+            .with(text(" around"));
 
-        let actual = parse_str(input).unwrap();
-
-        assert_eq!(actual, expected);
+        assert_parses_succeeds(input, expected);
     }
 
     #[test]
     fn strong_words() {
         let input = "I *need to pet that cat* right away.";
 
-        let expected = document()
-            .with_block(
-                paragraph()
-                    .with(text("I "))
-                    .with(strong_text("need to pet that cat"))
-                    .with(text(" right away.")),
-            )
-            .build();
+        let expected = paragraph()
+            .with(text("I "))
+            .with(strong_text("need to pet that cat"))
+            .with(text(" right away."));
 
-        let actual = parse_str(input).unwrap();
-
-        assert_eq!(actual, expected);
+        assert_parses_succeeds(input, expected);
     }
 
     #[test]
     fn strong_mid_word() {
         let input = "I said: mee*ooOOo*ww!";
 
-        let expected = document()
-            .with_block(
-                paragraph()
-                    .with(text("I said: mee"))
-                    .with(strong_text("ooOOo"))
-                    .with(text("ww!")),
-            )
-            .build();
+        let expected = paragraph()
+            .with(text("I said: mee"))
+            .with(strong_text("ooOOo"))
+            .with(text("ww!"));
 
-        let actual = parse_str(input).unwrap();
-
-        assert_eq!(actual, expected);
+        assert_parses_succeeds(input, expected);
     }
 
     #[test]
     fn strong_over_two_lines() {
         let input = "*me\now*";
 
-        let expected = document()
-            .with_block(paragraph().with(strong_text("me ow")))
-            .build();
+        let expected = paragraph().with(strong_text("me ow"));
 
-        let actual = parse_str(input).unwrap();
-
-        assert_eq!(actual, expected);
+        assert_parses_succeeds(input, expected);
     }
 
     #[test]
     fn strikethrough_words() {
         let input = "Cats are ~ok i guess~ magnificant";
 
-        let expected = document()
-            .with_block(
-                paragraph()
-                    .with(text("Cats are "))
-                    .with(strikethrough_text("ok i guess"))
-                    .with(text(" magnificant")),
-            )
-            .build();
+        let expected = paragraph()
+            .with(text("Cats are "))
+            .with(strikethrough_text("ok i guess"))
+            .with(text(" magnificant"));
 
-        let actual = parse_str(input).unwrap();
-
-        assert_eq!(actual, expected);
+        assert_parses_succeeds(input, expected);
     }
 
     #[test]
     fn raw_words() {
         let input = "Robot cat says `bleep bloop`!";
 
-        let expected = document()
-            .with_block(
-                paragraph()
-                    .with(text("Robot cat says "))
-                    .with(raw_text("bleep bloop"))
-                    .with(text("!")),
-            )
-            .build();
+        let expected = paragraph()
+            .with(text("Robot cat says "))
+            .with(raw_text("bleep bloop"))
+            .with(text("!"));
 
-        let actual = parse_str(input).unwrap();
-
-        assert_eq!(actual, expected);
+        assert_parses_succeeds(input, expected);
     }
 
     #[test]
     fn raw_mid_word() {
         let input = "Bl`eeee`p!";
 
-        let expected = document()
-            .with_block(
-                paragraph()
-                    .with(text("Bl"))
-                    .with(raw_text("eeee"))
-                    .with(text("p!")),
-            )
-            .build();
+        let expected = paragraph()
+            .with(text("Bl"))
+            .with(raw_text("eeee"))
+            .with(text("p!"));
 
-        let actual = parse_str(input).unwrap();
-
-        assert_eq!(actual, expected);
+        assert_parses_succeeds(input, expected);
     }
 
     #[test]
     fn underscore_in_raw() {
         let input = "Set `PURR_LOUDLY` to true";
 
-        let expected = document()
-            .with_block(
-                paragraph()
-                    .with(text("Set "))
-                    .with(raw_text("PURR_LOUDLY"))
-                    .with(text(" to true")),
-            )
-            .build();
+        let expected = paragraph()
+            .with(text("Set "))
+            .with(raw_text("PURR_LOUDLY"))
+            .with(text(" to true"));
 
-        let actual = parse_str(input).unwrap();
-
-        assert_eq!(actual, expected);
+        assert_parses_succeeds(input, expected);
     }
 
     #[test]
     fn extra_spaces_in_raw() {
         let input = "`Keep your       distance`";
 
-        let expected = document()
-            .with_block(paragraph().with(raw_text("Keep your       distance")))
-            .build();
+        let expected = paragraph().with(raw_text("Keep your       distance"));
 
-        let actual = parse_str(input).unwrap();
-
-        assert_eq!(actual, expected);
+        assert_parses_succeeds(input, expected);
     }
 
     #[test]
     fn raw_over_two_lines() {
         let input = "`Great\ncats`";
 
-        let expected = document()
-            .with_block(paragraph().with(raw_text("Great cats")))
-            .build();
+        let expected = paragraph().with(raw_text("Great cats"));
 
-        let actual = parse_str(input).unwrap();
-
-        assert_eq!(actual, expected);
+        assert_parses_succeeds(input, expected);
     }
 
     #[test]
     fn strikethrough_over_two_lines() {
         let input = "~Great\ndogs~";
 
-        let expected = document()
-            .with_block(paragraph().with(strikethrough_text("Great dogs")))
-            .build();
+        let expected = paragraph().with(strikethrough_text("Great dogs"));
 
-        let actual = parse_str(input).unwrap();
-
-        assert_eq!(actual, expected);
+        assert_parses_succeeds(input, expected);
     }
 
     #[test]
     fn raw_leading_with_new_line() {
         let input = "`\nMeow?`";
 
-        let expected = document()
-            .with_block(paragraph().with(raw_text(" Meow?")))
-            .build();
+        let expected = paragraph().with(raw_text(" Meow?"));
 
-        let actual = parse_str(input).unwrap();
-
-        assert_eq!(actual, expected);
+        assert_parses_succeeds(input, expected);
     }
 
     #[test]
     fn raw_trailing_with_new_line() {
         let input = "`Meow\n`";
 
-        let expected = document()
-            .with_block(paragraph().with(raw_text("Meow ")))
-            .build();
+        let expected = paragraph().with(raw_text("Meow "));
 
-        let actual = parse_str(input).unwrap();
-
-        assert_eq!(actual, expected);
+        assert_parses_succeeds(input, expected);
     }
 
     #[test]
     fn raw_leading_with_space() {
         let input = "` Meow`";
 
-        let expected = document()
-            .with_block(paragraph().with(raw_text(" Meow")))
-            .build();
+        let expected = paragraph().with(raw_text(" Meow"));
 
-        let actual = parse_str(input).unwrap();
-
-        assert_eq!(actual, expected);
+        assert_parses_succeeds(input, expected);
     }
 
     #[test]
     fn raw_trailing_with_space() {
         let input = "`Meow `";
 
-        let expected = document()
-            .with_block(paragraph().with(raw_text("Meow ")))
-            .build();
+        let expected = paragraph().with(raw_text("Meow "));
 
-        let actual = parse_str(input).unwrap();
-
-        assert_eq!(actual, expected);
+        assert_parses_succeeds(input, expected);
     }
 
     #[test]
     fn raw_over_three_lines() {
         let input = "`Great\ncats\nassemble!`";
 
-        let expected = document()
-            .with_block(paragraph().with(raw_text("Great cats assemble!")))
-            .build();
+        let expected = paragraph().with(raw_text("Great cats assemble!"));
 
-        let actual = parse_str(input).unwrap();
-
-        assert_eq!(actual, expected);
+        assert_parses_succeeds(input, expected);
     }
 
     #[test]
     fn standalone_dash() {
         let input = "Felines - fantastic!";
 
-        let expected = document()
-            .with_block(paragraph().with(text("Felines - fantastic!")))
-            .build();
+        let expected = paragraph().with(text("Felines - fantastic!"));
 
-        let actual = parse_str(input).unwrap();
-
-        assert_eq!(actual, expected);
+        assert_parses_succeeds(input, expected);
     }
 
     #[test]
@@ -1495,109 +1373,75 @@ mod test {
     fn paragraph_with_trailing_whitespace() {
         let input = "Cool kitty   ";
 
-        let expected = document()
-            .with_block(paragraph().with(text("Cool kitty")))
-            .build();
+        let expected = paragraph().with(text("Cool kitty"));
 
-        let actual = parse_str(input).unwrap();
-
-        assert_eq!(actual, expected);
+        assert_parses_succeeds(input, expected);
     }
 
     #[test]
     fn underscore_in_awkward_places() {
         let input = "Cat cat_cat cat_ cat.";
 
-        let expected = document()
-            .with_block(
-                paragraph()
-                    .with(text("Cat cat"))
-                    .with(emphasised_text("cat cat"))
-                    .with(text(" cat.")),
-            )
-            .build();
+        let expected = paragraph()
+            .with(text("Cat cat"))
+            .with(emphasised_text("cat cat"))
+            .with(text(" cat."));
 
-        let actual = parse_str(input).unwrap();
-
-        assert_eq!(actual, expected);
+        assert_parses_succeeds(input, expected);
     }
 
     #[test]
     fn newline_then_multiple_spaces_in_plain_text() {
         let input = "Cat\n  cat";
 
-        let expected = document()
-            .with_block(paragraph().with(text("Cat cat")))
-            .build();
+        let expected = paragraph().with(text("Cat cat"));
 
-        let actual = parse_str(input).unwrap();
-
-        assert_eq!(actual, expected);
+        assert_parses_succeeds(input, expected);
     }
 
     #[test]
     fn newline_then_multiple_spaces_in_styled() {
         let input = "*Cat\n  cat*";
 
-        let expected = document()
-            .with_block(paragraph().with(strong_text("Cat cat")))
-            .build();
+        let expected = paragraph().with(strong_text("Cat cat"));
 
-        let actual = parse_str(input).unwrap();
-
-        assert_eq!(actual, expected);
+        assert_parses_succeeds(input, expected);
     }
 
     #[test]
     fn newline_then_multiple_spaces_in_raw() {
         let input = "`Cat\n  cat`";
 
-        let expected = document()
-            .with_block(paragraph().with(raw_text("Cat   cat")))
-            .build();
+        let expected = paragraph().with(raw_text("Cat   cat"));
 
-        let actual = parse_str(input).unwrap();
-
-        assert_eq!(actual, expected);
+        assert_parses_succeeds(input, expected);
     }
 
     #[test]
     fn multiple_spaces_then_newline_in_plain_text() {
         let input = "Cat  \ncat";
 
-        let expected = document()
-            .with_block(paragraph().with(text("Cat cat")))
-            .build();
+        let expected = paragraph().with(text("Cat cat"));
 
-        let actual = parse_str(input).unwrap();
-
-        assert_eq!(actual, expected);
+        assert_parses_succeeds(input, expected);
     }
 
     #[test]
     fn multiple_spaces_then_newline_in_styled() {
         let input = "*Cat  \ncat*";
 
-        let expected = document()
-            .with_block(paragraph().with(strong_text("Cat cat")))
-            .build();
+        let expected = paragraph().with(strong_text("Cat cat"));
 
-        let actual = parse_str(input).unwrap();
-
-        assert_eq!(actual, expected);
+        assert_parses_succeeds(input, expected);
     }
 
     #[test]
     fn multiple_spaces_then_newline_in_raw() {
         let input = "`Cat  \ncat`";
 
-        let expected = document()
-            .with_block(paragraph().with(raw_text("Cat   cat")))
-            .build();
+        let expected = paragraph().with(raw_text("Cat   cat"));
 
-        let actual = parse_str(input).unwrap();
-
-        assert_eq!(actual, expected);
+        assert_parses_succeeds(input, expected);
     }
 
     #[test]
@@ -1606,9 +1450,7 @@ mod test {
 
         let expected = ErrorKind::EmptyDelimitedText;
 
-        let actual = parse_str(input).unwrap_err().kind;
-
-        assert_eq!(actual, expected);
+        assert_parse_fails(input, expected);
     }
 
     #[test]
@@ -1617,9 +1459,7 @@ mod test {
 
         let expected = ErrorKind::EmptyDelimitedText;
 
-        let actual = parse_str(input).unwrap_err().kind;
-
-        assert_eq!(actual, expected);
+        assert_parse_fails(input, expected);
     }
 
     #[test]
@@ -1628,9 +1468,7 @@ mod test {
 
         let expected = ErrorKind::UnexpectedInput;
 
-        let actual = parse_str(input).unwrap_err().kind;
-
-        assert_eq!(actual, expected);
+        assert_parse_fails(input, expected);
     }
 
     #[test]
@@ -1639,9 +1477,7 @@ mod test {
 
         let expected = ErrorKind::UnexpectedInput;
 
-        let actual = parse_str(input).unwrap_err().kind;
-
-        assert_eq!(actual, expected);
+        assert_parse_fails(input, expected);
     }
 
     #[test]
@@ -1650,9 +1486,7 @@ mod test {
 
         let expected = ErrorKind::UnexpectedInput;
 
-        let actual = parse_str(input).unwrap_err().kind;
-
-        assert_eq!(actual, expected);
+        assert_parse_fails(input, expected);
     }
 
     #[test]
@@ -1661,9 +1495,7 @@ mod test {
 
         let expected = ErrorKind::UnexpectedInput;
 
-        let actual = parse_str(input).unwrap_err().kind;
-
-        assert_eq!(actual, expected);
+        assert_parse_fails(input, expected);
     }
 
     #[test]
@@ -1672,9 +1504,7 @@ mod test {
 
         let expected = ErrorKind::UnexpectedInput;
 
-        let actual = parse_str(input).unwrap_err().kind;
-
-        assert_eq!(actual, expected);
+        assert_parse_fails(input, expected);
     }
 
     #[test]
@@ -1683,9 +1513,7 @@ mod test {
 
         let expected = ErrorKind::LooseDelimiter;
 
-        let actual = parse_str(input).unwrap_err().kind;
-
-        assert_eq!(actual, expected);
+        assert_parse_fails(input, expected);
     }
 
     #[test]
@@ -1694,9 +1522,7 @@ mod test {
 
         let expected = ErrorKind::LooseDelimiter;
 
-        let actual = parse_str(input).unwrap_err().kind;
-
-        assert_eq!(actual, expected);
+        assert_parse_fails(input, expected);
     }
 
     #[test]
@@ -1705,9 +1531,7 @@ mod test {
 
         let expected = ErrorKind::UnexpectedInput;
 
-        let actual = parse_str(input).unwrap_err().kind;
-
-        assert_eq!(actual, expected);
+        assert_parse_fails(input, expected);
     }
 
     #[test]
@@ -1716,87 +1540,61 @@ mod test {
 
         let expected = ErrorKind::UnexpectedInput;
 
-        let actual = parse_str(input).unwrap_err().kind;
-
-        assert_eq!(actual, expected);
+        assert_parse_fails(input, expected);
     }
 
     #[test]
     fn doc_with_leading_new_line() {
         let input = "\nCats cats cats";
 
-        let expected = document()
-            .with_block(paragraph().with(text("Cats cats cats")))
-            .build();
+        let expected = paragraph().with(text("Cats cats cats"));
 
-        let actual = parse_str(input).unwrap();
-
-        assert_eq!(actual, expected);
+        assert_parses_succeeds(input, expected);
     }
 
     #[test]
     fn doc_with_leading_new_lines() {
         let input = "\n\nCats cats cats";
 
-        let expected = document()
-            .with_block(paragraph().with(text("Cats cats cats")))
-            .build();
+        let expected = paragraph().with(text("Cats cats cats"));
 
-        let actual = parse_str(input).unwrap();
-
-        assert_eq!(actual, expected);
+        assert_parses_succeeds(input, expected);
     }
 
     #[test]
     fn doc_with_leading_spaces_and_new_line() {
         let input = "   \nCats cats cats";
 
-        let expected = document()
-            .with_block(paragraph().with(text("Cats cats cats")))
-            .build();
+        let expected = paragraph().with(text("Cats cats cats"));
 
-        let actual = parse_str(input).unwrap();
-
-        assert_eq!(actual, expected);
+        assert_parses_succeeds(input, expected);
     }
 
     #[test]
     fn doc_ending_with_new_line() {
         let input = "Cats are friends\n";
 
-        let expected = document()
-            .with_block(paragraph().with(text("Cats are friends")))
-            .build();
+        let expected = paragraph().with(text("Cats are friends"));
 
-        let actual = parse_str(input).unwrap();
-
-        assert_eq!(actual, expected);
+        assert_parses_succeeds(input, expected);
     }
 
     #[test]
     fn doc_ending_with_new_lines() {
         let input = "Feline friends\n\n";
 
-        let expected = document()
-            .with_block(paragraph().with(text("Feline friends")))
-            .build();
+        let expected = paragraph().with(text("Feline friends"));
 
-        let actual = parse_str(input).unwrap();
-
-        assert_eq!(actual, expected);
+        assert_parses_succeeds(input, expected);
     }
 
     #[test]
     fn new_line_and_space_between_styled_and_plain_text_runs() {
         let input = "*Cat*\n cat";
 
-        let expected = document()
-            .with_block(paragraph().with(strong_text("Cat")).with(text(" cat")))
-            .build();
+        let expected = paragraph().with(strong_text("Cat")).with(text(" cat"));
 
-        let actual = parse_str(input).unwrap();
-
-        assert_eq!(actual, expected);
+        assert_parses_succeeds(input, expected);
     }
 
     #[test]
@@ -1805,12 +1603,9 @@ mod test {
 
         let expected = document()
             .with_block(paragraph().with(text("Cat")))
-            .with_block(paragraph().with(text("cat")))
-            .build();
+            .with_block(paragraph().with(text("cat")));
 
-        let actual = parse_str(input).unwrap();
-
-        assert_eq!(actual, expected);
+        assert_parses_succeeds(input, expected);
     }
 
     //TODO: We should test an extended block break between meta and para
@@ -1823,30 +1618,22 @@ mod test {
             "title: Practical espionage for felines\n",
         );
 
-        let expected = document()
-            .with_metadata(
-                metadata()
-                    .with_id("01.23")
-                    .with_title("Practical espionage for felines"),
-            )
-            .build();
+        let expected = document().with_metadata(
+            metadata()
+                .with_id("01.23")
+                .with_title("Practical espionage for felines"),
+        );
 
-        let actual = parse_str(input).unwrap();
-
-        assert_eq!(actual, expected);
+        assert_parses_succeeds(input, expected);
     }
 
     #[test]
     fn doc_metadata_with_alternate_spacing() {
         let input = concat!("#metadata\n", "id :01.23\n",);
 
-        let expected = document()
-            .with_metadata(metadata().with_id("01.23"))
-            .build();
+        let expected = document().with_metadata(metadata().with_id("01.23"));
 
-        let actual = parse_str(input).unwrap();
-
-        assert_eq!(actual, expected);
+        assert_parses_succeeds(input, expected);
     }
 
     #[test]
@@ -1861,9 +1648,7 @@ mod test {
 
         let expected = ErrorKind::MetadataNotAtStart;
 
-        let actual = parse_str(input).unwrap_err().kind;
-
-        assert_eq!(actual, expected);
+        assert_parse_fails(input, expected);
     }
 
     //TODO: Pretty varient (e.g #== [ info ] ==)?
@@ -1877,16 +1662,11 @@ mod test {
             "#="
         );
 
-        let expected = document()
-            .with_container(
-                info()
-                    .with(paragraph().with(text("Here are some facts...")))
-                    .with(paragraph().with(text("...about the cats!"))),
-            )
-            .build();
+        let expected = info()
+            .with(paragraph().with(text("Here are some facts...")))
+            .with(paragraph().with(text("...about the cats!")));
 
-        let actual = parse_str(input).unwrap();
-        assert_eq!(actual, expected);
+        assert_parses_succeeds(input, expected);
     }
 
     //TODO: We should probably allow this after all.
@@ -1903,8 +1683,7 @@ mod test {
 
         let expected = ErrorKind::UnterminatedContainer;
 
-        let actual = parse_str(input).unwrap_err().kind;
-        assert_eq!(actual, expected);
+        assert_parse_fails(input, expected);
     }
 
     #[test]
@@ -1913,8 +1692,7 @@ mod test {
 
         let expected = ErrorKind::UnexpectedInput;
 
-        let actual = parse_str(input).unwrap_err().kind;
-        assert_eq!(actual, expected);
+        assert_parse_fails(input, expected);
     }
 
     #[test]
@@ -1923,8 +1701,7 @@ mod test {
 
         let expected = ErrorKind::UnterminatedContainer;
 
-        let actual = parse_str(input).unwrap_err().kind;
-        assert_eq!(actual, expected);
+        assert_parse_fails(input, expected);
     }
 
     #[test]
@@ -1937,8 +1714,7 @@ mod test {
 
         let expected = ErrorKind::UnexpectedInput;
 
-        let actual = parse_str(input).unwrap_err().kind;
-        assert_eq!(actual, expected);
+        assert_parse_fails(input, expected);
     }
 
     #[test]
@@ -1946,13 +1722,9 @@ mod test {
     fn dash_in_paragraph_is_treated_as_part_of_text() {
         let input = "Ripley\n- Cat";
 
-        let expected = document()
-            .with_block(paragraph().with(text("Ripley - Cat")))
-            .build();
+        let expected = paragraph().with(text("Ripley - Cat"));
 
-        let actual = parse_str(input).unwrap();
-
-        assert_eq!(actual, expected);
+        assert_parses_succeeds(input, expected);
     }
 
     #[test]
@@ -1963,17 +1735,12 @@ mod test {
             "- Water is important also\n"
         );
 
-        let expected = document()
-            .with_block(
-                list()
-                    .with(paragraph().with(text("Dry food is ok")))
-                    .with(paragraph().with(text("Wet food is much better")))
-                    .with(paragraph().with(text("Water is important also"))),
-            )
-            .build();
+        let expected = list()
+            .with(paragraph().with(text("Dry food is ok")))
+            .with(paragraph().with(text("Wet food is much better")))
+            .with(paragraph().with(text("Water is important also")));
 
-        let actual = parse_str(input).unwrap();
-        assert_eq!(actual, expected);
+        assert_parses_succeeds(input, expected);
     }
 
     #[test]
@@ -1987,17 +1754,12 @@ mod test {
             "    important also\n"
         );
 
-        let expected = document()
-            .with_block(
-                list()
-                    .with(paragraph().with(text("Dry food is ok")))
-                    .with(paragraph().with(text("Wet food is much better")))
-                    .with(paragraph().with(text("Water is important also"))),
-            )
-            .build();
+        let expected = list()
+            .with(paragraph().with(text("Dry food is ok")))
+            .with(paragraph().with(text("Wet food is much better")))
+            .with(paragraph().with(text("Water is important also")));
 
-        let actual = parse_str(input).unwrap();
-        assert_eq!(actual, expected);
+        assert_parses_succeeds(input, expected);
     }
 
     #[test]
@@ -2008,29 +1770,24 @@ mod test {
             "- Water is `important  also`\n"
         );
 
-        let expected = document()
-            .with_block(
-                list()
-                    .with(
-                        paragraph()
-                            .with(text("Dry food is "))
-                            .with(strong_text("ok")),
-                    )
-                    .with(
-                        paragraph()
-                            .with(text("Wet food is "))
-                            .with(emphasised_text("much better")),
-                    )
-                    .with(
-                        paragraph()
-                            .with(text("Water is "))
-                            .with(raw_text("important  also")),
-                    ),
+        let expected = list()
+            .with(
+                paragraph()
+                    .with(text("Dry food is "))
+                    .with(strong_text("ok")),
             )
-            .build();
+            .with(
+                paragraph()
+                    .with(text("Wet food is "))
+                    .with(emphasised_text("much better")),
+            )
+            .with(
+                paragraph()
+                    .with(text("Water is "))
+                    .with(raw_text("important  also")),
+            );
 
-        let actual = parse_str(input).unwrap();
-        assert_eq!(actual, expected);
+        assert_parses_succeeds(input, expected);
     }
 
     #[test]
@@ -2043,21 +1800,16 @@ mod test {
             "  - Beef\n",
         );
 
-        let expected = document()
-            .with_block(
+        let expected = list()
+            .with(paragraph().with(text("Nice things to eat")))
+            .with(
                 list()
-                    .with(paragraph().with(text("Nice things to eat")))
-                    .with(
-                        list()
-                            .with(paragraph().with(text("Tuna")))
-                            .with(paragraph().with(text("Chicken")))
-                            .with(paragraph().with(text("Beef"))),
-                    ),
-            )
-            .build();
+                    .with(paragraph().with(text("Tuna")))
+                    .with(paragraph().with(text("Chicken")))
+                    .with(paragraph().with(text("Beef"))),
+            );
 
-        let actual = parse_str(input).unwrap();
-        assert_eq!(actual, expected);
+        assert_parses_succeeds(input, expected);
     }
 
     #[test]
@@ -2068,6 +1820,7 @@ mod test {
 
         let error = parse_str(input).unwrap_err();
         let actual = (error.column, error.row);
+
         assert_eq!(actual, expected);
     }
 
