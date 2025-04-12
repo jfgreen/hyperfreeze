@@ -660,8 +660,8 @@ impl<'a> Scanner<'a> {
 mod test {
     use super::*;
 
-    fn document() -> DocmentBuilder {
-        DocmentBuilder::new()
+    fn document() -> DocumentBuilder {
+        DocumentBuilder::new()
     }
 
     fn metadata() -> MetadataBuilder {
@@ -715,14 +715,14 @@ mod test {
         }
     }
 
-    struct DocmentBuilder {
+    struct DocumentBuilder {
         metadata: Metadata,
         contents: Vec<Element>,
     }
 
-    impl DocmentBuilder {
+    impl DocumentBuilder {
         fn new() -> Self {
-            DocmentBuilder {
+            DocumentBuilder {
                 metadata: Metadata::default(),
                 contents: Vec::new(),
             }
@@ -891,8 +891,7 @@ mod test {
         assert_eq!(actual, expected);
     }
 
-    //TODO: Fix naming of Docment builder
-    impl Into<Document> for DocmentBuilder {
+    impl Into<Document> for DocumentBuilder {
         fn into(self) -> Document {
             self.build()
         }
