@@ -59,36 +59,54 @@ pub enum Style {
 }
 
 #[derive(Debug)]
-pub struct ParseError {
-    kind: ErrorKind,
+pub struct ParseFailure {
+    error: ParseError,
     column: usize,
     row: usize,
     line: String,
 }
 
 #[derive(PartialEq, Eq, Debug)]
-enum ErrorKind {
-    UnexpectedInput, //TODO: Should describe what was expected
+enum ParseError {
+    // TODO: Some errors are hyper-specific and others are verry broad
+    // Some say what we expected, others point out what we got
+    // go one way or the other...
     LooseDelimiter,
     EmptyDelimitedText,
-    UnknownMetadata, //TODO: Should describe the unknown metadata
     MetadataNotAtStart,
-    UnknownBlock,     //TODO: Should describe the unknown block
-    UnknownContainer, //TODO: Should describe the unknown container
+    UnknownMetadata(String),
+    UnknownBlock(String),
+    UnknownContainer(String),
     UnterminatedContainer,
+    WhitespaceAtParagraphStart,
+    InvalidStyleDelimiter(char),
+    UnexpectedInputInStyledText,
+    InlineRawHasBlockBreak,
+    ExpectedChar(char),
+    ExpectedString(String),
+    ExpectedAnyChar,
+    EmptyEatWhile,
 }
 
-impl Display for ParseError {
+impl Display for ParseFailure {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self.kind {
-            ErrorKind::UnexpectedInput => write!(f, "unexpected input"),
-            ErrorKind::LooseDelimiter => write!(f, "loose delimiter"),
-            ErrorKind::EmptyDelimitedText => write!(f, "empty delimited text"),
-            ErrorKind::UnknownMetadata => write!(f, "unknown metadata"),
-            ErrorKind::MetadataNotAtStart => write!(f, "metadata not at start"),
-            ErrorKind::UnknownBlock => write!(f, "unknown block"),
-            ErrorKind::UnknownContainer => write!(f, "unknown container"),
-            ErrorKind::UnterminatedContainer => write!(f, "unknown container"),
+        match &self.error {
+            LooseDelimiter => write!(f, "delimited text cant have leading/trailing whitespace"),
+            EmptyDelimitedText => write!(f, "delimited text cant be empty"),
+            MetadataNotAtStart => write!(f, "metadata should be at start of document"),
+            UnknownMetadata(key) => write!(f, "unknown metadata '{}", key),
+            UnknownBlock(name) => write!(f, "unknown block '{}'", name),
+            UnknownContainer(name) => write!(f, "unknown container '{}'", name),
+            UnterminatedContainer => write!(f, "unterminated container"),
+            WhitespaceAtParagraphStart => write!(f, "paragraph cant start with whitespace"),
+            InvalidStyleDelimiter(c) => write!(f, "'{}' is  not a valid style delimiter", c),
+            UnexpectedInputInStyledText => write!(f, "styled text contained unexpected input"),
+            InlineRawHasBlockBreak => write!(f, "inline raw text cant have a block break"),
+            ExpectedChar(c) => write!(f, "expected char '{}'", c.escape_default()),
+            ExpectedString(s) => write!(f, "expected string '{}'", s.escape_default()),
+            ExpectedAnyChar => write!(f, "expected any char, but got end of input"),
+            //TODO: this, in particular, is weak
+            EmptyEatWhile => write!(f, "unexpected input"),
         }?;
 
         write!(f, " at line {} column {}:\n", self.column, self.row)?;
@@ -102,12 +120,7 @@ impl Display for ParseError {
     }
 }
 
-type ParseResult<T> = Result<T, ErrorKind>;
-
-//TODO: What if we leant more into using unicode chars like '•' or '¶'
-// alt-gr < is •
-// alt-gr r is ¶
-// is there anything cool we could use for containers?
+type ParseResult<T> = Result<T, ParseError>;
 
 const SPACE: char = ' ';
 const NEW_LINE: char = '\n';
@@ -138,20 +151,22 @@ fn char_usable_in_text_frag(c: char) -> bool {
     .contains(&c)
 }
 
-fn char_usable_in_para_frag(c: char) -> bool {
-    ![NEW_LINE, HASH, SPACE].contains(&c)
-}
-
 fn char_usable_in_raw_frag(c: char) -> bool {
     ![BACKTICK, SPACE, NEW_LINE].contains(&c)
 }
 
-pub fn parse_str(input: &str) -> Result<Document, ParseError> {
+#[derive(Clone, Copy, PartialEq)]
+enum TextMode {
+    Paragraph,
+    List,
+}
+
+pub fn parse_str(input: &str) -> Result<Document, ParseFailure> {
     let scanner = &mut Scanner::new(input);
     let result = parse_document(scanner);
 
-    result.map_err(|kind| ParseError {
-        kind,
+    result.map_err(|error| ParseFailure {
+        error,
         column: scanner.column,
         row: scanner.row,
         line: scanner.current_row(),
@@ -189,6 +204,10 @@ fn parse_document(scanner: &mut Scanner) -> ParseResult<Document> {
     })
 }
 
+//TODO: Should all the parse_ after this point be eat_?
+
+use ParseError::*;
+
 fn parse_metadata_block(scanner: &mut Scanner) -> ParseResult<Metadata> {
     scanner.expect_str(METADATA_HEADER)?;
     scanner.expect_char(NEW_LINE)?;
@@ -207,10 +226,11 @@ fn parse_metadata_block(scanner: &mut Scanner) -> ParseResult<Metadata> {
 
         let value = scanner.eat_until_char(NEW_LINE)?;
 
+        //TODO: Missing a test for unknown metadata?
         match key {
             "id" => metadata.id.push_str(value),
             "title" => metadata.title.push_str(value),
-            _ => return Err(ErrorKind::UnknownMetadata),
+            _ => return Err(UnknownMetadata(key.into())),
         };
 
         if scanner.has_input() {
@@ -242,7 +262,7 @@ fn parse_container(scanner: &mut Scanner) -> ParseResult<Container> {
             scanner.skip_char(); //TODO: eat while '='
             break;
         } else if !scanner.has_input() {
-            return Err(ErrorKind::UnterminatedContainer);
+            return Err(UnterminatedContainer);
         } else if scanner.is_on_any(WHITESPACE_CHARS) {
             scanner.skip_char();
         } else {
@@ -266,7 +286,7 @@ fn parse_container(scanner: &mut Scanner) -> ParseResult<Container> {
 fn container_kind_from_name(name: &str) -> ParseResult<ContainerKind> {
     match name {
         "info" => Ok(ContainerKind::Info),
-        _ => Err(ErrorKind::UnknownContainer),
+        _ => Err(UnknownContainer(name.into())),
     }
 }
 
@@ -277,9 +297,9 @@ fn parse_block(scanner: &mut Scanner) -> ParseResult<Block> {
         scanner.expect_char(NEW_LINE)?;
 
         match block_name {
-            "metadata" => Err(ErrorKind::MetadataNotAtStart),
+            "metadata" => Err(MetadataNotAtStart),
             "paragraph" => parse_paragraph(scanner),
-            _ => Err(ErrorKind::UnknownBlock),
+            _ => Err(UnknownBlock(block_name.into())),
         }
     } else if scanner.is_on_char(DASH) {
         parse_list(scanner)
@@ -289,6 +309,9 @@ fn parse_block(scanner: &mut Scanner) -> ParseResult<Block> {
 
     if scanner.has_input() {
         scanner.skip_while_on_char(SPACE);
+    }
+
+    if scanner.has_input() {
         scanner.expect_char(NEW_LINE)?;
     }
 
@@ -301,29 +324,30 @@ fn parse_block(scanner: &mut Scanner) -> ParseResult<Block> {
 }
 
 fn parse_paragraph(scanner: &mut Scanner) -> ParseResult<Block> {
-    let mut text_runs = Vec::new();
-
     if scanner.is_on_any(WHITESPACE_CHARS) {
-        return Err(ErrorKind::UnexpectedInput);
+        return Err(WhitespaceAtParagraphStart);
     }
 
-    while on_text_run(scanner) {
-        let run = parse_text_run(scanner)?;
+    let text_runs = parse_text_runs(scanner, TextMode::Paragraph)?;
+    Ok(Block::Paragraph(text_runs))
+}
+
+fn parse_text_runs(scanner: &mut Scanner, mode: TextMode) -> ParseResult<Box<[TextRun]>> {
+    let mut text_runs = Vec::new();
+
+    while on_text_run(scanner, mode) {
+        let run = if scanner.is_on_any(STYLE_DELIMITER_CHARS) {
+            parse_styled_text_run(scanner, mode)
+        } else if scanner.is_on_char(BACKTICK) {
+            parse_inline_raw_text_run(scanner)
+        } else {
+            parse_plain_text_run(scanner, mode)
+        }?;
+
         text_runs.push(run);
     }
 
-    let para = text_runs.into_boxed_slice();
-    Ok(Block::Paragraph(para))
-}
-
-fn parse_text_run(scanner: &mut Scanner) -> ParseResult<TextRun> {
-    if scanner.is_on_any(STYLE_DELIMITER_CHARS) {
-        parse_styled_text_run(scanner)
-    } else if scanner.is_on_char(BACKTICK) {
-        parse_inline_raw_text_run(scanner)
-    } else {
-        parse_plain_text_run(scanner)
-    }
+    Ok(text_runs.into_boxed_slice())
 }
 
 fn parse_list(scanner: &mut Scanner) -> ParseResult<Block> {
@@ -339,14 +363,8 @@ fn parse_list(scanner: &mut Scanner) -> ParseResult<Block> {
         if scanner.is_on_char(DASH) {
             scanner.skip_char();
             scanner.skip_while_on_char(SPACE);
-            let mut text_runs = Vec::new();
-
-            while on_text_run(scanner) {
-                let run = parse_text_run(scanner)?;
-                text_runs.push(run);
-            }
-
-            let item = ListItem::Text(text_runs.into_boxed_slice());
+            let text_runs = parse_text_runs(scanner, TextMode::List)?;
+            let item = ListItem::Text(text_runs);
             items.push(item);
 
             //TODO: should we only eat this if next line has a list item
@@ -362,7 +380,7 @@ fn parse_list(scanner: &mut Scanner) -> ParseResult<Block> {
     Ok(Block::List(list))
 }
 
-fn parse_plain_text_run(scanner: &mut Scanner) -> ParseResult<TextRun> {
+fn parse_plain_text_run(scanner: &mut Scanner, mode: TextMode) -> ParseResult<TextRun> {
     let mut run = String::new();
 
     loop {
@@ -373,7 +391,7 @@ fn parse_plain_text_run(scanner: &mut Scanner) -> ParseResult<TextRun> {
         } else if scanner.is_on(char_usable_in_text_frag) {
             let text = scanner.eat_while(char_usable_in_text_frag)?;
             run.push_str(text);
-        } else if let Some(position) = try_eat_text_space(scanner) {
+        } else if let Some(position) = try_eat_text_space(scanner, mode) {
             scanner.advance_to(&position);
             run.push(SPACE);
         } else {
@@ -389,7 +407,7 @@ fn parse_plain_text_run(scanner: &mut Scanner) -> ParseResult<TextRun> {
     Ok(run)
 }
 
-fn parse_styled_text_run(scanner: &mut Scanner) -> ParseResult<TextRun> {
+fn parse_styled_text_run(scanner: &mut Scanner, mode: TextMode) -> ParseResult<TextRun> {
     let delimiter = scanner.eat_char()?;
     let style = style_from_delimiter(delimiter)?;
     let mut run = String::new();
@@ -405,51 +423,79 @@ fn parse_styled_text_run(scanner: &mut Scanner) -> ParseResult<TextRun> {
         } else if scanner.is_on_char(delimiter) {
             scanner.skip_char();
             break;
-        } else if let Some(position) = try_eat_text_space(scanner) {
+        // TODO: given we are not worried about trailing whitespace on
+        // end of paragraph, can this not just use a deterministic approach
+        // TODO: Figure out how to reject this: "- Foo *bar\n- Baz*"
+        } else if let Some(position) = try_eat_text_space(scanner, mode) {
             scanner.advance_to(&position);
             run.push(SPACE);
         } else {
-            return Err(ErrorKind::UnexpectedInput);
+            return Err(UnexpectedInputInStyledText);
         }
     }
 
     if run.starts_with(SPACE) || run.ends_with(SPACE) {
-        return Err(ErrorKind::LooseDelimiter);
+        return Err(ParseError::LooseDelimiter);
     }
 
     if run.is_empty() {
-        return Err(ErrorKind::EmptyDelimitedText);
+        return Err(ParseError::EmptyDelimitedText);
     }
 
     Ok(TextRun { text: run, style })
 }
 
-fn on_text_run(scanner: &Scanner) -> bool {
-    scanner.is_on(char_usable_in_para_frag) || try_eat_text_space(scanner).is_some()
+//IDEA: Maybe this would all be easier if we "compressed" the input stream
+// by run length encoding whitespace...
+// e.g current_char could be a Trinary of Char/Whitespace/None
+// then both interogating the composition of the whitespace and
+// peeking past it are both trivial
+// Doesn't even have to be full RLE, could just store if SPACE | SINGLE BREAK | BLOCK
+// Equally it might be worth storing a str slice to the underlying whitespace string
+
+fn on_text_run(scanner: &Scanner, mode: TextMode) -> bool {
+    let on_space = scanner.is_on_any(WHITESPACE_CHARS);
+    let on_header_or_footer = scanner.is_on_char(HASH);
+    let on_text_fragment = scanner.has_input() && !on_space && !on_header_or_footer;
+    let on_leading_whitespace = try_eat_text_space(scanner, mode).is_some();
+
+    on_text_fragment || on_leading_whitespace
+    //TODO: ideal would be as follows
+    // (maybe leveraging RLE of whitespace)
+    // (then maybe dont need our own peek API, just peekable iter on CharIndices)
+    // (to work this needs whitespace be the only thing we peek over)
+    // scanner.is_on(char_usable_in_text_run) || scanner.is_on_text_space_leading_to(char_usable_in_text_run)
 }
 
-fn try_eat_text_space<'a>(scanner: &Scanner<'a>) -> Option<Scanner<'a>> {
-    if scanner.is_on_any(WHITESPACE_CHARS) {
-        let mut peek = scanner.peek();
-        let mut has_new_line = false;
+fn try_eat_text_space<'a>(scanner: &Scanner<'a>, mode: TextMode) -> Option<Scanner<'a>> {
+    if !scanner.is_on_any(WHITESPACE_CHARS) {
+        return None;
+    }
 
-        //FIXME: this wont accept a dash after a new line in a regular para
-        //... and it should. Is generally a bit of a mess also...
+    let mut peek = scanner.peek();
+    let mut has_new_line = false;
 
-        peek.skip_while_on_char(SPACE);
-        if peek.is_on_char(NEW_LINE) {
-            has_new_line = true;
-            peek.skip_char();
-        }
-        peek.skip_while_on_char(SPACE);
+    //TODO: Add a test for "- Foo    \n- Bar"
 
-        if has_new_line && peek.is_on_char(DASH) {
-            return None;
-        }
+    peek.skip_while_on_char(SPACE);
 
-        if peek.is_on(char_usable_in_para_frag) {
-            return Some(peek);
-        }
+    if peek.is_on_char(NEW_LINE) {
+        has_new_line = true;
+        peek.skip_char();
+    }
+
+    peek.skip_while_on_char(SPACE);
+
+    if mode == TextMode::List && has_new_line && peek.is_on_char(DASH) {
+        return None;
+    }
+
+    let on_blockbreak = peek.is_on_char(NEW_LINE);
+    let on_container_end = peek.is_on_str(CONTAINER_FOOTER);
+    let more_text_ahead = peek.has_input() && !on_blockbreak && !on_container_end;
+
+    if more_text_ahead {
+        return Some(peek);
     }
 
     None
@@ -460,7 +506,7 @@ fn style_from_delimiter(delimiter: char) -> ParseResult<Style> {
         ASTERISK => Ok(Style::Strong),
         UNDERSCORE => Ok(Style::Emphasis),
         TILDE => Ok(Style::Strikethrough),
-        _ => Err(ErrorKind::UnexpectedInput),
+        _ => Err(ParseError::InvalidStyleDelimiter(delimiter.into())),
     }
 }
 
@@ -475,24 +521,25 @@ fn parse_inline_raw_text_run(scanner: &mut Scanner) -> ParseResult<TextRun> {
         } else if scanner.is_on_char(NEW_LINE) {
             scanner.skip_char();
 
+            // FIXME: This will inccorectly allow `foo\n   \nbar`
+            // See ignored test: raw_with_double_linebreak_containing_whitespace
+
             if scanner.is_on_char(NEW_LINE) {
-                return Err(ErrorKind::UnexpectedInput);
+                return Err(InlineRawHasBlockBreak);
             } else {
                 run.push(SPACE);
             }
         } else if scanner.is_on_char(SPACE) {
             let space = scanner.eat_while_char(SPACE)?;
             run.push_str(space);
-        } else if scanner.is_on(char_usable_in_raw_frag) {
+        } else {
             let text = scanner.eat_while(char_usable_in_raw_frag)?;
             run.push_str(text);
-        } else {
-            return Err(ErrorKind::UnexpectedInput);
         }
     }
 
     if run.is_empty() {
-        return Err(ErrorKind::EmptyDelimitedText);
+        return Err(ParseError::EmptyDelimitedText);
     }
 
     Ok(TextRun {
@@ -528,7 +575,7 @@ impl<'a> Scanner<'a> {
         scanner
     }
 
-    fn has_input(&mut self) -> bool {
+    fn has_input(&self) -> bool {
         self.current_char.is_some()
     }
 
@@ -580,7 +627,7 @@ impl<'a> Scanner<'a> {
             self.read_next_char();
             Ok(())
         } else {
-            Err(ErrorKind::UnexpectedInput)
+            Err(ParseError::ExpectedChar(c))
         }
     }
 
@@ -593,7 +640,7 @@ impl<'a> Scanner<'a> {
             }
             Ok(())
         } else {
-            Err(ErrorKind::UnexpectedInput)
+            Err(ParseError::ExpectedString(s.into()))
         }
     }
 
@@ -603,7 +650,7 @@ impl<'a> Scanner<'a> {
                 self.read_next_char();
                 Ok(c)
             }
-            None => Err(ErrorKind::UnexpectedInput),
+            None => Err(ParseError::ExpectedAnyChar),
         }
     }
 
@@ -616,7 +663,7 @@ impl<'a> Scanner<'a> {
         let string = &self.input[i1..i2];
 
         if string.is_empty() {
-            Err(ErrorKind::UnexpectedInput)
+            Err(ParseError::EmptyEatWhile)
         } else {
             Ok(string)
         }
@@ -881,12 +928,12 @@ mod test {
         assert_eq!(actual, expected);
     }
 
-    fn assert_parse_fails(input: &'static str, expected: ErrorKind) {
+    fn assert_parse_fails(input: &'static str, expected: ParseError) {
         let expected = expected.into();
         let result = parse_str(input);
 
         let err = result.expect_err("parse should fail");
-        let actual = err.kind;
+        let actual = err.error;
 
         assert_eq!(actual, expected);
     }
@@ -975,7 +1022,7 @@ mod test {
     fn explicit_paragraph_with_block_break_before_text_is_rejected() {
         let input = "#paragraph\n\nCats go meeow!";
 
-        let expected = ErrorKind::UnexpectedInput;
+        let expected = ParseError::WhitespaceAtParagraphStart;
 
         assert_parse_fails(input, expected);
     }
@@ -984,7 +1031,7 @@ mod test {
     fn unknown_block_is_rejected() {
         let input = "#feline\nMeow?";
 
-        let expected = ErrorKind::UnknownBlock;
+        let expected = ParseError::UnknownBlock("feline".into());
 
         assert_parse_fails(input, expected);
     }
@@ -993,7 +1040,7 @@ mod test {
     fn unknown_block_starting_with_m_is_rejected() {
         let input = "#meowograph\nCats go meeow!";
 
-        let expected = ErrorKind::UnknownBlock;
+        let expected = ParseError::UnknownBlock("meowograph".into());
 
         assert_parse_fails(input, expected);
     }
@@ -1002,7 +1049,7 @@ mod test {
     fn empty_block_name_is_rejected() {
         let input = "#\nHi";
 
-        let expected = ErrorKind::UnexpectedInput;
+        let expected = ParseError::EmptyEatWhile;
 
         assert_parse_fails(input, expected);
     }
@@ -1011,7 +1058,7 @@ mod test {
     fn block_header_without_newline_is_rejected() {
         let input = "#paragraph";
 
-        let expected = ErrorKind::UnexpectedInput;
+        let expected = ParseError::ExpectedChar('\n');
 
         assert_parse_fails(input, expected);
     }
@@ -1132,7 +1179,7 @@ mod test {
             "ever so surprising\n"
         );
 
-        let expected = ErrorKind::UnexpectedInput;
+        let expected = ParseError::ExpectedChar('\n');
 
         assert_parse_fails(input, expected);
     }
@@ -1368,7 +1415,6 @@ mod test {
     }
 
     #[test]
-    #[ignore]
     fn paragraph_with_trailing_whitespace() {
         let input = "Cool kitty   ";
 
@@ -1447,7 +1493,7 @@ mod test {
     fn empty_emphasis() {
         let input = "Rules cats must follow: __.";
 
-        let expected = ErrorKind::EmptyDelimitedText;
+        let expected = ParseError::EmptyDelimitedText;
 
         assert_parse_fails(input, expected);
     }
@@ -1456,7 +1502,7 @@ mod test {
     fn empty_raw() {
         let input = "Robot cat says: ``!.";
 
-        let expected = ErrorKind::EmptyDelimitedText;
+        let expected = ParseError::EmptyDelimitedText;
 
         assert_parse_fails(input, expected);
     }
@@ -1465,7 +1511,17 @@ mod test {
     fn raw_with_double_linebreak() {
         let input = "`Erm...\n\nmeow?`";
 
-        let expected = ErrorKind::UnexpectedInput;
+        let expected = ParseError::InlineRawHasBlockBreak;
+
+        assert_parse_fails(input, expected);
+    }
+
+    #[test]
+    #[ignore]
+    fn raw_with_double_linebreak_containing_whitespace() {
+        let input = "`Erm...\n \nmeow?`";
+
+        let expected = ParseError::InlineRawHasBlockBreak;
 
         assert_parse_fails(input, expected);
     }
@@ -1474,7 +1530,7 @@ mod test {
     fn strikethrough_with_double_linebreak() {
         let input = "~Erm...\n\nmeow?~";
 
-        let expected = ErrorKind::UnexpectedInput;
+        let expected = ParseError::UnexpectedInputInStyledText;
 
         assert_parse_fails(input, expected);
     }
@@ -1483,7 +1539,7 @@ mod test {
     fn unmatched_emphasis_1() {
         let input = "_.";
 
-        let expected = ErrorKind::UnexpectedInput;
+        let expected = ParseError::UnexpectedInputInStyledText;
 
         assert_parse_fails(input, expected);
     }
@@ -1492,7 +1548,7 @@ mod test {
     fn unmatched_emphasis_2() {
         let input = "meow _meow.";
 
-        let expected = ErrorKind::UnexpectedInput;
+        let expected = ParseError::UnexpectedInputInStyledText;
 
         assert_parse_fails(input, expected);
     }
@@ -1501,7 +1557,16 @@ mod test {
     fn unmatched_emphasis_3() {
         let input = "meow meow_";
 
-        let expected = ErrorKind::UnexpectedInput;
+        let expected = ParseError::UnexpectedInputInStyledText;
+
+        assert_parse_fails(input, expected);
+    }
+
+    #[test]
+    fn nested_styled_text() {
+        let input = "_*meow!*_";
+
+        let expected = ParseError::UnexpectedInputInStyledText;
 
         assert_parse_fails(input, expected);
     }
@@ -1510,7 +1575,7 @@ mod test {
     fn loose_strong_delimiter_start() {
         let input = "* meow meow*";
 
-        let expected = ErrorKind::LooseDelimiter;
+        let expected = ParseError::LooseDelimiter;
 
         assert_parse_fails(input, expected);
     }
@@ -1519,7 +1584,7 @@ mod test {
     fn loose_strong_delimiter_end() {
         let input = "*meow meow *";
 
-        let expected = ErrorKind::LooseDelimiter;
+        let expected = ParseError::LooseDelimiter;
 
         assert_parse_fails(input, expected);
     }
@@ -1528,7 +1593,7 @@ mod test {
     fn raw_immediately_in_emphasis() {
         let input = "_``_";
 
-        let expected = ErrorKind::UnexpectedInput;
+        let expected = ParseError::UnexpectedInputInStyledText;
 
         assert_parse_fails(input, expected);
     }
@@ -1537,7 +1602,7 @@ mod test {
     fn raw_within_in_emphasis() {
         let input = "_a``a_";
 
-        let expected = ErrorKind::UnexpectedInput;
+        let expected = ParseError::UnexpectedInputInStyledText;
 
         assert_parse_fails(input, expected);
     }
@@ -1645,7 +1710,7 @@ mod test {
             "title: Some document\n",
         );
 
-        let expected = ErrorKind::MetadataNotAtStart;
+        let expected = ParseError::MetadataNotAtStart;
 
         assert_parse_fails(input, expected);
     }
@@ -1680,7 +1745,7 @@ mod test {
             "\n",
         );
 
-        let expected = ErrorKind::UnterminatedContainer;
+        let expected = ParseError::UnterminatedContainer;
 
         assert_parse_fails(input, expected);
     }
@@ -1689,7 +1754,7 @@ mod test {
     fn container_missing_start_is_rejected() {
         let input = concat!("Silly cat\n", "#=");
 
-        let expected = ErrorKind::UnexpectedInput;
+        let expected = ParseError::EmptyEatWhile;
 
         assert_parse_fails(input, expected);
     }
@@ -1698,7 +1763,7 @@ mod test {
     fn only_container_header_is_rejected() {
         let input = concat!("#[info]\n",);
 
-        let expected = ErrorKind::UnterminatedContainer;
+        let expected = ParseError::UnterminatedContainer;
 
         assert_parse_fails(input, expected);
     }
@@ -1711,13 +1776,12 @@ mod test {
             "#=toy"
         );
 
-        let expected = ErrorKind::UnexpectedInput;
+        let expected = ParseError::ExpectedChar('\n');
 
         assert_parse_fails(input, expected);
     }
 
     #[test]
-    #[ignore]
     fn dash_in_paragraph_is_treated_as_part_of_text() {
         let input = "Ripley\n- Cat";
 
@@ -1738,6 +1802,15 @@ mod test {
             .with(paragraph().with(text("Dry food is ok")))
             .with(paragraph().with(text("Wet food is much better")))
             .with(paragraph().with(text("Water is important also")));
+
+        assert_parses_succeeds(input, expected);
+    }
+
+    #[test]
+    fn dash_in_list_text_is_not_treated_as_bullet() {
+        let input = concat!("- Meow - meow\n",);
+
+        let expected = list().with(paragraph().with(text("Meow - meow")));
 
         assert_parses_succeeds(input, expected);
     }
