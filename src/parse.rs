@@ -1,4 +1,5 @@
 use std::fmt::Display;
+use std::ops::Div;
 use std::str::CharIndices;
 
 #[derive(PartialEq, Eq, Debug)]
@@ -57,6 +58,8 @@ pub enum Style {
     Strikethrough,
     Raw,
 }
+
+//TODO: Consider if we want to use line!() macro to get failure point?
 
 #[derive(Debug)]
 pub struct ParseFailure {
@@ -351,33 +354,50 @@ fn parse_text_runs(scanner: &mut Scanner, mode: TextMode) -> ParseResult<Box<[Te
 }
 
 fn parse_list(scanner: &mut Scanner) -> ParseResult<Block> {
-    let mut items = Vec::new();
+    let mut stack = ListStack::new();
 
-    // IDEA: Parsing a list item is just like parsing a para
-    // but instead of only stopping once we get to a block break
-    // or container footer, we also stop when we get to a line that
-    // starts with bullet (or space then bullet)
-
-    //TODO: "while on_list_item(scanner)"
-    loop {
-        if scanner.is_on_char(DASH) {
+    while on_list_item(scanner) {
+        let mut space_count = 0;
+        while scanner.is_on_char(SPACE) {
+            space_count += 1;
             scanner.skip_char();
-            scanner.skip_while_on_char(SPACE);
-            let text_runs = parse_text_runs(scanner, TextMode::List)?;
-            let item = ListItem::Text(text_runs);
-            items.push(item);
+        }
+        if space_count % 2 != 0 {
+            todo!("oh no")
+            //FIXME: Have a propper error for this
+        }
 
-            //TODO: should we only eat this if next line has a list item
-            if scanner.is_on_char(NEW_LINE) {
-                scanner.skip_char();
-            }
-        } else {
-            break;
+        scanner.expect_char(DASH)?;
+        scanner.skip_while_on_char(SPACE);
+
+        let indent = space_count / 2;
+
+        if indent == stack.indent + 1 {
+            stack.push();
+        } else if stack.indent > 0 && indent == stack.indent - 1 {
+            stack.pop();
+        } else if indent != stack.indent {
+            todo!("oh no")
+        }
+
+        let text = parse_text_runs(scanner, TextMode::List)?;
+        stack.add_text(text);
+
+        //TODO: should we only eat this if next line has a list item
+        if scanner.is_on_char(NEW_LINE) {
+            //FIXME: Have a propper error for this
+            scanner.skip_char();
         }
     }
 
-    let list = items.into_boxed_slice();
+    let list = stack.collect();
     Ok(Block::List(list))
+}
+
+fn on_list_item(scanner: &Scanner) -> bool {
+    let mut peek = scanner.peek();
+    peek.skip_while_on_char(SPACE);
+    peek.is_on_char(DASH)
 }
 
 fn parse_plain_text_run(scanner: &mut Scanner, mode: TextMode) -> ParseResult<TextRun> {
@@ -546,6 +566,48 @@ fn parse_inline_raw_text_run(scanner: &mut Scanner) -> ParseResult<TextRun> {
         text: run,
         style: Style::Raw,
     })
+}
+
+struct ListStack {
+    stack: Vec<Vec<ListItem>>,
+    items: Vec<ListItem>,
+    indent: usize,
+}
+
+impl ListStack {
+    fn new() -> Self {
+        ListStack {
+            stack: Vec::new(),
+            items: Vec::new(),
+            indent: 0,
+        }
+    }
+
+    fn add_text(&mut self, text: Box<[TextRun]>) {
+        let text = ListItem::Text(text);
+        self.items.push(text);
+    }
+
+    fn push(&mut self) {
+        let parent = std::mem::replace(&mut self.items, Vec::new());
+        self.stack.push(parent);
+        self.indent += 1;
+    }
+
+    fn pop(&mut self) {
+        let sub_list = std::mem::replace(&mut self.items, self.stack.pop().expect("parent list"));
+        let sub_list = sub_list.into_boxed_slice();
+        let sub_list = ListItem::SubList(sub_list);
+        self.items.push(sub_list);
+        self.indent -= 1;
+    }
+
+    fn collect(mut self) -> Box<[ListItem]> {
+        while !self.stack.is_empty() {
+            self.pop();
+        }
+        self.items.into_boxed_slice()
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -924,6 +986,11 @@ mod test {
         }
 
         let actual = result.expect("parse should succeed");
+
+        if actual != expected {
+            eprintln!("Actual:\n{:#?}", actual);
+            eprintln!("Expected:\n{:#?}", expected);
+        }
 
         assert_eq!(actual, expected);
     }
@@ -1863,7 +1930,6 @@ mod test {
     }
 
     #[test]
-    #[ignore]
     fn list_with_sublist() {
         let input = concat!(
             "- Nice things to eat\n",
@@ -1879,6 +1945,28 @@ mod test {
                     .with(paragraph().with(text("Tuna")))
                     .with(paragraph().with(text("Chicken")))
                     .with(paragraph().with(text("Beef"))),
+            );
+
+        assert_parses_succeeds(input, expected);
+    }
+
+    #[test]
+    fn list_with_subsublist() {
+        let input = concat!(
+            "- Nice things to eat\n",
+            "  - Beef\n",
+            "    - Hereford\n",
+            "    - Wagyu\n",
+        );
+
+        let expected = list()
+            .with(paragraph().with(text("Nice things to eat")))
+            .with(
+                list().with(paragraph().with(text("Beef"))).with(
+                    list()
+                        .with(paragraph().with(text("Hereford")))
+                        .with(paragraph().with(text("Wagyu"))),
+                ),
             );
 
         assert_parses_succeeds(input, expected);
