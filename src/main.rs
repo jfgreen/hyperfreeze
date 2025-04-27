@@ -2,7 +2,7 @@ use std::fmt::Display;
 use std::fs::File;
 use std::io::prelude::*;
 
-use crate::parse::{parse_str, ParseFailure};
+use crate::parse::{parse_str, ParseError};
 use crate::render::render_html;
 
 mod parse;
@@ -28,12 +28,12 @@ mod render;
 
 #[derive(Debug)]
 enum Error {
-    ParseError(ParseFailure),
+    ParseError(ParseError),
     IOError(std::io::Error),
 }
 
-impl From<ParseFailure> for Error {
-    fn from(err: ParseFailure) -> Self {
+impl From<ParseError> for Error {
+    fn from(err: ParseError) -> Self {
         Self::ParseError(err)
     }
 }

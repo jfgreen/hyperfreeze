@@ -1,5 +1,4 @@
 use std::fmt::Display;
-use std::ops::Div;
 use std::str::CharIndices;
 
 #[derive(PartialEq, Eq, Debug)]
@@ -50,27 +49,42 @@ pub struct TextRun {
     pub style: Style,
 }
 
-#[derive(PartialEq, Eq, Debug, Clone, Copy)]
+#[derive(PartialEq, Eq, Debug)]
 pub enum Style {
     None,
     Strong,
     Emphasis,
     Strikethrough,
     Raw,
+    Link(String),
 }
 
 //TODO: Consider if we want to use line!() macro to get failure point?
 
 #[derive(Debug)]
-pub struct ParseFailure {
-    error: ParseError,
+pub struct ParseError {
+    error: ErrorKind,
     column: usize,
     row: usize,
+    //TODO: Think about adding more context,
+    // Rather than coping more lines into here
+    // just have a print_error() function
     line: String,
 }
 
+macro_rules! parse_err {
+    ($error:expr, $position:expr) => {
+        Err(ParseError {
+            error: $error,
+            column: $position.column,
+            row: $position.row,
+            line: $position.current_line().to_string(),
+        })
+    };
+}
+
 #[derive(PartialEq, Eq, Debug)]
-enum ParseError {
+enum ErrorKind {
     // TODO: Some errors are hyper-specific and others are verry broad
     // Some say what we expected, others point out what we got
     // go one way or the other...
@@ -91,7 +105,7 @@ enum ParseError {
     EmptyEatWhile,
 }
 
-impl Display for ParseFailure {
+impl Display for ParseError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match &self.error {
             LooseDelimiter => write!(f, "delimited text cant have leading/trailing whitespace"),
@@ -112,12 +126,14 @@ impl Display for ParseFailure {
             EmptyEatWhile => write!(f, "unexpected input"),
         }?;
 
-        write!(f, " at line {} column {}:\n", self.column, self.row)?;
+        write!(f, " at line {} column {}:\n", self.row, self.column)?;
+        writeln!(f)?;
         write!(f, "{}\n", self.line)?;
-        for _ in 0..self.column {
+        for _ in 1..self.column {
             write!(f, " ")?;
         }
         write!(f, "^")?;
+        writeln!(f)?;
 
         Ok(())
     }
@@ -164,16 +180,16 @@ enum TextMode {
     List,
 }
 
-pub fn parse_str(input: &str) -> Result<Document, ParseFailure> {
+pub fn parse_str(input: &str) -> Result<Document, ParseError> {
     let scanner = &mut Scanner::new(input);
-    let result = parse_document(scanner);
+    parse_document(scanner)
 
-    result.map_err(|error| ParseFailure {
-        error,
-        column: scanner.column,
-        row: scanner.row,
-        line: scanner.current_row(),
-    })
+    // result.map_err(|error| ParseError {
+    //     error,
+    //     column: scanner.column,
+    //     row: scanner.row,
+    //     line: scanner.current_row(),
+    // })
 }
 
 fn parse_document(scanner: &mut Scanner) -> ParseResult<Document> {
@@ -209,7 +225,7 @@ fn parse_document(scanner: &mut Scanner) -> ParseResult<Document> {
 
 //TODO: Should all the parse_ after this point be eat_?
 
-use ParseError::*;
+use ErrorKind::*;
 
 fn parse_metadata_block(scanner: &mut Scanner) -> ParseResult<Metadata> {
     scanner.expect_str(METADATA_HEADER)?;
@@ -218,6 +234,7 @@ fn parse_metadata_block(scanner: &mut Scanner) -> ParseResult<Metadata> {
     let mut metadata = Metadata::default();
 
     loop {
+        let key_position = scanner.position();
         let key = scanner.eat_while(char_usable_in_identifier)?;
         scanner.skip_while_on_char(SPACE);
         scanner.expect_char(COLON)?;
@@ -233,7 +250,7 @@ fn parse_metadata_block(scanner: &mut Scanner) -> ParseResult<Metadata> {
         match key {
             "id" => metadata.id.push_str(value),
             "title" => metadata.title.push_str(value),
-            _ => return Err(UnknownMetadata(key.into())),
+            _ => return parse_err!(UnknownMetadata(key.into()), key_position),
         };
 
         if scanner.has_input() {
@@ -253,9 +270,15 @@ fn parse_metadata_block(scanner: &mut Scanner) -> ParseResult<Metadata> {
 fn parse_container(scanner: &mut Scanner) -> ParseResult<Container> {
     scanner.expect_char(HASH)?;
     scanner.expect_char(LEFT_SQUARE_BRACKET)?;
-    let container_name = scanner.eat_while(char::is_alphanumeric)?;
+    let name_pos = scanner.position();
+    let name = scanner.eat_while(char::is_alphanumeric)?;
     scanner.expect_char(RIGHT_SQUARE_BRACKET)?;
     scanner.expect_char(NEW_LINE)?;
+
+    let container_kind = match name {
+        "info" => ContainerKind::Info,
+        _ => return parse_err!(UnknownContainer(name.into()), name_pos),
+    };
 
     let mut blocks = Vec::new();
 
@@ -265,7 +288,7 @@ fn parse_container(scanner: &mut Scanner) -> ParseResult<Container> {
             scanner.skip_char(); //TODO: eat while '='
             break;
         } else if !scanner.has_input() {
-            return Err(UnterminatedContainer);
+            return parse_err!(UnterminatedContainer, scanner.position());
         } else if scanner.is_on_any(WHITESPACE_CHARS) {
             scanner.skip_char();
         } else {
@@ -280,29 +303,23 @@ fn parse_container(scanner: &mut Scanner) -> ParseResult<Container> {
 
     let container = Container {
         content: blocks.into_boxed_slice(),
-        kind: container_kind_from_name(container_name)?,
+        kind: container_kind,
     };
 
     Ok(container)
 }
 
-fn container_kind_from_name(name: &str) -> ParseResult<ContainerKind> {
-    match name {
-        "info" => Ok(ContainerKind::Info),
-        _ => Err(UnknownContainer(name.into())),
-    }
-}
-
 fn parse_block(scanner: &mut Scanner) -> ParseResult<Block> {
     let block = if scanner.is_on_char(HASH) {
         scanner.skip_char();
+        let block_position = scanner.position();
         let block_name = scanner.eat_while(char_usable_in_identifier)?;
         scanner.expect_char(NEW_LINE)?;
 
         match block_name {
-            "metadata" => Err(MetadataNotAtStart),
+            "metadata" => parse_err!(MetadataNotAtStart, block_position),
             "paragraph" => parse_paragraph(scanner),
-            _ => Err(UnknownBlock(block_name.into())),
+            _ => parse_err!(UnknownBlock(block_name.into()), block_position),
         }
     } else if scanner.is_on_char(DASH) {
         parse_list(scanner)
@@ -328,7 +345,7 @@ fn parse_block(scanner: &mut Scanner) -> ParseResult<Block> {
 
 fn parse_paragraph(scanner: &mut Scanner) -> ParseResult<Block> {
     if scanner.is_on_any(WHITESPACE_CHARS) {
-        return Err(WhitespaceAtParagraphStart);
+        return parse_err!(WhitespaceAtParagraphStart, scanner.position());
     }
 
     let text_runs = parse_text_runs(scanner, TextMode::Paragraph)?;
@@ -428,8 +445,16 @@ fn parse_plain_text_run(scanner: &mut Scanner, mode: TextMode) -> ParseResult<Te
 }
 
 fn parse_styled_text_run(scanner: &mut Scanner, mode: TextMode) -> ParseResult<TextRun> {
+    let delimiter_pos = scanner.position();
     let delimiter = scanner.eat_char()?;
-    let style = style_from_delimiter(delimiter)?;
+
+    let style = match delimiter {
+        ASTERISK => Style::Strong,
+        UNDERSCORE => Style::Emphasis,
+        TILDE => Style::Strikethrough,
+        _ => return parse_err!(InvalidStyleDelimiter(delimiter.into()), delimiter_pos),
+    };
+
     let mut run = String::new();
 
     loop {
@@ -450,16 +475,16 @@ fn parse_styled_text_run(scanner: &mut Scanner, mode: TextMode) -> ParseResult<T
             scanner.advance_to(&position);
             run.push(SPACE);
         } else {
-            return Err(UnexpectedInputInStyledText);
+            return parse_err!(UnexpectedInputInStyledText, scanner.position());
         }
     }
 
     if run.starts_with(SPACE) || run.ends_with(SPACE) {
-        return Err(ParseError::LooseDelimiter);
+        return parse_err!(LooseDelimiter, delimiter_pos);
     }
 
     if run.is_empty() {
-        return Err(ParseError::EmptyDelimitedText);
+        return parse_err!(EmptyDelimitedText, delimiter_pos);
     }
 
     Ok(TextRun { text: run, style })
@@ -521,15 +546,6 @@ fn try_eat_text_space<'a>(scanner: &Scanner<'a>, mode: TextMode) -> Option<Scann
     None
 }
 
-fn style_from_delimiter(delimiter: char) -> ParseResult<Style> {
-    match delimiter {
-        ASTERISK => Ok(Style::Strong),
-        UNDERSCORE => Ok(Style::Emphasis),
-        TILDE => Ok(Style::Strikethrough),
-        _ => Err(ParseError::InvalidStyleDelimiter(delimiter.into())),
-    }
-}
-
 fn parse_inline_raw_text_run(scanner: &mut Scanner) -> ParseResult<TextRun> {
     let mut run = String::new();
     scanner.expect_char(BACKTICK)?;
@@ -545,7 +561,7 @@ fn parse_inline_raw_text_run(scanner: &mut Scanner) -> ParseResult<TextRun> {
             // See ignored test: raw_with_double_linebreak_containing_whitespace
 
             if scanner.is_on_char(NEW_LINE) {
-                return Err(InlineRawHasBlockBreak);
+                return parse_err!(InlineRawHasBlockBreak, scanner.position());
             } else {
                 run.push(SPACE);
             }
@@ -559,7 +575,7 @@ fn parse_inline_raw_text_run(scanner: &mut Scanner) -> ParseResult<TextRun> {
     }
 
     if run.is_empty() {
-        return Err(ParseError::EmptyDelimitedText);
+        return parse_err!(EmptyDelimitedText, scanner.position());
     }
 
     Ok(TextRun {
@@ -610,6 +626,20 @@ impl ListStack {
     }
 }
 
+#[derive(Debug)]
+struct ScannerPosition<'a> {
+    input: &'a str,
+    column: usize,
+    row: usize,
+}
+
+impl<'a> ScannerPosition<'a> {
+    fn current_line(&self) -> &'a str {
+        // Only really used reporting errors
+        self.input.lines().nth(self.row - 1).unwrap_or("")
+    }
+}
+
 #[derive(Debug, Clone)]
 struct Scanner<'a> {
     input: &'a str,
@@ -639,6 +669,14 @@ impl<'a> Scanner<'a> {
 
     fn has_input(&self) -> bool {
         self.current_char.is_some()
+    }
+
+    fn position(&self) -> ScannerPosition<'a> {
+        ScannerPosition {
+            input: self.input,
+            column: self.column,
+            row: self.row,
+        }
     }
 
     fn is_on(&self, predicate: impl Fn(char) -> bool) -> bool {
@@ -689,7 +727,7 @@ impl<'a> Scanner<'a> {
             self.read_next_char();
             Ok(())
         } else {
-            Err(ParseError::ExpectedChar(c))
+            parse_err!(ExpectedChar(c), self.position())
         }
     }
 
@@ -702,7 +740,7 @@ impl<'a> Scanner<'a> {
             }
             Ok(())
         } else {
-            Err(ParseError::ExpectedString(s.into()))
+            parse_err!(ExpectedString(s.into()), self.position())
         }
     }
 
@@ -712,7 +750,7 @@ impl<'a> Scanner<'a> {
                 self.read_next_char();
                 Ok(c)
             }
-            None => Err(ParseError::ExpectedAnyChar),
+            None => parse_err!(ExpectedAnyChar, self.position()),
         }
     }
 
@@ -725,7 +763,7 @@ impl<'a> Scanner<'a> {
         let string = &self.input[i1..i2];
 
         if string.is_empty() {
-            Err(ParseError::EmptyEatWhile)
+            parse_err!(EmptyEatWhile, self.position())
         } else {
             Ok(string)
         }
@@ -754,14 +792,6 @@ impl<'a> Scanner<'a> {
             self.current_char = None;
             self.current_index = self.input.len();
         }
-    }
-
-    fn current_row(&self) -> String {
-        self.input
-            .lines()
-            .nth(self.row - 1)
-            .unwrap_or("")
-            .to_owned()
     }
 }
 
@@ -821,6 +851,13 @@ mod test {
         TextRun {
             text: text.to_string(),
             style: Style::Raw,
+        }
+    }
+
+    fn linked_text(text: &str, link: &str) -> TextRun {
+        TextRun {
+            text: text.to_string(),
+            style: Style::Link(link.to_string()),
         }
     }
 
@@ -995,7 +1032,7 @@ mod test {
         assert_eq!(actual, expected);
     }
 
-    fn assert_parse_fails(input: &'static str, expected: ParseError) {
+    fn assert_parse_fails(input: &'static str, expected: ErrorKind) {
         let expected = expected.into();
         let result = parse_str(input);
 
@@ -1089,7 +1126,7 @@ mod test {
     fn explicit_paragraph_with_block_break_before_text_is_rejected() {
         let input = "#paragraph\n\nCats go meeow!";
 
-        let expected = ParseError::WhitespaceAtParagraphStart;
+        let expected = ErrorKind::WhitespaceAtParagraphStart;
 
         assert_parse_fails(input, expected);
     }
@@ -1098,7 +1135,7 @@ mod test {
     fn unknown_block_is_rejected() {
         let input = "#feline\nMeow?";
 
-        let expected = ParseError::UnknownBlock("feline".into());
+        let expected = ErrorKind::UnknownBlock("feline".into());
 
         assert_parse_fails(input, expected);
     }
@@ -1107,7 +1144,7 @@ mod test {
     fn unknown_block_starting_with_m_is_rejected() {
         let input = "#meowograph\nCats go meeow!";
 
-        let expected = ParseError::UnknownBlock("meowograph".into());
+        let expected = ErrorKind::UnknownBlock("meowograph".into());
 
         assert_parse_fails(input, expected);
     }
@@ -1116,7 +1153,7 @@ mod test {
     fn empty_block_name_is_rejected() {
         let input = "#\nHi";
 
-        let expected = ParseError::EmptyEatWhile;
+        let expected = ErrorKind::EmptyEatWhile;
 
         assert_parse_fails(input, expected);
     }
@@ -1125,7 +1162,7 @@ mod test {
     fn block_header_without_newline_is_rejected() {
         let input = "#paragraph";
 
-        let expected = ParseError::ExpectedChar('\n');
+        let expected = ErrorKind::ExpectedChar('\n');
 
         assert_parse_fails(input, expected);
     }
@@ -1246,7 +1283,7 @@ mod test {
             "ever so surprising\n"
         );
 
-        let expected = ParseError::ExpectedChar('\n');
+        let expected = ErrorKind::ExpectedChar('\n');
 
         assert_parse_fails(input, expected);
     }
@@ -1560,7 +1597,7 @@ mod test {
     fn empty_emphasis() {
         let input = "Rules cats must follow: __.";
 
-        let expected = ParseError::EmptyDelimitedText;
+        let expected = ErrorKind::EmptyDelimitedText;
 
         assert_parse_fails(input, expected);
     }
@@ -1569,7 +1606,7 @@ mod test {
     fn empty_raw() {
         let input = "Robot cat says: ``!.";
 
-        let expected = ParseError::EmptyDelimitedText;
+        let expected = ErrorKind::EmptyDelimitedText;
 
         assert_parse_fails(input, expected);
     }
@@ -1578,7 +1615,7 @@ mod test {
     fn raw_with_double_linebreak() {
         let input = "`Erm...\n\nmeow?`";
 
-        let expected = ParseError::InlineRawHasBlockBreak;
+        let expected = ErrorKind::InlineRawHasBlockBreak;
 
         assert_parse_fails(input, expected);
     }
@@ -1588,7 +1625,7 @@ mod test {
     fn raw_with_double_linebreak_containing_whitespace() {
         let input = "`Erm...\n \nmeow?`";
 
-        let expected = ParseError::InlineRawHasBlockBreak;
+        let expected = ErrorKind::InlineRawHasBlockBreak;
 
         assert_parse_fails(input, expected);
     }
@@ -1597,7 +1634,7 @@ mod test {
     fn strikethrough_with_double_linebreak() {
         let input = "~Erm...\n\nmeow?~";
 
-        let expected = ParseError::UnexpectedInputInStyledText;
+        let expected = ErrorKind::UnexpectedInputInStyledText;
 
         assert_parse_fails(input, expected);
     }
@@ -1606,7 +1643,7 @@ mod test {
     fn unmatched_emphasis_1() {
         let input = "_.";
 
-        let expected = ParseError::UnexpectedInputInStyledText;
+        let expected = ErrorKind::UnexpectedInputInStyledText;
 
         assert_parse_fails(input, expected);
     }
@@ -1615,7 +1652,7 @@ mod test {
     fn unmatched_emphasis_2() {
         let input = "meow _meow.";
 
-        let expected = ParseError::UnexpectedInputInStyledText;
+        let expected = ErrorKind::UnexpectedInputInStyledText;
 
         assert_parse_fails(input, expected);
     }
@@ -1624,7 +1661,7 @@ mod test {
     fn unmatched_emphasis_3() {
         let input = "meow meow_";
 
-        let expected = ParseError::UnexpectedInputInStyledText;
+        let expected = ErrorKind::UnexpectedInputInStyledText;
 
         assert_parse_fails(input, expected);
     }
@@ -1633,7 +1670,7 @@ mod test {
     fn nested_styled_text() {
         let input = "_*meow!*_";
 
-        let expected = ParseError::UnexpectedInputInStyledText;
+        let expected = ErrorKind::UnexpectedInputInStyledText;
 
         assert_parse_fails(input, expected);
     }
@@ -1642,7 +1679,7 @@ mod test {
     fn loose_strong_delimiter_start() {
         let input = "* meow meow*";
 
-        let expected = ParseError::LooseDelimiter;
+        let expected = ErrorKind::LooseDelimiter;
 
         assert_parse_fails(input, expected);
     }
@@ -1651,7 +1688,7 @@ mod test {
     fn loose_strong_delimiter_end() {
         let input = "*meow meow *";
 
-        let expected = ParseError::LooseDelimiter;
+        let expected = ErrorKind::LooseDelimiter;
 
         assert_parse_fails(input, expected);
     }
@@ -1660,7 +1697,7 @@ mod test {
     fn raw_immediately_in_emphasis() {
         let input = "_``_";
 
-        let expected = ParseError::UnexpectedInputInStyledText;
+        let expected = ErrorKind::UnexpectedInputInStyledText;
 
         assert_parse_fails(input, expected);
     }
@@ -1669,7 +1706,7 @@ mod test {
     fn raw_within_in_emphasis() {
         let input = "_a``a_";
 
-        let expected = ParseError::UnexpectedInputInStyledText;
+        let expected = ErrorKind::UnexpectedInputInStyledText;
 
         assert_parse_fails(input, expected);
     }
@@ -1777,7 +1814,7 @@ mod test {
             "title: Some document\n",
         );
 
-        let expected = ParseError::MetadataNotAtStart;
+        let expected = ErrorKind::MetadataNotAtStart;
 
         assert_parse_fails(input, expected);
     }
@@ -1803,7 +1840,8 @@ mod test {
     //TODO: We should probably allow this after all.
     // Challenge: we would not know until the end of the doc
     // (or start of next container) what is supposed to be inside
-    // Unless we reserved the #=[info]= form for multiblock?
+    // Unless we reserved the #=[info]= form for multiblock...
+    // and forbode multi block containers in this form
     #[test]
     fn unterminated_container_is_rejected() {
         let input = concat!(
@@ -1812,7 +1850,7 @@ mod test {
             "\n",
         );
 
-        let expected = ParseError::UnterminatedContainer;
+        let expected = ErrorKind::UnterminatedContainer;
 
         assert_parse_fails(input, expected);
     }
@@ -1821,7 +1859,7 @@ mod test {
     fn container_missing_start_is_rejected() {
         let input = concat!("Silly cat\n", "#=");
 
-        let expected = ParseError::EmptyEatWhile;
+        let expected = ErrorKind::EmptyEatWhile;
 
         assert_parse_fails(input, expected);
     }
@@ -1830,7 +1868,7 @@ mod test {
     fn only_container_header_is_rejected() {
         let input = concat!("#[info]\n",);
 
-        let expected = ParseError::UnterminatedContainer;
+        let expected = ErrorKind::UnterminatedContainer;
 
         assert_parse_fails(input, expected);
     }
@@ -1843,7 +1881,7 @@ mod test {
             "#=toy"
         );
 
-        let expected = ParseError::ExpectedChar('\n');
+        let expected = ErrorKind::ExpectedChar('\n');
 
         assert_parse_fails(input, expected);
     }
@@ -1984,6 +2022,32 @@ mod test {
         assert_eq!(actual, expected);
     }
 
+    #[test]
+    #[ignore]
+    fn basic_link_with_reference() {
+        let input = concat!(
+            "For more info, consult [our guide on petting cats](Ripley2020),\n",
+            ", created by our own in house experts.\n",
+            "\n",
+            "#references\n",
+            "Ripley2020 -> https://example.com"
+        );
+
+        let expected = paragraph()
+            .with(text("For more info, consult "))
+            .with(linked_text(
+                "our guide on petting cats",
+                "https://example.com",
+            ))
+            .with(text(", created by our own in house experts"));
+
+        assert_parses_succeeds(input, expected);
+    }
+
+    // TODO: test missing reference
+    // Think about how to print a sensible error location...
+    // ...scanner will be at end once we detect the missing reference
+
     //TODO: Would be cool to optionaly give lists a title
 
     //TODO: Realy good test:
@@ -2001,5 +2065,7 @@ mod test {
     //      banana` bar
 
     //TODO: test explicit list
-    //TODO: lists with different styles
+    //TODO:
+    // - Foo *bar
+    //   - baz* mango
 }

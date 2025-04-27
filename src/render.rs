@@ -48,6 +48,7 @@ fn render_paragraph(text_runs: &[TextRun], out: &mut impl io::Write) -> io::Resu
             Style::Emphasis => write!(out, "<em>")?,
             Style::Strikethrough => write!(out, "<s>")?,
             Style::Raw => write!(out, "<code>")?,
+            Style::Link(_) => todo!(),
         };
 
         out.write_all(run.text.as_bytes())?;
@@ -58,6 +59,7 @@ fn render_paragraph(text_runs: &[TextRun], out: &mut impl io::Write) -> io::Resu
             Style::Emphasis => write!(out, "</em>")?,
             Style::Strikethrough => write!(out, "</s>")?,
             Style::Raw => write!(out, "</code>")?,
+            Style::Link(_) => todo!(),
         };
     }
     writeln!(out, "    </p>")?;
