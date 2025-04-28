@@ -59,26 +59,27 @@ pub enum Style {
     Link(String),
 }
 
-//TODO: Consider if we want to use line!() macro to get failure point?
-
 #[derive(Debug)]
 pub struct ParseError {
     error: ErrorKind,
-    column: usize,
-    row: usize,
-    //TODO: Think about adding more context,
-    // Rather than coping more lines into here
-    // just have a print_error() function
-    line: String,
+    input_column: u32,
+    input_line: u32,
+    source_column: u32,
+    source_line: u32,
+    source_file: &'static str,
+    failing_input_line: Option<String>,
 }
 
 macro_rules! parse_err {
     ($error:expr, $position:expr) => {
         Err(ParseError {
             error: $error,
-            column: $position.column,
-            row: $position.row,
-            line: $position.current_line().to_string(),
+            input_column: $position.column + 1,
+            input_line: $position.row + 1,
+            source_column: column!(),
+            source_line: line!(),
+            source_file: file!(),
+            failing_input_line: $position.current_line().map(str::to_string),
         })
     };
 }
@@ -126,20 +127,35 @@ impl Display for ParseError {
             EmptyEatWhile => write!(f, "unexpected input"),
         }?;
 
-        write!(f, " at line {} column {}:\n", self.row, self.column)?;
-        writeln!(f)?;
-        write!(f, "{}\n", self.line)?;
-        for _ in 1..self.column {
-            write!(f, " ")?;
+        if let Some(failing_line) = &self.failing_input_line {
+            writeln!(
+                f,
+                " at line {} column {}:",
+                self.input_line, self.input_column
+            )?;
+            writeln!(f)?;
+            writeln!(f, "{}", failing_line)?;
+            for _ in 1..self.input_column {
+                write!(f, " ")?;
+            }
+            writeln!(f, "^")?;
+
+            writeln!(f)?;
         }
-        write!(f, "^")?;
-        writeln!(f)?;
+
+        writeln!(
+            f,
+            "Error raised on line {} column {} in file {}",
+            self.source_line, self.source_column, self.source_file
+        )?;
 
         Ok(())
     }
 }
 
 type ParseResult<T> = Result<T, ParseError>;
+
+use ErrorKind::*;
 
 const SPACE: char = ' ';
 const NEW_LINE: char = '\n';
@@ -183,13 +199,6 @@ enum TextMode {
 pub fn parse_str(input: &str) -> Result<Document, ParseError> {
     let scanner = &mut Scanner::new(input);
     parse_document(scanner)
-
-    // result.map_err(|error| ParseError {
-    //     error,
-    //     column: scanner.column,
-    //     row: scanner.row,
-    //     line: scanner.current_row(),
-    // })
 }
 
 fn parse_document(scanner: &mut Scanner) -> ParseResult<Document> {
@@ -224,8 +233,6 @@ fn parse_document(scanner: &mut Scanner) -> ParseResult<Document> {
 }
 
 //TODO: Should all the parse_ after this point be eat_?
-
-use ErrorKind::*;
 
 fn parse_metadata_block(scanner: &mut Scanner) -> ParseResult<Metadata> {
     scanner.expect_str(METADATA_HEADER)?;
@@ -555,15 +562,20 @@ fn parse_inline_raw_text_run(scanner: &mut Scanner) -> ParseResult<TextRun> {
             scanner.skip_char();
             break;
         } else if scanner.is_on_char(NEW_LINE) {
+            let mut space_count = 1;
             scanner.skip_char();
 
-            // FIXME: This will inccorectly allow `foo\n   \nbar`
-            // See ignored test: raw_with_double_linebreak_containing_whitespace
+            while scanner.is_on_char(SPACE) {
+                space_count += 1;
+                scanner.skip_char();
+            }
 
             if scanner.is_on_char(NEW_LINE) {
                 return parse_err!(InlineRawHasBlockBreak, scanner.position());
             } else {
-                run.push(SPACE);
+                for _ in 0..space_count {
+                    run.push(SPACE);
+                }
             }
         } else if scanner.is_on_char(SPACE) {
             let space = scanner.eat_while_char(SPACE)?;
@@ -629,14 +641,13 @@ impl ListStack {
 #[derive(Debug)]
 struct ScannerPosition<'a> {
     input: &'a str,
-    column: usize,
-    row: usize,
+    column: u32,
+    row: u32,
 }
 
 impl<'a> ScannerPosition<'a> {
-    fn current_line(&self) -> &'a str {
-        // Only really used reporting errors
-        self.input.lines().nth(self.row - 1).unwrap_or("")
+    fn current_line(&self) -> Option<&'a str> {
+        self.input.lines().nth(self.row as usize)
     }
 }
 
@@ -646,8 +657,8 @@ struct Scanner<'a> {
     chars: CharIndices<'a>,
     current_char: Option<char>,
     current_index: usize,
-    column: usize,
-    row: usize,
+    column: u32,
+    row: u32,
 }
 
 impl<'a> Scanner<'a> {
@@ -658,7 +669,7 @@ impl<'a> Scanner<'a> {
             current_char: None,
             current_index: 0,
             column: 0,
-            row: 1,
+            row: 0,
         };
 
         // Place the first char of the input into `next`
@@ -779,7 +790,7 @@ impl<'a> Scanner<'a> {
 
     fn read_next_char(&mut self) {
         if let Some((index, c)) = self.chars.next() {
-            if c == '\n' {
+            if self.current_char == Some('\n') {
                 self.column = 0;
                 self.row += 1;
             } else {
@@ -1159,7 +1170,7 @@ mod test {
     }
 
     #[test]
-    fn block_header_without_newline_is_rejected() {
+    fn block_header_without_new_line_is_rejected() {
         let input = "#paragraph";
 
         let expected = ErrorKind::ExpectedChar('\n');
@@ -1177,7 +1188,7 @@ mod test {
     }
 
     #[test]
-    fn trailing_newline_is_ignored() {
+    fn trailing_new_line_is_ignored() {
         let input = "Cats\n";
 
         let expected = paragraph().with(text("Cats"));
@@ -1186,7 +1197,7 @@ mod test {
     }
 
     #[test]
-    fn space_then_trailing_newline_is_ignored() {
+    fn space_then_trailing_new_line_is_ignored() {
         let input = "Cats \n";
 
         let expected = paragraph().with(text("Cats"));
@@ -1540,7 +1551,7 @@ mod test {
     }
 
     #[test]
-    fn newline_then_multiple_spaces_in_plain_text() {
+    fn new_line_then_multiple_spaces_in_plain_text() {
         let input = "Cat\n  cat";
 
         let expected = paragraph().with(text("Cat cat"));
@@ -1549,7 +1560,7 @@ mod test {
     }
 
     #[test]
-    fn newline_then_multiple_spaces_in_styled() {
+    fn new_line_then_multiple_spaces_in_styled() {
         let input = "*Cat\n  cat*";
 
         let expected = paragraph().with(strong_text("Cat cat"));
@@ -1558,7 +1569,7 @@ mod test {
     }
 
     #[test]
-    fn newline_then_multiple_spaces_in_raw() {
+    fn new_line_then_multiple_spaces_in_raw() {
         let input = "`Cat\n  cat`";
 
         let expected = paragraph().with(raw_text("Cat   cat"));
@@ -1567,7 +1578,7 @@ mod test {
     }
 
     #[test]
-    fn multiple_spaces_then_newline_in_plain_text() {
+    fn multiple_spaces_then_new_line_in_plain_text() {
         let input = "Cat  \ncat";
 
         let expected = paragraph().with(text("Cat cat"));
@@ -1576,7 +1587,7 @@ mod test {
     }
 
     #[test]
-    fn multiple_spaces_then_newline_in_styled() {
+    fn multiple_spaces_then_new_line_in_styled() {
         let input = "*Cat  \ncat*";
 
         let expected = paragraph().with(strong_text("Cat cat"));
@@ -1585,7 +1596,7 @@ mod test {
     }
 
     #[test]
-    fn multiple_spaces_then_newline_in_raw() {
+    fn multiple_spaces_then_new_line_in_raw() {
         let input = "`Cat  \ncat`";
 
         let expected = paragraph().with(raw_text("Cat   cat"));
@@ -1621,7 +1632,6 @@ mod test {
     }
 
     #[test]
-    #[ignore]
     fn raw_with_double_linebreak_containing_whitespace() {
         let input = "`Erm...\n \nmeow?`";
 
@@ -2017,7 +2027,7 @@ mod test {
         let expected = (7, 2);
 
         let error = parse_str(input).unwrap_err();
-        let actual = (error.column, error.row);
+        let actual = (error.input_column, error.input_line);
 
         assert_eq!(actual, expected);
     }
@@ -2060,7 +2070,7 @@ mod test {
     //' '<- space
     //banana` bar
 
-    //TODO: ensure newline is treated as space in
+    //TODO: ensure new_line is treated as space in
     //Foo `mango
     //      banana` bar
 
