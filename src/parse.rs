@@ -1,3 +1,4 @@
+use core::panic;
 use std::fmt::Display;
 use std::str::CharIndices;
 
@@ -5,12 +6,20 @@ use std::str::CharIndices;
 pub struct Document {
     pub metadata: Metadata,
     pub contents: Box<[Element]>,
+    pub references: Box<[Reference]>,
 }
 
 #[derive(PartialEq, Eq, Debug, Default)]
 pub struct Metadata {
     pub id: String,
     pub title: String,
+}
+
+//TODO: Might be nice to also have an optional title and/or description
+#[derive(PartialEq, Eq, Debug)]
+pub struct Reference {
+    pub id: String,
+    pub link: String,
 }
 
 #[derive(PartialEq, Eq, Debug)]
@@ -89,6 +98,8 @@ enum ErrorKind {
     // TODO: Some errors are hyper-specific and others are verry broad
     // Some say what we expected, others point out what we got
     // go one way or the other...
+    // Maybe reintroducing ScannerError would be helpful
+    // could wrap with more context
     LooseDelimiter,
     EmptyDelimitedText,
     MetadataNotAtStart,
@@ -98,7 +109,6 @@ enum ErrorKind {
     UnterminatedContainer,
     WhitespaceAtParagraphStart,
     InvalidStyleDelimiter(char),
-    UnexpectedInputInStyledText,
     InlineRawHasBlockBreak,
     ExpectedChar(char),
     ExpectedString(String),
@@ -118,7 +128,6 @@ impl Display for ParseError {
             UnterminatedContainer => write!(f, "unterminated container"),
             WhitespaceAtParagraphStart => write!(f, "paragraph cant start with whitespace"),
             InvalidStyleDelimiter(c) => write!(f, "'{}' is  not a valid style delimiter", c),
-            UnexpectedInputInStyledText => write!(f, "styled text contained unexpected input"),
             InlineRawHasBlockBreak => write!(f, "inline raw text cant have a block break"),
             ExpectedChar(c) => write!(f, "expected char '{}'", c.escape_default()),
             ExpectedString(s) => write!(f, "expected string '{}'", s.escape_default()),
@@ -161,9 +170,12 @@ const SPACE: char = ' ';
 const NEW_LINE: char = '\n';
 const COLON: char = ':';
 const METADATA_HEADER: &str = "#metadata";
+const REFERENCES_HEADER: &str = "#references";
 const CONTAINER_HEADER_START: &str = "#[";
 const CONTAINER_FOOTER: &str = "#="; //TODO: CONTAINER_FOOTER_START
 const HASH: char = '#';
+const LEFT_BRACKET: char = '(';
+const RIGHT_BRACKET: char = ')';
 const LEFT_SQUARE_BRACKET: char = '[';
 const RIGHT_SQUARE_BRACKET: char = ']';
 const BACKTICK: char = '`';
@@ -172,18 +184,29 @@ const TILDE: char = '~';
 const UNDERSCORE: char = '_';
 const BACKSLASH: char = '\\';
 const DASH: char = '-';
+const GREATER_THAN: char = '>';
 const WHITESPACE_CHARS: &[char; 2] = &[SPACE, NEW_LINE];
 const STYLE_DELIMITER_CHARS: &[char; 3] = &[ASTERISK, TILDE, UNDERSCORE];
+
+const MARKUP_CHARS: &[char; 10] = &[
+    UNDERSCORE,
+    BACKTICK,
+    ASTERISK,
+    TILDE,
+    SPACE,
+    NEW_LINE,
+    HASH,
+    BACKSLASH,
+    LEFT_SQUARE_BRACKET,
+    RIGHT_SQUARE_BRACKET,
+];
 
 fn char_usable_in_identifier(c: char) -> bool {
     c.is_alphanumeric()
 }
 
 fn char_usable_in_text_frag(c: char) -> bool {
-    ![
-        UNDERSCORE, BACKTICK, ASTERISK, TILDE, SPACE, NEW_LINE, HASH, BACKSLASH,
-    ]
-    .contains(&c)
+    !MARKUP_CHARS.contains(&c)
 }
 
 fn char_usable_in_raw_frag(c: char) -> bool {
@@ -205,6 +228,7 @@ fn parse_document(scanner: &mut Scanner) -> ParseResult<Document> {
     let mut elements = Vec::new();
 
     let mut metadata = Metadata::default();
+    let mut references = Vec::new();
 
     scanner.skip_while_on_any(WHITESPACE_CHARS);
 
@@ -219,6 +243,9 @@ fn parse_document(scanner: &mut Scanner) -> ParseResult<Document> {
             let container = parse_container(scanner)?;
             let element = Element::Container(container);
             elements.push(element);
+        } else if scanner.is_on_str(REFERENCES_HEADER) {
+            let refs = parse_references(scanner)?;
+            references.extend(refs);
         } else {
             let block = parse_block(scanner)?;
             let element = Element::Block(block);
@@ -229,10 +256,9 @@ fn parse_document(scanner: &mut Scanner) -> ParseResult<Document> {
     Ok(Document {
         metadata,
         contents: elements.into_boxed_slice(),
+        references: references.into_boxed_slice(),
     })
 }
-
-//TODO: Should all the parse_ after this point be eat_?
 
 fn parse_metadata_block(scanner: &mut Scanner) -> ParseResult<Metadata> {
     scanner.expect_str(METADATA_HEADER)?;
@@ -260,6 +286,10 @@ fn parse_metadata_block(scanner: &mut Scanner) -> ParseResult<Metadata> {
             _ => return parse_err!(UnknownMetadata(key.into()), key_position),
         };
 
+        //TODO: Will this fail if meta with no newline - just EOF
+        // (as it will start a new loop)... eg...
+        // #meta
+        // title: blah
         if scanner.has_input() {
             let mut peek = scanner.peek();
             peek.expect_char(NEW_LINE)?;
@@ -325,6 +355,7 @@ fn parse_block(scanner: &mut Scanner) -> ParseResult<Block> {
 
         match block_name {
             "metadata" => parse_err!(MetadataNotAtStart, block_position),
+            "references" => panic!("TODO: thoughtful error"),
             "paragraph" => parse_paragraph(scanner),
             _ => parse_err!(UnknownBlock(block_name.into()), block_position),
         }
@@ -367,6 +398,8 @@ fn parse_text_runs(scanner: &mut Scanner, mode: TextMode) -> ParseResult<Box<[Te
             parse_styled_text_run(scanner, mode)
         } else if scanner.is_on_char(BACKTICK) {
             parse_inline_raw_text_run(scanner)
+        } else if scanner.is_on_char(LEFT_SQUARE_BRACKET) {
+            parse_linked_text_run(scanner, mode)
         } else {
             parse_plain_text_run(scanner, mode)
         }?;
@@ -425,6 +458,17 @@ fn on_list_item(scanner: &Scanner) -> bool {
 }
 
 fn parse_plain_text_run(scanner: &mut Scanner, mode: TextMode) -> ParseResult<TextRun> {
+    let run = parse_markup_text(scanner, mode)?;
+
+    let run = TextRun {
+        text: run,
+        style: Style::None,
+    };
+
+    Ok(run)
+}
+
+fn parse_markup_text(scanner: &mut Scanner, mode: TextMode) -> ParseResult<String> {
     let mut run = String::new();
 
     loop {
@@ -442,11 +486,6 @@ fn parse_plain_text_run(scanner: &mut Scanner, mode: TextMode) -> ParseResult<Te
             break;
         }
     }
-
-    let run = TextRun {
-        text: run,
-        style: Style::None,
-    };
 
     Ok(run)
 }
@@ -459,32 +498,12 @@ fn parse_styled_text_run(scanner: &mut Scanner, mode: TextMode) -> ParseResult<T
         ASTERISK => Style::Strong,
         UNDERSCORE => Style::Emphasis,
         TILDE => Style::Strikethrough,
-        _ => return parse_err!(InvalidStyleDelimiter(delimiter.into()), delimiter_pos),
+        _ => return parse_err!(InvalidStyleDelimiter(delimiter), delimiter_pos),
     };
 
-    let mut run = String::new();
+    let run = parse_markup_text(scanner, mode)?;
 
-    loop {
-        if scanner.is_on_char(BACKSLASH) {
-            scanner.skip_char();
-            let escaped = scanner.eat_char()?;
-            run.push(escaped);
-        } else if scanner.is_on(char_usable_in_text_frag) {
-            let text = scanner.eat_while(char_usable_in_text_frag)?;
-            run.push_str(text);
-        } else if scanner.is_on_char(delimiter) {
-            scanner.skip_char();
-            break;
-        // TODO: given we are not worried about trailing whitespace on
-        // end of paragraph, can this not just use a deterministic approach
-        // TODO: Figure out how to reject this: "- Foo *bar\n- Baz*"
-        } else if let Some(position) = try_eat_text_space(scanner, mode) {
-            scanner.advance_to(&position);
-            run.push(SPACE);
-        } else {
-            return parse_err!(UnexpectedInputInStyledText, scanner.position());
-        }
-    }
+    scanner.expect_char(delimiter)?;
 
     if run.starts_with(SPACE) || run.ends_with(SPACE) {
         return parse_err!(LooseDelimiter, delimiter_pos);
@@ -495,6 +514,19 @@ fn parse_styled_text_run(scanner: &mut Scanner, mode: TextMode) -> ParseResult<T
     }
 
     Ok(TextRun { text: run, style })
+}
+
+fn parse_linked_text_run(scanner: &mut Scanner, mode: TextMode) -> ParseResult<TextRun> {
+    scanner.expect_char(LEFT_SQUARE_BRACKET)?;
+    let run = parse_markup_text(scanner, mode)?;
+    scanner.expect_char(RIGHT_SQUARE_BRACKET)?;
+    scanner.expect_char(LEFT_BRACKET)?;
+    let id = scanner.eat_while(char_usable_in_identifier)?;
+    scanner.expect_char(RIGHT_BRACKET)?;
+    Ok(TextRun {
+        text: run,
+        style: Style::Link(id.into()),
+    })
 }
 
 //IDEA: Maybe this would all be easier if we "compressed" the input stream
@@ -526,8 +558,6 @@ fn try_eat_text_space<'a>(scanner: &Scanner<'a>, mode: TextMode) -> Option<Scann
 
     let mut peek = scanner.peek();
     let mut has_new_line = false;
-
-    //TODO: Add a test for "- Foo    \n- Bar"
 
     peek.skip_while_on_char(SPACE);
 
@@ -596,6 +626,44 @@ fn parse_inline_raw_text_run(scanner: &mut Scanner) -> ParseResult<TextRun> {
     })
 }
 
+fn parse_references(scanner: &mut Scanner) -> ParseResult<Vec<Reference>> {
+    scanner.expect_str(REFERENCES_HEADER)?;
+    scanner.expect_char(NEW_LINE)?;
+
+    let mut references = Vec::new();
+
+    loop {
+        let id = scanner.eat_while(char_usable_in_identifier)?;
+        scanner.skip_while_on_char(SPACE);
+        scanner.expect_char(DASH)?;
+        scanner.expect_char(GREATER_THAN)?;
+        scanner.skip_while_on_char(SPACE);
+
+        let link = scanner.eat_until_one_of(WHITESPACE_CHARS)?;
+
+        references.push(Reference {
+            id: id.into(),
+            link: link.into(),
+        });
+
+        //TODO: Common with parse_metadata, extract?
+        // Something like is_new_line_starting_with(scanner, char_usable_in_identifier)
+        if scanner.has_input() {
+            let mut peek = scanner.peek();
+            peek.expect_char(NEW_LINE)?;
+            if peek.is_on(char_usable_in_identifier) {
+                scanner.advance_to(&peek)
+            } else {
+                break;
+            }
+        } else {
+            break;
+        }
+    }
+
+    Ok(references)
+}
+
 struct ListStack {
     stack: Vec<Vec<ListItem>>,
     items: Vec<ListItem>,
@@ -617,7 +685,7 @@ impl ListStack {
     }
 
     fn push(&mut self) {
-        let parent = std::mem::replace(&mut self.items, Vec::new());
+        let parent = std::mem::take(&mut self.items);
         self.stack.push(parent);
         self.indent += 1;
     }
@@ -637,6 +705,9 @@ impl ListStack {
         self.items.into_boxed_slice()
     }
 }
+
+//TODO: IF we were to wrap errors, might make sense to pull out
+// the scanner into its own module again
 
 #[derive(Debug)]
 struct ScannerPosition<'a> {
@@ -788,6 +859,10 @@ impl<'a> Scanner<'a> {
         self.eat_while(|c| c != c1)
     }
 
+    fn eat_until_one_of(&mut self, chars: &[char]) -> ParseResult<&'a str> {
+        self.eat_while(|c| !chars.contains(&c))
+    }
+
     fn read_next_char(&mut self) {
         if let Some((index, c)) = self.chars.next() {
             if self.current_char == Some('\n') {
@@ -865,16 +940,19 @@ mod test {
         }
     }
 
-    fn linked_text(text: &str, link: &str) -> TextRun {
+    fn linked_text(text: &str, reference: &str) -> TextRun {
         TextRun {
             text: text.to_string(),
-            style: Style::Link(link.to_string()),
+            style: Style::Link(reference.to_string()),
         }
     }
+
+    //TODO - is it possible to use macros to create the builders?
 
     struct DocumentBuilder {
         metadata: Metadata,
         contents: Vec<Element>,
+        references: Vec<Reference>,
     }
 
     impl DocumentBuilder {
@@ -882,6 +960,7 @@ mod test {
             DocumentBuilder {
                 metadata: Metadata::default(),
                 contents: Vec::new(),
+                references: Vec::new(),
             }
         }
 
@@ -889,6 +968,7 @@ mod test {
             Document {
                 metadata: self.metadata,
                 contents: self.contents.into_boxed_slice(),
+                references: self.references.into_boxed_slice(),
             }
         }
         fn with_metadata(mut self, metadata: MetadataBuilder) -> Self {
@@ -903,6 +983,14 @@ mod test {
 
         fn with_container<T: Into<Container>>(mut self, container: T) -> Self {
             self.contents.push(Element::Container(container.into()));
+            self
+        }
+
+        fn with_reference(mut self, id: &str, link: &str) -> Self {
+            self.references.push(Reference {
+                id: id.into(),
+                link: link.into(),
+            });
             self
         }
     }
@@ -1298,6 +1386,7 @@ mod test {
 
         assert_parse_fails(input, expected);
     }
+
     #[test]
     fn escaped_char() {
         let input = "\\A";
@@ -1644,7 +1733,7 @@ mod test {
     fn strikethrough_with_double_linebreak() {
         let input = "~Erm...\n\nmeow?~";
 
-        let expected = ErrorKind::UnexpectedInputInStyledText;
+        let expected = ErrorKind::ExpectedChar('~');
 
         assert_parse_fails(input, expected);
     }
@@ -1653,7 +1742,7 @@ mod test {
     fn unmatched_emphasis_1() {
         let input = "_.";
 
-        let expected = ErrorKind::UnexpectedInputInStyledText;
+        let expected = ErrorKind::ExpectedChar('_');
 
         assert_parse_fails(input, expected);
     }
@@ -1662,7 +1751,7 @@ mod test {
     fn unmatched_emphasis_2() {
         let input = "meow _meow.";
 
-        let expected = ErrorKind::UnexpectedInputInStyledText;
+        let expected = ErrorKind::ExpectedChar('_');
 
         assert_parse_fails(input, expected);
     }
@@ -1671,7 +1760,7 @@ mod test {
     fn unmatched_emphasis_3() {
         let input = "meow meow_";
 
-        let expected = ErrorKind::UnexpectedInputInStyledText;
+        let expected = ErrorKind::ExpectedChar('_');
 
         assert_parse_fails(input, expected);
     }
@@ -1680,7 +1769,7 @@ mod test {
     fn nested_styled_text() {
         let input = "_*meow!*_";
 
-        let expected = ErrorKind::UnexpectedInputInStyledText;
+        let expected = ErrorKind::ExpectedChar('_');
 
         assert_parse_fails(input, expected);
     }
@@ -1707,7 +1796,7 @@ mod test {
     fn raw_immediately_in_emphasis() {
         let input = "_``_";
 
-        let expected = ErrorKind::UnexpectedInputInStyledText;
+        let expected = ErrorKind::ExpectedChar('_');
 
         assert_parse_fails(input, expected);
     }
@@ -1716,7 +1805,7 @@ mod test {
     fn raw_within_in_emphasis() {
         let input = "_a``a_";
 
-        let expected = ErrorKind::UnexpectedInputInStyledText;
+        let expected = ErrorKind::ExpectedChar('_');
 
         assert_parse_fails(input, expected);
     }
@@ -2033,26 +2122,28 @@ mod test {
     }
 
     #[test]
-    #[ignore]
     fn basic_link_with_reference() {
         let input = concat!(
             "For more info, consult [our guide on petting cats](Ripley2020),\n",
-            ", created by our own in house experts.\n",
+            "created by our own in house experts.\n",
             "\n",
             "#references\n",
             "Ripley2020 -> https://example.com"
         );
 
-        let expected = paragraph()
-            .with(text("For more info, consult "))
-            .with(linked_text(
-                "our guide on petting cats",
-                "https://example.com",
-            ))
-            .with(text(", created by our own in house experts"));
+        let expected = document()
+            .with_block(
+                paragraph()
+                    .with(text("For more info, consult "))
+                    .with(linked_text("our guide on petting cats", "Ripley2020"))
+                    .with(text(", created by our own in house experts.")),
+            )
+            .with_reference("Ripley2020", "https://example.com");
 
         assert_parses_succeeds(input, expected);
     }
+
+    //TODO: Do we want to enforce references being at the end?
 
     // TODO: test missing reference
     // Think about how to print a sensible error location...
@@ -2064,6 +2155,8 @@ mod test {
     //- f`oo
     //  ba`r
     //  - baz
+
+    // TODO: Figure out how to reject this: "- Foo *bar\n- Baz*"
 
     //TODO: reject this
     //Foo `mango
@@ -2078,4 +2171,6 @@ mod test {
     //TODO:
     // - Foo *bar
     //   - baz* mango
+
+    //TODO: Add a test for "- Foo    \n- Bar"
 }
