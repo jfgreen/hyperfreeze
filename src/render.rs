@@ -1,7 +1,6 @@
 use std::io;
 
-use crate::parse::{Block, Document, Style};
-use crate::parse::{Element, TextRun};
+use crate::document::*;
 
 //TODO: Have some kind of helper for writing HTML, with indent
 pub fn render_html(document: &Document, out: &mut impl io::Write) -> io::Result<()> {

@@ -5,6 +5,7 @@ use std::io::prelude::*;
 use crate::parse::{parse_str, ParseError};
 use crate::render::render_html;
 
+mod document;
 mod parse;
 #[allow(dead_code)]
 mod read;
