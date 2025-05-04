@@ -7,8 +7,6 @@ use crate::render::render_html;
 
 mod document;
 mod parse;
-#[allow(dead_code)]
-mod read;
 mod render;
 
 // Implementation ideas we could look into:
