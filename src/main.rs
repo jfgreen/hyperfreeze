@@ -8,6 +8,7 @@ use crate::render::render_html;
 mod document;
 mod parse;
 mod render;
+mod scan;
 
 // Implementation ideas we could look into:
 // - Stream processing (as opposed loading whole input into memory)

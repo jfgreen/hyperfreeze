@@ -1,8 +1,7 @@
-use core::panic;
 use std::fmt::Display;
-use std::str::CharIndices;
 
 use crate::document::*;
+use crate::scan::*;
 
 #[derive(Debug)]
 pub struct ParseError {
@@ -29,6 +28,61 @@ macro_rules! parse_err {
     };
 }
 
+fn expect_char(scanner: &mut Scanner, expected: char) -> ParseResult<()> {
+    scanner
+        .expect_char(expected)
+        .or(parse_err!(ExpectedChar(expected), scanner.position()))
+}
+
+fn expect_str(scanner: &mut Scanner, expected: &str) -> ParseResult<()> {
+    scanner.expect_str(expected).or(parse_err!(
+        ExpectedString(expected.to_string()),
+        scanner.position()
+    ))
+}
+
+fn eat_identifier<'a>(scanner: &mut Scanner<'a>) -> ParseResult<&'a str> {
+    scanner
+        .eat_while(char_usable_in_identifier)
+        .or(parse_err!(ExpectedIdentifier, scanner.position()))
+}
+
+fn eat_meta_value<'a>(scanner: &mut Scanner<'a>) -> ParseResult<&'a str> {
+    scanner
+        .eat_until_char(NEW_LINE)
+        .or(parse_err!(ExpectedMetadataValue, scanner.position()))
+}
+
+fn eat_link<'a>(scanner: &mut Scanner<'a>) -> ParseResult<&'a str> {
+    scanner
+        .eat_until_one_of(WHITESPACE_CHARS)
+        .or(parse_err!(ExpectedLink, scanner.position()))
+}
+
+fn eat_space<'a>(scanner: &mut Scanner<'a>) -> ParseResult<&'a str> {
+    scanner
+        .eat_while_char(SPACE)
+        .or(parse_err!(ExpectedSpace, scanner.position()))
+}
+
+fn eat_raw_fragment<'a>(scanner: &mut Scanner<'a>) -> ParseResult<&'a str> {
+    scanner
+        .eat_while(char_usable_in_raw_frag)
+        .or(parse_err!(ExpectedRawFragment, scanner.position()))
+}
+
+fn eat_text_fragment<'a>(scanner: &mut Scanner<'a>) -> ParseResult<&'a str> {
+    scanner
+        .eat_while(char_usable_in_text_frag)
+        .or(parse_err!(ExpectedRawFragment, scanner.position()))
+}
+
+fn eat_char(scanner: &mut Scanner) -> ParseResult<char> {
+    scanner
+        .eat_char()
+        .or(parse_err!(UnexpectedEndOfInput, scanner.position()))
+}
+
 #[derive(PartialEq, Eq, Debug)]
 enum ErrorKind {
     // TODO: Some errors are hyper-specific and others are verry broad
@@ -46,10 +100,17 @@ enum ErrorKind {
     WhitespaceAtParagraphStart,
     InvalidStyleDelimiter(char),
     InlineRawHasBlockBreak,
+    //TODO: Should we move away from expected char and string
+    // and instead have only more semantic-y things
+    // e.g ExpectNewline
     ExpectedChar(char),
     ExpectedString(String),
-    ExpectedAnyChar,
-    EmptyEatWhile,
+    ExpectedIdentifier,
+    ExpectedRawFragment,
+    ExpectedMetadataValue,
+    ExpectedSpace,
+    ExpectedLink,
+    UnexpectedEndOfInput,
 }
 
 impl Display for ParseError {
@@ -67,9 +128,12 @@ impl Display for ParseError {
             InlineRawHasBlockBreak => write!(f, "inline raw text cant have a block break"),
             ExpectedChar(c) => write!(f, "expected char '{}'", c.escape_default()),
             ExpectedString(s) => write!(f, "expected string '{}'", s.escape_default()),
-            ExpectedAnyChar => write!(f, "expected any char, but got end of input"),
-            //TODO: this, in particular, is weak
-            EmptyEatWhile => write!(f, "unexpected input"),
+            ExpectedIdentifier => write!(f, "expected identifier"),
+            ExpectedRawFragment => write!(f, "expected raw fragment"),
+            ExpectedMetadataValue => write!(f, "expected metadata value"),
+            ExpectedSpace => write!(f, "expected one or more spaces"),
+            ExpectedLink => write!(f, "expected link"),
+            UnexpectedEndOfInput => write!(f, "unexpected end of input"),
         }?;
 
         if let Some(failing_line) = &self.failing_input_line {
@@ -197,28 +261,29 @@ fn parse_document(scanner: &mut Scanner) -> ParseResult<Document> {
 }
 
 fn parse_metadata_block(scanner: &mut Scanner) -> ParseResult<Metadata> {
-    scanner.expect_str(METADATA_HEADER)?;
-    scanner.expect_char(NEW_LINE)?;
+    expect_str(scanner, METADATA_HEADER)?;
+    expect_char(scanner, NEW_LINE)?;
 
     let mut metadata = Metadata::default();
 
     loop {
         let key_position = scanner.position();
-        let key = scanner.eat_while(char_usable_in_identifier)?;
+        let key = eat_identifier(scanner)?;
         scanner.skip_while_on_char(SPACE);
-        scanner.expect_char(COLON)?;
+        expect_char(scanner, COLON)?;
         scanner.skip_while_on_char(SPACE);
 
         // For now, the value is just everything untill the end of line
         // This might get more complicated in the future
         // e.g treating value as int, bool, list, etc?
 
-        let value = scanner.eat_until_char(NEW_LINE)?;
+        let value = eat_meta_value(scanner)?;
 
         //TODO: Missing a test for unknown metadata?
         match key {
             "id" => metadata.id.push_str(value),
             "title" => metadata.title.push_str(value),
+            //TODO: consider things like unknown_metadata_err!(key, key_position)
             _ => return parse_err!(UnknownMetadata(key.into()), key_position),
         };
 
@@ -228,7 +293,7 @@ fn parse_metadata_block(scanner: &mut Scanner) -> ParseResult<Metadata> {
         // title: blah
         if scanner.has_input() {
             let mut peek = scanner.peek();
-            peek.expect_char(NEW_LINE)?;
+            expect_char(&mut peek, NEW_LINE)?;
             if peek.is_on(char_usable_in_identifier) {
                 scanner.advance_to(&peek)
             } else {
@@ -241,12 +306,12 @@ fn parse_metadata_block(scanner: &mut Scanner) -> ParseResult<Metadata> {
 }
 
 fn parse_container(scanner: &mut Scanner) -> ParseResult<Container> {
-    scanner.expect_char(HASH)?;
-    scanner.expect_char(LEFT_SQUARE_BRACKET)?;
+    expect_char(scanner, HASH)?;
+    expect_char(scanner, LEFT_SQUARE_BRACKET)?;
     let name_pos = scanner.position();
-    let name = scanner.eat_while(char::is_alphanumeric)?;
-    scanner.expect_char(RIGHT_SQUARE_BRACKET)?;
-    scanner.expect_char(NEW_LINE)?;
+    let name = eat_identifier(scanner)?;
+    expect_char(scanner, RIGHT_SQUARE_BRACKET)?;
+    expect_char(scanner, NEW_LINE)?;
 
     let container_kind = match name {
         "info" => ContainerKind::Info,
@@ -271,7 +336,7 @@ fn parse_container(scanner: &mut Scanner) -> ParseResult<Container> {
     }
 
     if scanner.has_input() {
-        scanner.expect_char(NEW_LINE)?;
+        expect_char(scanner, NEW_LINE)?;
     }
 
     let container = Container {
@@ -286,8 +351,8 @@ fn parse_block(scanner: &mut Scanner) -> ParseResult<Block> {
     let block = if scanner.is_on_char(HASH) {
         scanner.skip_char();
         let block_position = scanner.position();
-        let block_name = scanner.eat_while(char_usable_in_identifier)?;
-        scanner.expect_char(NEW_LINE)?;
+        let block_name = eat_identifier(scanner)?;
+        expect_char(scanner, NEW_LINE)?;
 
         match block_name {
             "metadata" => parse_err!(MetadataNotAtStart, block_position),
@@ -306,12 +371,12 @@ fn parse_block(scanner: &mut Scanner) -> ParseResult<Block> {
     }
 
     if scanner.has_input() {
-        scanner.expect_char(NEW_LINE)?;
+        expect_char(scanner, NEW_LINE)?;
     }
 
     if scanner.has_input() && !scanner.is_on_str(CONTAINER_FOOTER) {
         scanner.skip_while_on_char(SPACE);
-        scanner.expect_char(NEW_LINE)?;
+        expect_char(scanner, NEW_LINE)?;
     }
 
     Ok(block)
@@ -360,7 +425,7 @@ fn parse_list(scanner: &mut Scanner) -> ParseResult<Block> {
             //FIXME: Have a propper error for this
         }
 
-        scanner.expect_char(DASH)?;
+        expect_char(scanner, DASH)?;
         scanner.skip_while_on_char(SPACE);
 
         let indent = space_count / 2;
@@ -410,10 +475,10 @@ fn parse_markup_text(scanner: &mut Scanner, mode: TextMode) -> ParseResult<Strin
     loop {
         if scanner.is_on_char(BACKSLASH) {
             scanner.skip_char();
-            let escaped = scanner.eat_char()?;
+            let escaped = eat_char(scanner)?;
             run.push(escaped);
         } else if scanner.is_on(char_usable_in_text_frag) {
-            let text = scanner.eat_while(char_usable_in_text_frag)?;
+            let text = eat_text_fragment(scanner)?;
             run.push_str(text);
         } else if let Some(position) = try_eat_text_space(scanner, mode) {
             scanner.advance_to(&position);
@@ -428,7 +493,7 @@ fn parse_markup_text(scanner: &mut Scanner, mode: TextMode) -> ParseResult<Strin
 
 fn parse_styled_text_run(scanner: &mut Scanner, mode: TextMode) -> ParseResult<TextRun> {
     let delimiter_pos = scanner.position();
-    let delimiter = scanner.eat_char()?;
+    let delimiter = eat_char(scanner)?;
 
     let style = match delimiter {
         ASTERISK => Style::Strong,
@@ -439,7 +504,7 @@ fn parse_styled_text_run(scanner: &mut Scanner, mode: TextMode) -> ParseResult<T
 
     let run = parse_markup_text(scanner, mode)?;
 
-    scanner.expect_char(delimiter)?;
+    expect_char(scanner, delimiter)?;
 
     if run.starts_with(SPACE) || run.ends_with(SPACE) {
         return parse_err!(LooseDelimiter, delimiter_pos);
@@ -453,12 +518,12 @@ fn parse_styled_text_run(scanner: &mut Scanner, mode: TextMode) -> ParseResult<T
 }
 
 fn parse_linked_text_run(scanner: &mut Scanner, mode: TextMode) -> ParseResult<TextRun> {
-    scanner.expect_char(LEFT_SQUARE_BRACKET)?;
+    expect_char(scanner, LEFT_SQUARE_BRACKET)?;
     let run = parse_markup_text(scanner, mode)?;
-    scanner.expect_char(RIGHT_SQUARE_BRACKET)?;
-    scanner.expect_char(LEFT_BRACKET)?;
-    let id = scanner.eat_while(char_usable_in_identifier)?;
-    scanner.expect_char(RIGHT_BRACKET)?;
+    expect_char(scanner, RIGHT_SQUARE_BRACKET)?;
+    expect_char(scanner, LEFT_BRACKET)?;
+    let id = eat_identifier(scanner)?;
+    expect_char(scanner, RIGHT_BRACKET)?;
     Ok(TextRun {
         text: run,
         style: Style::Link(id.into()),
@@ -521,7 +586,7 @@ fn try_eat_text_space<'a>(scanner: &Scanner<'a>, mode: TextMode) -> Option<Scann
 
 fn parse_inline_raw_text_run(scanner: &mut Scanner) -> ParseResult<TextRun> {
     let mut run = String::new();
-    scanner.expect_char(BACKTICK)?;
+    expect_char(scanner, BACKTICK)?;
 
     loop {
         if scanner.is_on_char(BACKTICK) {
@@ -544,10 +609,10 @@ fn parse_inline_raw_text_run(scanner: &mut Scanner) -> ParseResult<TextRun> {
                 }
             }
         } else if scanner.is_on_char(SPACE) {
-            let space = scanner.eat_while_char(SPACE)?;
+            let space = eat_space(scanner)?;
             run.push_str(space);
         } else {
-            let text = scanner.eat_while(char_usable_in_raw_frag)?;
+            let text = eat_raw_fragment(scanner)?;
             run.push_str(text);
         }
     }
@@ -563,19 +628,19 @@ fn parse_inline_raw_text_run(scanner: &mut Scanner) -> ParseResult<TextRun> {
 }
 
 fn parse_references(scanner: &mut Scanner) -> ParseResult<Vec<Reference>> {
-    scanner.expect_str(REFERENCES_HEADER)?;
-    scanner.expect_char(NEW_LINE)?;
+    expect_str(scanner, REFERENCES_HEADER)?;
+    expect_char(scanner, NEW_LINE)?;
 
     let mut references = Vec::new();
 
     loop {
-        let id = scanner.eat_while(char_usable_in_identifier)?;
+        let id = eat_identifier(scanner)?;
         scanner.skip_while_on_char(SPACE);
-        scanner.expect_char(DASH)?;
-        scanner.expect_char(GREATER_THAN)?;
+        expect_char(scanner, DASH)?;
+        expect_char(scanner, GREATER_THAN)?;
         scanner.skip_while_on_char(SPACE);
 
-        let link = scanner.eat_until_one_of(WHITESPACE_CHARS)?;
+        let link = eat_link(scanner)?;
 
         references.push(Reference {
             id: id.into(),
@@ -586,7 +651,7 @@ fn parse_references(scanner: &mut Scanner) -> ParseResult<Vec<Reference>> {
         // Something like is_new_line_starting_with(scanner, char_usable_in_identifier)
         if scanner.has_input() {
             let mut peek = scanner.peek();
-            peek.expect_char(NEW_LINE)?;
+            expect_char(&mut peek, NEW_LINE)?;
             if peek.is_on(char_usable_in_identifier) {
                 scanner.advance_to(&peek)
             } else {
@@ -644,178 +709,6 @@ impl ListStack {
 
 //TODO: IF we were to wrap errors, might make sense to pull out
 // the scanner into its own module again
-
-#[derive(Debug)]
-struct ScannerPosition<'a> {
-    input: &'a str,
-    column: u32,
-    row: u32,
-}
-
-impl<'a> ScannerPosition<'a> {
-    fn current_line(&self) -> Option<&'a str> {
-        self.input.lines().nth(self.row as usize)
-    }
-}
-
-#[derive(Debug, Clone)]
-struct Scanner<'a> {
-    input: &'a str,
-    chars: CharIndices<'a>,
-    current_char: Option<char>,
-    current_index: usize,
-    column: u32,
-    row: u32,
-}
-
-impl<'a> Scanner<'a> {
-    fn new(input: &'a str) -> Self {
-        let mut scanner = Self {
-            input,
-            chars: input.char_indices(),
-            current_char: None,
-            current_index: 0,
-            column: 0,
-            row: 0,
-        };
-
-        // Place the first char of the input into `next`
-        scanner.read_next_char();
-
-        scanner
-    }
-
-    fn has_input(&self) -> bool {
-        self.current_char.is_some()
-    }
-
-    fn position(&self) -> ScannerPosition<'a> {
-        ScannerPosition {
-            input: self.input,
-            column: self.column,
-            row: self.row,
-        }
-    }
-
-    fn is_on(&self, predicate: impl Fn(char) -> bool) -> bool {
-        self.current_char.is_some_and(&predicate)
-    }
-
-    fn is_on_str(&self, s: &str) -> bool {
-        self.input[self.current_index..].starts_with(s)
-    }
-
-    fn is_on_char(&self, c: char) -> bool {
-        self.current_char == Some(c)
-    }
-
-    //TODO: rename to is_on_one_of? see how used...
-    fn is_on_any(&self, chars: &[char]) -> bool {
-        self.current_char.is_some_and(|c| chars.contains(&c))
-    }
-
-    fn peek(&self) -> Scanner<'a> {
-        self.clone()
-    }
-
-    fn advance_to(&mut self, other: &Scanner<'a>) {
-        *self = other.clone()
-    }
-
-    fn skip_char(&mut self) {
-        self.read_next_char();
-    }
-
-    fn skip_while_on_char(&mut self, c1: char) {
-        self.skip_while(|c2| c1 == c2)
-    }
-
-    fn skip_while_on_any(&mut self, chars: &[char]) {
-        self.skip_while(|c| chars.contains(&c))
-    }
-
-    fn skip_while(&mut self, predicate: impl Fn(char) -> bool) {
-        while self.current_char.is_some_and(&predicate) {
-            self.read_next_char();
-        }
-    }
-
-    fn expect_char(&mut self, c: char) -> ParseResult<()> {
-        if self.current_char == Some(c) {
-            self.read_next_char();
-            Ok(())
-        } else {
-            parse_err!(ExpectedChar(c), self.position())
-        }
-    }
-
-    fn expect_str(&mut self, s: &str) -> ParseResult<()> {
-        if self.is_on_str(s) {
-            for _ in 0..s.chars().count() {
-                // TODO: Can we jump to char instead?
-                // especially if we dont have a look ahead
-                self.read_next_char();
-            }
-            Ok(())
-        } else {
-            parse_err!(ExpectedString(s.into()), self.position())
-        }
-    }
-
-    fn eat_char(&mut self) -> ParseResult<char> {
-        match self.current_char {
-            Some(c) => {
-                self.read_next_char();
-                Ok(c)
-            }
-            None => parse_err!(ExpectedAnyChar, self.position()),
-        }
-    }
-
-    fn eat_while(&mut self, predicate: impl Fn(char) -> bool) -> ParseResult<&'a str> {
-        let i1 = self.current_index;
-
-        self.skip_while(&predicate);
-
-        let i2 = self.current_index;
-        let string = &self.input[i1..i2];
-
-        if string.is_empty() {
-            parse_err!(EmptyEatWhile, self.position())
-        } else {
-            Ok(string)
-        }
-    }
-
-    fn eat_while_char(&mut self, c1: char) -> ParseResult<&'a str> {
-        self.eat_while(|c| c == c1)
-    }
-
-    fn eat_until_char(&mut self, c1: char) -> ParseResult<&'a str> {
-        self.eat_while(|c| c != c1)
-    }
-
-    fn eat_until_one_of(&mut self, chars: &[char]) -> ParseResult<&'a str> {
-        self.eat_while(|c| !chars.contains(&c))
-    }
-
-    fn read_next_char(&mut self) {
-        if let Some((index, c)) = self.chars.next() {
-            if self.current_char == Some('\n') {
-                self.column = 0;
-                self.row += 1;
-            } else {
-                self.column += 1;
-            }
-
-            self.current_char = Some(c);
-            self.current_index = index;
-        } else {
-            self.current_char = None;
-            self.current_index = self.input.len();
-        }
-    }
-}
 
 #[cfg(test)]
 mod test {
@@ -1062,19 +955,23 @@ mod test {
         if actual != expected {
             eprintln!("Actual:\n{:#?}", actual);
             eprintln!("Expected:\n{:#?}", expected);
+            panic!("Parsed document not what was expected")
         }
-
-        assert_eq!(actual, expected);
     }
 
     fn assert_parse_fails(input: &'static str, expected: ErrorKind) {
-        let expected = expected.into();
         let result = parse_str(input);
 
         let err = result.expect_err("parse should fail");
-        let actual = err.error;
 
-        assert_eq!(actual, expected);
+        if err.error != expected {
+            eprintln!("Expected error: {:?}", expected);
+            eprintln!("Actual error: {:?}", err.error);
+
+            eprintln!("Full failure detail:\n{}", err);
+
+            panic!("Failed with wrong kind of error")
+        }
     }
 
     impl Into<Document> for DocumentBuilder {
@@ -1102,6 +999,7 @@ mod test {
     }
 
     //TODO: See if we can group / order these ever growing tests...
+    //TODO: See if we can avoid the builder pattern somehow... macros?
 
     #[test]
     fn complete_doc_test() {
@@ -1188,7 +1086,7 @@ mod test {
     fn empty_block_name_is_rejected() {
         let input = "#\nHi";
 
-        let expected = ErrorKind::EmptyEatWhile;
+        let expected = ErrorKind::ExpectedIdentifier;
 
         assert_parse_fails(input, expected);
     }
@@ -1894,7 +1792,7 @@ mod test {
     fn container_missing_start_is_rejected() {
         let input = concat!("Silly cat\n", "#=");
 
-        let expected = ErrorKind::EmptyEatWhile;
+        let expected = ErrorKind::ExpectedIdentifier;
 
         assert_parse_fails(input, expected);
     }
