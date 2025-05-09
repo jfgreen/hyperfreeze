@@ -288,18 +288,16 @@ fn parse_metadata_block(scanner: &mut Scanner) -> ParseResult<Metadata> {
             _ => return parse_err!(UnknownMetadata(key.into()), key_position),
         };
 
-        //TODO: Will this fail if meta with no newline - just EOF
-        // (as it will start a new loop)... eg...
-        // #meta
-        // title: blah
-        if scanner.has_input() {
-            let mut peek = scanner.peek();
-            expect_char(&mut peek, NEW_LINE)?;
-            if peek.is_on(char_usable_in_identifier) {
-                scanner.advance_to(&peek)
-            } else {
-                break;
-            }
+        if !scanner.has_input() {
+            break;
+        }
+
+        let mut peek = scanner.peek();
+        expect_char(&mut peek, NEW_LINE)?;
+        if peek.is_on(char_usable_in_identifier) {
+            scanner.advance_to(&peek)
+        } else {
+            break;
         }
     }
 
@@ -1737,7 +1735,16 @@ mod test {
 
     #[test]
     fn doc_metadata_with_alternate_spacing() {
-        let input = concat!("#metadata\n", "id :01.23\n",);
+        let input = "#metadata\nid :01.23\n";
+
+        let expected = document().with_metadata(metadata().with_id("01.23"));
+
+        assert_parses_succeeds(input, expected);
+    }
+
+    #[test]
+    fn doc_metadata_with_no_trailing_newline() {
+        let input = "#metadata\nid :01.23";
 
         let expected = document().with_metadata(metadata().with_id("01.23"));
 
