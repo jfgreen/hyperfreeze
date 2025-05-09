@@ -23,73 +23,69 @@ macro_rules! parse_err {
             source_column: column!(),
             source_line: line!(),
             source_file: file!(),
-            failing_input_line: $position.current_line().map(str::to_string),
+            failing_input_line: $position.line().map(str::to_string),
         })
     };
 }
 
 fn expect_char(scanner: &mut Scanner, expected: char) -> ParseResult<()> {
+    let position = scanner.position();
     scanner
         .expect_char(expected)
-        .or(parse_err!(ExpectedChar(expected), scanner.position()))
-}
-
-fn expect_str(scanner: &mut Scanner, expected: &str) -> ParseResult<()> {
-    scanner.expect_str(expected).or(parse_err!(
-        ExpectedString(expected.to_string()),
-        scanner.position()
-    ))
+        .or(parse_err!(ExpectedChar(expected), position))
 }
 
 fn eat_identifier<'a>(scanner: &mut Scanner<'a>) -> ParseResult<&'a str> {
+    let position = scanner.position();
     scanner
         .eat_while(char_usable_in_identifier)
-        .or(parse_err!(ExpectedIdentifier, scanner.position()))
+        .or(parse_err!(ExpectedIdentifier, position))
 }
 
 fn eat_meta_value<'a>(scanner: &mut Scanner<'a>) -> ParseResult<&'a str> {
+    let position = scanner.position();
     scanner
         .eat_until_char(NEW_LINE)
-        .or(parse_err!(ExpectedMetadataValue, scanner.position()))
+        .or(parse_err!(ExpectedMetadataValue, position))
 }
 
 fn eat_link<'a>(scanner: &mut Scanner<'a>) -> ParseResult<&'a str> {
+    let position = scanner.position();
     scanner
         .eat_until_one_of(WHITESPACE_CHARS)
-        .or(parse_err!(ExpectedLink, scanner.position()))
+        .or(parse_err!(ExpectedLink, position))
 }
 
 fn eat_space<'a>(scanner: &mut Scanner<'a>) -> ParseResult<&'a str> {
+    let position = scanner.position();
     scanner
         .eat_while_char(SPACE)
-        .or(parse_err!(ExpectedSpace, scanner.position()))
+        .or(parse_err!(ExpectedSpace, position))
 }
 
 fn eat_raw_fragment<'a>(scanner: &mut Scanner<'a>) -> ParseResult<&'a str> {
+    let position = scanner.position();
     scanner
         .eat_while(char_usable_in_raw_frag)
-        .or(parse_err!(ExpectedRawFragment, scanner.position()))
+        .or(parse_err!(ExpectedRawFragment, position))
 }
 
 fn eat_text_fragment<'a>(scanner: &mut Scanner<'a>) -> ParseResult<&'a str> {
+    let position = scanner.position();
     scanner
         .eat_while(char_usable_in_text_frag)
-        .or(parse_err!(ExpectedRawFragment, scanner.position()))
+        .or(parse_err!(ExpectedRawFragment, position))
 }
 
 fn eat_char(scanner: &mut Scanner) -> ParseResult<char> {
+    let position = scanner.position();
     scanner
         .eat_char()
-        .or(parse_err!(UnexpectedEndOfInput, scanner.position()))
+        .or(parse_err!(UnexpectedEndOfInput, position))
 }
 
 #[derive(PartialEq, Eq, Debug)]
 enum ErrorKind {
-    // TODO: Some errors are hyper-specific and others are verry broad
-    // Some say what we expected, others point out what we got
-    // go one way or the other...
-    // Maybe reintroducing ScannerError would be helpful
-    // could wrap with more context
     LooseDelimiter,
     EmptyDelimitedText,
     MetadataNotAtStart,
@@ -100,16 +96,14 @@ enum ErrorKind {
     WhitespaceAtParagraphStart,
     InvalidStyleDelimiter(char),
     InlineRawHasBlockBreak,
-    //TODO: Should we move away from expected char and string
-    // and instead have only more semantic-y things
-    // e.g ExpectNewline
     ExpectedChar(char),
-    ExpectedString(String),
     ExpectedIdentifier,
     ExpectedRawFragment,
     ExpectedMetadataValue,
     ExpectedSpace,
     ExpectedLink,
+    ExpectedMetadataHeader,
+    ExpectedReferencesHeader,
     UnexpectedEndOfInput,
 }
 
@@ -127,12 +121,13 @@ impl Display for ParseError {
             InvalidStyleDelimiter(c) => write!(f, "'{}' is  not a valid style delimiter", c),
             InlineRawHasBlockBreak => write!(f, "inline raw text cant have a block break"),
             ExpectedChar(c) => write!(f, "expected char '{}'", c.escape_default()),
-            ExpectedString(s) => write!(f, "expected string '{}'", s.escape_default()),
             ExpectedIdentifier => write!(f, "expected identifier"),
             ExpectedRawFragment => write!(f, "expected raw fragment"),
             ExpectedMetadataValue => write!(f, "expected metadata value"),
             ExpectedSpace => write!(f, "expected one or more spaces"),
             ExpectedLink => write!(f, "expected link"),
+            ExpectedMetadataHeader => write!(f, "expected 'metadata' header"),
+            ExpectedReferencesHeader => write!(f, "expected 'references' header"),
             UnexpectedEndOfInput => write!(f, "unexpected end of input"),
         }?;
 
@@ -237,7 +232,7 @@ fn parse_document(scanner: &mut Scanner) -> ParseResult<Document> {
     }
 
     while scanner.has_input() {
-        if scanner.is_on_any(WHITESPACE_CHARS) {
+        if scanner.is_on_one_of(WHITESPACE_CHARS) {
             scanner.skip_char();
         } else if scanner.is_on_str(CONTAINER_HEADER_START) {
             let container = parse_container(scanner)?;
@@ -261,7 +256,13 @@ fn parse_document(scanner: &mut Scanner) -> ParseResult<Document> {
 }
 
 fn parse_metadata_block(scanner: &mut Scanner) -> ParseResult<Metadata> {
-    expect_str(scanner, METADATA_HEADER)?;
+    expect_char(scanner, HASH)?;
+    let ident_position = scanner.position();
+    let ident = eat_identifier(scanner)?;
+    if ident != "metadata" {
+        return parse_err!(ExpectedMetadataHeader, ident_position);
+    }
+
     expect_char(scanner, NEW_LINE)?;
 
     let mut metadata = Metadata::default();
@@ -327,7 +328,7 @@ fn parse_container(scanner: &mut Scanner) -> ParseResult<Container> {
             break;
         } else if !scanner.has_input() {
             return parse_err!(UnterminatedContainer, scanner.position());
-        } else if scanner.is_on_any(WHITESPACE_CHARS) {
+        } else if scanner.is_on_one_of(WHITESPACE_CHARS) {
             scanner.skip_char();
         } else {
             let block = parse_block(scanner)?;
@@ -383,7 +384,7 @@ fn parse_block(scanner: &mut Scanner) -> ParseResult<Block> {
 }
 
 fn parse_paragraph(scanner: &mut Scanner) -> ParseResult<Block> {
-    if scanner.is_on_any(WHITESPACE_CHARS) {
+    if scanner.is_on_one_of(WHITESPACE_CHARS) {
         return parse_err!(WhitespaceAtParagraphStart, scanner.position());
     }
 
@@ -395,7 +396,7 @@ fn parse_text_runs(scanner: &mut Scanner, mode: TextMode) -> ParseResult<Box<[Te
     let mut text_runs = Vec::new();
 
     while on_text_run(scanner, mode) {
-        let run = if scanner.is_on_any(STYLE_DELIMITER_CHARS) {
+        let run = if scanner.is_on_one_of(STYLE_DELIMITER_CHARS) {
             parse_styled_text_run(scanner, mode)
         } else if scanner.is_on_char(BACKTICK) {
             parse_inline_raw_text_run(scanner)
@@ -539,7 +540,7 @@ fn parse_linked_text_run(scanner: &mut Scanner, mode: TextMode) -> ParseResult<T
 // Equally it might be worth storing a str slice to the underlying whitespace string
 
 fn on_text_run(scanner: &Scanner, mode: TextMode) -> bool {
-    let on_space = scanner.is_on_any(WHITESPACE_CHARS);
+    let on_space = scanner.is_on_one_of(WHITESPACE_CHARS);
     let on_header_or_footer = scanner.is_on_char(HASH);
     let on_text_fragment = scanner.has_input() && !on_space && !on_header_or_footer;
     let on_leading_whitespace = try_eat_text_space(scanner, mode).is_some();
@@ -553,7 +554,7 @@ fn on_text_run(scanner: &Scanner, mode: TextMode) -> bool {
 }
 
 fn try_eat_text_space<'a>(scanner: &Scanner<'a>, mode: TextMode) -> Option<Scanner<'a>> {
-    if !scanner.is_on_any(WHITESPACE_CHARS) {
+    if !scanner.is_on_one_of(WHITESPACE_CHARS) {
         return None;
     }
 
@@ -628,7 +629,13 @@ fn parse_inline_raw_text_run(scanner: &mut Scanner) -> ParseResult<TextRun> {
 }
 
 fn parse_references(scanner: &mut Scanner) -> ParseResult<Vec<Reference>> {
-    expect_str(scanner, REFERENCES_HEADER)?;
+    expect_char(scanner, HASH)?;
+    let ident_position = scanner.position();
+    let ident = eat_identifier(scanner)?;
+    if ident != "references" {
+        return parse_err!(ExpectedReferencesHeader, ident_position);
+    }
+
     expect_char(scanner, NEW_LINE)?;
 
     let mut references = Vec::new();

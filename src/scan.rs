@@ -10,7 +10,7 @@ pub struct ScannerPosition<'a> {
 }
 
 impl<'a> ScannerPosition<'a> {
-    pub fn current_line(&self) -> Option<&'a str> {
+    pub fn line(&self) -> Option<&'a str> {
         self.input.lines().nth(self.row as usize)
     }
 }
@@ -66,8 +66,7 @@ impl<'a> Scanner<'a> {
         self.current_char == Some(c)
     }
 
-    //TODO: rename to is_on_one_of? see how used...
-    pub fn is_on_any(&self, chars: &[char]) -> bool {
+    pub fn is_on_one_of(&self, chars: &[char]) -> bool {
         self.current_char.is_some_and(|c| chars.contains(&c))
     }
 
@@ -100,19 +99,6 @@ impl<'a> Scanner<'a> {
     pub fn expect_char(&mut self, c: char) -> ScanResult<()> {
         if self.current_char == Some(c) {
             self.read_next_char();
-            Ok(())
-        } else {
-            Err(())
-        }
-    }
-
-    pub fn expect_str(&mut self, s: &str) -> ScanResult<()> {
-        if self.is_on_str(s) {
-            for _ in 0..s.chars().count() {
-                // TODO: Can we jump to char instead?
-                // especially if we dont have a look ahead
-                self.read_next_char();
-            }
             Ok(())
         } else {
             Err(())
