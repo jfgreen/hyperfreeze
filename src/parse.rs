@@ -1019,7 +1019,14 @@ mod test {
             "#=\n",
             "\n",
             "Opposable thumbs\n",
-            "are useful?"
+            "are useful?\n",
+            "\n",
+            "- Nose\n",
+            "- Toes\n",
+            "  - Big one\n",
+            "  - Little one\n",
+            "  - _Other_\n",
+            "     one\n"
         );
 
         let expected = document()
@@ -1037,6 +1044,21 @@ mod test {
                 ),
             )
             .with_block(paragraph().with(text("Opposable thumbs are useful?")))
+            .with_block(
+                list()
+                    .with(paragraph().with(text("Nose")))
+                    .with(paragraph().with(text("Toes")))
+                    .with(
+                        list()
+                            .with(paragraph().with(text("Big one")))
+                            .with(paragraph().with(text("Little one")))
+                            .with(
+                                paragraph()
+                                    .with(emphasised_text("Other"))
+                                    .with(text(" one")),
+                            ),
+                    ),
+            )
             .build();
 
         assert_parses_succeeds(input, expected);
