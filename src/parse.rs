@@ -280,11 +280,9 @@ fn parse_metadata_block(scanner: &mut Scanner) -> ParseResult<Metadata> {
 
         let value = eat_meta_value(scanner)?;
 
-        //TODO: Missing a test for unknown metadata?
         match key {
             "id" => metadata.id.push_str(value),
             "title" => metadata.title.push_str(value),
-            //TODO: consider things like unknown_metadata_err!(key, key_position)
             _ => return parse_err!(UnknownMetadata(key.into()), key_position),
         };
 
@@ -712,9 +710,6 @@ impl ListStack {
     }
 }
 
-//TODO: IF we were to wrap errors, might make sense to pull out
-// the scanner into its own module again
-
 #[cfg(test)]
 mod test {
     use super::*;
@@ -782,6 +777,7 @@ mod test {
     }
 
     //TODO - is it possible to use macros to create the builders?
+    // Or to replace builders entirely?
 
     struct DocumentBuilder {
         metadata: Metadata,
@@ -1736,8 +1732,6 @@ mod test {
         assert_parses_succeeds(input, expected);
     }
 
-    //TODO: We should test an extended block break between meta and para
-
     #[test]
     fn doc_metadata() {
         let input = concat!(
@@ -1751,6 +1745,24 @@ mod test {
                 .with_id("01.23")
                 .with_title("Practical espionage for felines"),
         );
+
+        assert_parses_succeeds(input, expected);
+    }
+
+    #[test]
+    fn doc_metadata_with_folowing_para() {
+        let input = concat!(
+            "#metadata\n",
+            "id: 01.23\n",
+            "\n",
+            "\n",
+            "\n",
+            "Hello cats and kittens"
+        );
+
+        let expected = document()
+            .with_metadata(metadata().with_id("01.23"))
+            .with_block(paragraph().with(text("Hello cats and kittens")));
 
         assert_parses_succeeds(input, expected);
     }
@@ -1788,7 +1800,15 @@ mod test {
         assert_parse_fails(input, expected);
     }
 
-    //TODO: Pretty varient (e.g #== [ info ] ==)?
+    #[test]
+    fn metadata_with_unknown_attribute_is_rejected() {
+        let input = "#metadata\nkibble: yes please\n";
+
+        let expected = ErrorKind::UnknownMetadata(String::from("kibble"));
+
+        assert_parse_fails(input, expected);
+    }
+
     #[test]
     fn multi_paragraph_info() {
         let input = concat!(
@@ -1807,10 +1827,8 @@ mod test {
     }
 
     //TODO: We should probably allow this after all.
-    // Challenge: we would not know until the end of the doc
-    // (or start of next container) what is supposed to be inside
-    // Unless we reserved the #=[info]= form for multiblock...
-    // and forbode multi block containers in this form
+    // Introduce delimted syntax for blocks,
+    // then unless delimited, consume only the next block
     #[test]
     fn unterminated_container_is_rejected() {
         let input = concat!(
