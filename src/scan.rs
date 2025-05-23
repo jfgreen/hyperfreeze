@@ -1,6 +1,6 @@
 use std::str::CharIndices;
 
-pub type ScanResult<T> = Result<T, ()>;
+pub type ScanResult<'a, T> = Result<T, ScannerPosition<'a>>;
 
 #[derive(Debug)]
 pub struct ScannerPosition<'a> {
@@ -101,7 +101,7 @@ impl<'a> Scanner<'a> {
             self.read_next_char();
             Ok(())
         } else {
-            Err(())
+            Err(self.position())
         }
     }
 
@@ -111,11 +111,13 @@ impl<'a> Scanner<'a> {
                 self.read_next_char();
                 Ok(c)
             }
-            None => Err(()),
+            None => Err(self.position()),
         }
     }
 
     pub fn eat_while(&mut self, predicate: impl Fn(char) -> bool) -> ScanResult<&'a str> {
+        let position = self.position();
+
         let i1 = self.current_index;
 
         self.skip_while(&predicate);
@@ -124,7 +126,7 @@ impl<'a> Scanner<'a> {
         let string = &self.input[i1..i2];
 
         if string.is_empty() {
-            Err(())
+            Err(position)
         } else {
             Ok(string)
         }

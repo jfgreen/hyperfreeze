@@ -1,3 +1,5 @@
+use std::backtrace::Backtrace;
+use std::backtrace::BacktraceStatus;
 use std::fmt::Display;
 
 use crate::document::*;
@@ -8,80 +10,73 @@ pub struct ParseError {
     error: ErrorKind,
     input_column: u32,
     input_line: u32,
-    source_column: u32,
-    source_line: u32,
-    source_file: &'static str,
     failing_input_line: Option<String>,
+    backtrace: Backtrace,
 }
 
 macro_rules! parse_err {
     ($error:expr, $position:expr) => {
-        Err(ParseError {
+        Err(build_parse_error!($error, $position))
+    };
+}
+
+macro_rules! try_scan {
+    ($scan: expr, $error:expr) => {
+        $scan.map_err(|position| build_parse_error!($error, position))
+    };
+}
+
+macro_rules! build_parse_error {
+    ($error:expr, $position:expr) => {
+        ParseError {
             error: $error,
             input_column: $position.column + 1,
             input_line: $position.row + 1,
-            source_column: column!(),
-            source_line: line!(),
-            source_file: file!(),
             failing_input_line: $position.line().map(str::to_string),
-        })
+            backtrace: Backtrace::capture(),
+        }
     };
 }
 
 fn expect_char(scanner: &mut Scanner, expected: char) -> ParseResult<()> {
-    let position = scanner.position();
-    scanner
-        .expect_char(expected)
-        .or(parse_err!(ExpectedChar(expected), position))
+    try_scan!(scanner.expect_char(expected), ExpectedChar(expected))
 }
 
 fn eat_identifier<'a>(scanner: &mut Scanner<'a>) -> ParseResult<&'a str> {
-    let position = scanner.position();
-    scanner
-        .eat_while(char_usable_in_identifier)
-        .or(parse_err!(ExpectedIdentifier, position))
+    try_scan!(
+        scanner.eat_while(char_usable_in_identifier),
+        ExpectedIdentifier
+    )
 }
 
 fn eat_meta_value<'a>(scanner: &mut Scanner<'a>) -> ParseResult<&'a str> {
-    let position = scanner.position();
-    scanner
-        .eat_until_char(NEW_LINE)
-        .or(parse_err!(ExpectedMetadataValue, position))
+    try_scan!(scanner.eat_until_char(NEW_LINE), ExpectedMetadataValue)
 }
 
 fn eat_link<'a>(scanner: &mut Scanner<'a>) -> ParseResult<&'a str> {
-    let position = scanner.position();
-    scanner
-        .eat_until_one_of(WHITESPACE_CHARS)
-        .or(parse_err!(ExpectedLink, position))
+    try_scan!(scanner.eat_until_one_of(WHITESPACE_CHARS), ExpectedLink)
 }
 
 fn eat_space<'a>(scanner: &mut Scanner<'a>) -> ParseResult<&'a str> {
-    let position = scanner.position();
-    scanner
-        .eat_while_char(SPACE)
-        .or(parse_err!(ExpectedSpace, position))
+    try_scan!(scanner.eat_while_char(SPACE), ExpectedSpace)
 }
 
 fn eat_raw_fragment<'a>(scanner: &mut Scanner<'a>) -> ParseResult<&'a str> {
-    let position = scanner.position();
-    scanner
-        .eat_while(char_usable_in_raw_frag)
-        .or(parse_err!(ExpectedRawFragment, position))
+    try_scan!(
+        scanner.eat_while(char_usable_in_raw_frag),
+        ExpectedRawFragment
+    )
 }
 
 fn eat_text_fragment<'a>(scanner: &mut Scanner<'a>) -> ParseResult<&'a str> {
-    let position = scanner.position();
-    scanner
-        .eat_while(char_usable_in_text_frag)
-        .or(parse_err!(ExpectedRawFragment, position))
+    try_scan!(
+        scanner.eat_while(char_usable_in_text_frag),
+        ExpectedRawFragment
+    )
 }
 
 fn eat_char(scanner: &mut Scanner) -> ParseResult<char> {
-    let position = scanner.position();
-    scanner
-        .eat_char()
-        .or(parse_err!(UnexpectedEndOfInput, position))
+    try_scan!(scanner.eat_char(), UnexpectedEndOfInput)
 }
 
 #[derive(PartialEq, Eq, Debug)]
@@ -147,11 +142,10 @@ impl Display for ParseError {
             writeln!(f)?;
         }
 
-        writeln!(
-            f,
-            "Error raised on line {} column {} in file {}",
-            self.source_line, self.source_column, self.source_file
-        )?;
+        if self.backtrace.status() == BacktraceStatus::Captured {
+            writeln!(f, "Parse backtrace:")?;
+            writeln!(f, "{}", self.backtrace)?;
+        }
 
         Ok(())
     }
@@ -286,14 +280,12 @@ fn parse_metadata_block(scanner: &mut Scanner) -> ParseResult<Metadata> {
             _ => return parse_err!(UnknownMetadata(key.into()), key_position),
         };
 
-        if !scanner.has_input() {
-            break;
+        if scanner.has_input() {
+            expect_char(scanner, NEW_LINE)?;
         }
 
-        let mut peek = scanner.peek();
-        expect_char(&mut peek, NEW_LINE)?;
-        if peek.is_on(char_usable_in_identifier) {
-            scanner.advance_to(&peek)
+        if scanner.is_on(char_usable_in_identifier) {
+            continue;
         } else {
             break;
         }
@@ -650,16 +642,12 @@ fn parse_references(scanner: &mut Scanner) -> ParseResult<Vec<Reference>> {
             link: link.into(),
         });
 
-        //TODO: Common with parse_metadata, extract?
-        // Something like is_new_line_starting_with(scanner, char_usable_in_identifier)
         if scanner.has_input() {
-            let mut peek = scanner.peek();
-            expect_char(&mut peek, NEW_LINE)?;
-            if peek.is_on(char_usable_in_identifier) {
-                scanner.advance_to(&peek)
-            } else {
-                break;
-            }
+            expect_char(scanner, NEW_LINE)?;
+        }
+
+        if scanner.is_on(char_usable_in_identifier) {
+            continue;
         } else {
             break;
         }
@@ -947,16 +935,18 @@ mod test {
         let expected = expected.into();
         let result = parse_str(input);
 
-        if let Err(ref e) = result {
-            eprintln!("{}", e);
-        }
-
-        let actual = result.expect("parse should succeed");
-
-        if actual != expected {
-            eprintln!("Actual:\n{:#?}", actual);
-            eprintln!("Expected:\n{:#?}", expected);
-            panic!("Parsed document not what was expected")
+        match result {
+            Ok(doc) => {
+                if doc != expected {
+                    eprintln!("Actual:\n{:#?}", doc);
+                    eprintln!("Expected:\n{:#?}", expected);
+                    panic!("Parsed document not what was expected")
+                }
+            }
+            Err(error) => {
+                eprintln!("{}", error);
+                panic!("parse unexpectedly failed")
+            }
         }
     }
 
@@ -2031,6 +2021,45 @@ mod test {
         assert_parses_succeeds(input, expected);
     }
 
+    #[test]
+    fn list_with_raw_over_newline() {
+        let input = "- f`oo\n  ba`r\n  - baz";
+
+        let expected = list()
+            .with(
+                paragraph()
+                    .with(text("f"))
+                    .with(raw_text("oo   ba"))
+                    .with(text("r")),
+            )
+            .with(list().with(paragraph().with(text("baz"))));
+
+        assert_parses_succeeds(input, expected);
+    }
+
+    #[test]
+    fn list_with_raw_over_multiple_points() {
+        let input = "- f`oo\n  -ba`r";
+
+        let expected = list().with(
+            paragraph()
+                .with(text("f"))
+                .with(raw_text("oo   -ba"))
+                .with(text("r")),
+        );
+
+        assert_parses_succeeds(input, expected);
+    }
+
+    #[test]
+    fn list_with_emphasis_over_multiple_points() {
+        let input = "- f_oo\n  -ba_r";
+
+        let expected = ErrorKind::ExpectedChar('_');
+
+        assert_parse_fails(input, expected);
+    }
+
     //TODO: Do we want to enforce references being at the end?
 
     // TODO: test missing reference
@@ -2039,23 +2068,10 @@ mod test {
 
     //TODO: Would be cool to optionaly give lists a title
 
-    //TODO: Realy good test:
-    //- f`oo
-    //  ba`r
-    //  - baz
-
     // TODO: Figure out how to reject this: "- Foo *bar\n- Baz*"
 
-    //TODO: reject this
-    //Foo `mango
-    //' '<- space
-    //banana` bar
-
-    //TODO: ensure new_line is treated as space in
-    //Foo `mango
-    //      banana` bar
-
     //TODO: test explicit list
+
     //TODO:
     // - Foo *bar
     //   - baz* mango
