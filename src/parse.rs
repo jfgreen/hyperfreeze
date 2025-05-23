@@ -424,15 +424,19 @@ fn parse_list(scanner: &mut Scanner) -> ParseResult<Block> {
         } else if stack.indent > 0 && indent == stack.indent - 1 {
             stack.pop();
         } else if indent != stack.indent {
+            //FIXME: Have a propper error for this
             todo!("oh no")
         }
 
         let text = parse_text_runs(scanner, TextMode::List)?;
         stack.add_text(text);
 
+        while scanner.is_on_char(SPACE) {
+            scanner.skip_char();
+        }
+
         //TODO: should we only eat this if next line has a list item
         if scanner.is_on_char(NEW_LINE) {
-            //FIXME: Have a propper error for this
             scanner.skip_char();
         }
     }
@@ -2038,6 +2042,17 @@ mod test {
     }
 
     #[test]
+    fn list_item_with_trailing_whitespace() {
+        let input = "- Foo    \n- Bar";
+
+        let expected = list()
+            .with(paragraph().with(text("Foo")))
+            .with(paragraph().with(text("Bar")));
+
+        assert_parses_succeeds(input, expected);
+    }
+
+    #[test]
     fn list_with_raw_over_multiple_points() {
         let input = "- f`oo\n  -ba`r";
 
@@ -2066,15 +2081,5 @@ mod test {
     // Think about how to print a sensible error location...
     // ...scanner will be at end once we detect the missing reference
 
-    //TODO: Would be cool to optionaly give lists a title
-
-    // TODO: Figure out how to reject this: "- Foo *bar\n- Baz*"
-
     //TODO: test explicit list
-
-    //TODO:
-    // - Foo *bar
-    //   - baz* mango
-
-    //TODO: Add a test for "- Foo    \n- Bar"
 }
