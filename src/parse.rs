@@ -941,7 +941,7 @@ mod test {
         }
     }
 
-    fn assert_parses_succeeds<T: Into<Document>>(input: &'static str, expected: T) {
+    fn assert_parse_succeeds<T: Into<Document>>(input: &'static str, expected: T) {
         let expected = expected.into();
         let result = parse_str(input);
 
@@ -1057,7 +1057,7 @@ mod test {
             )
             .build();
 
-        assert_parses_succeeds(input, expected);
+        assert_parse_succeeds(input, expected);
     }
 
     #[test]
@@ -1066,7 +1066,7 @@ mod test {
 
         let expected = paragraph().with(text("We like cats very much"));
 
-        assert_parses_succeeds(input, expected);
+        assert_parse_succeeds(input, expected);
     }
 
     #[test]
@@ -1075,7 +1075,7 @@ mod test {
 
         let expected = paragraph().with(text("Cats go meeow!"));
 
-        assert_parses_succeeds(input, expected);
+        assert_parse_succeeds(input, expected);
     }
 
     #[test]
@@ -1129,7 +1129,7 @@ mod test {
 
         let expected = paragraph().with(text("Nice kitty!"));
 
-        assert_parses_succeeds(input, expected);
+        assert_parse_succeeds(input, expected);
     }
 
     #[test]
@@ -1138,7 +1138,7 @@ mod test {
 
         let expected = paragraph().with(text("Cats"));
 
-        assert_parses_succeeds(input, expected);
+        assert_parse_succeeds(input, expected);
     }
 
     #[test]
@@ -1147,7 +1147,7 @@ mod test {
 
         let expected = paragraph().with(text("Cats"));
 
-        assert_parses_succeeds(input, expected);
+        assert_parse_succeeds(input, expected);
     }
 
     #[test]
@@ -1156,7 +1156,7 @@ mod test {
 
         let expected = paragraph().with(text("Cats whiskers"));
 
-        assert_parses_succeeds(input, expected);
+        assert_parse_succeeds(input, expected);
     }
 
     #[test]
@@ -1167,7 +1167,7 @@ mod test {
             .with(text("Cats "))
             .with(strong_text("whiskers"));
 
-        assert_parses_succeeds(input, expected);
+        assert_parse_succeeds(input, expected);
     }
 
     #[test]
@@ -1178,7 +1178,7 @@ mod test {
             .with(text("Cats "))
             .with(raw_text("nice whiskers"));
 
-        assert_parses_succeeds(input, expected);
+        assert_parse_succeeds(input, expected);
     }
 
     #[test]
@@ -1186,7 +1186,7 @@ mod test {
         let input = "Cats    \n    whiskers";
         let expected = paragraph().with(text("Cats whiskers"));
 
-        assert_parses_succeeds(input, expected);
+        assert_parse_succeeds(input, expected);
     }
 
     #[test]
@@ -1197,7 +1197,7 @@ mod test {
             .with_block(paragraph().with(text("Cats")))
             .with_block(paragraph().with(text("whiskers")));
 
-        assert_parses_succeeds(input, expected);
+        assert_parse_succeeds(input, expected);
     }
 
     #[test]
@@ -1208,7 +1208,7 @@ mod test {
             .with_block(paragraph().with(text("Cats")))
             .with_block(paragraph().with(text("whiskers")));
 
-        assert_parses_succeeds(input, expected);
+        assert_parse_succeeds(input, expected);
     }
 
     #[test]
@@ -1218,7 +1218,7 @@ mod test {
             .with_block(paragraph().with(text("Cats")))
             .with_block(paragraph().with(text("whiskers")));
 
-        assert_parses_succeeds(input, expected);
+        assert_parse_succeeds(input, expected);
     }
 
     #[test]
@@ -1228,7 +1228,7 @@ mod test {
             .with_block(paragraph().with(text("Cats")))
             .with_block(paragraph().with(text("whiskers")));
 
-        assert_parses_succeeds(input, expected);
+        assert_parse_succeeds(input, expected);
     }
 
     #[test]
@@ -1250,7 +1250,7 @@ mod test {
 
         let expected = paragraph().with(text("A"));
 
-        assert_parses_succeeds(input, expected);
+        assert_parse_succeeds(input, expected);
     }
 
     #[test]
@@ -1259,7 +1259,7 @@ mod test {
 
         let expected = paragraph().with(text("My cat does backflips #coolcat"));
 
-        assert_parses_succeeds(input, expected);
+        assert_parse_succeeds(input, expected);
     }
 
     #[test]
@@ -1268,7 +1268,7 @@ mod test {
 
         let expected = paragraph().with(text("cat_case"));
 
-        assert_parses_succeeds(input, expected);
+        assert_parse_succeeds(input, expected);
     }
 
     #[test]
@@ -1277,7 +1277,7 @@ mod test {
 
         let expected = paragraph().with(emphasised_text("cat_case"));
 
-        assert_parses_succeeds(input, expected);
+        assert_parse_succeeds(input, expected);
     }
 
     #[test]
@@ -1286,7 +1286,7 @@ mod test {
 
         let expected = paragraph().with(raw_text("cat\\_case"));
 
-        assert_parses_succeeds(input, expected);
+        assert_parse_succeeds(input, expected);
     }
 
     #[test]
@@ -1298,7 +1298,7 @@ mod test {
             .with(emphasised_text("totally adore"))
             .with(text(" them"));
 
-        assert_parses_succeeds(input, expected);
+        assert_parse_succeeds(input, expected);
     }
 
     #[test]
@@ -1310,7 +1310,7 @@ mod test {
             .with(emphasised_text("zoom"))
             .with(text(" around"));
 
-        assert_parses_succeeds(input, expected);
+        assert_parse_succeeds(input, expected);
     }
 
     #[test]
@@ -1322,7 +1322,7 @@ mod test {
             .with(strong_text("need to pet that cat"))
             .with(text(" right away."));
 
-        assert_parses_succeeds(input, expected);
+        assert_parse_succeeds(input, expected);
     }
 
     #[test]
@@ -1334,7 +1334,7 @@ mod test {
             .with(strong_text("ooOOo"))
             .with(text("ww!"));
 
-        assert_parses_succeeds(input, expected);
+        assert_parse_succeeds(input, expected);
     }
 
     #[test]
@@ -1343,7 +1343,7 @@ mod test {
 
         let expected = paragraph().with(strong_text("me ow"));
 
-        assert_parses_succeeds(input, expected);
+        assert_parse_succeeds(input, expected);
     }
 
     #[test]
@@ -1355,7 +1355,7 @@ mod test {
             .with(strikethrough_text("ok i guess"))
             .with(text(" magnificant"));
 
-        assert_parses_succeeds(input, expected);
+        assert_parse_succeeds(input, expected);
     }
 
     #[test]
@@ -1367,7 +1367,7 @@ mod test {
             .with(raw_text("bleep bloop"))
             .with(text("!"));
 
-        assert_parses_succeeds(input, expected);
+        assert_parse_succeeds(input, expected);
     }
 
     #[test]
@@ -1379,7 +1379,7 @@ mod test {
             .with(raw_text("eeee"))
             .with(text("p!"));
 
-        assert_parses_succeeds(input, expected);
+        assert_parse_succeeds(input, expected);
     }
 
     #[test]
@@ -1391,7 +1391,7 @@ mod test {
             .with(raw_text("PURR_LOUDLY"))
             .with(text(" to true"));
 
-        assert_parses_succeeds(input, expected);
+        assert_parse_succeeds(input, expected);
     }
 
     #[test]
@@ -1400,7 +1400,7 @@ mod test {
 
         let expected = paragraph().with(raw_text("Keep your       distance"));
 
-        assert_parses_succeeds(input, expected);
+        assert_parse_succeeds(input, expected);
     }
 
     #[test]
@@ -1409,7 +1409,7 @@ mod test {
 
         let expected = paragraph().with(raw_text("Great cats"));
 
-        assert_parses_succeeds(input, expected);
+        assert_parse_succeeds(input, expected);
     }
 
     #[test]
@@ -1418,7 +1418,7 @@ mod test {
 
         let expected = paragraph().with(strikethrough_text("Great dogs"));
 
-        assert_parses_succeeds(input, expected);
+        assert_parse_succeeds(input, expected);
     }
 
     #[test]
@@ -1427,7 +1427,7 @@ mod test {
 
         let expected = paragraph().with(raw_text(" Meow?"));
 
-        assert_parses_succeeds(input, expected);
+        assert_parse_succeeds(input, expected);
     }
 
     #[test]
@@ -1436,7 +1436,7 @@ mod test {
 
         let expected = paragraph().with(raw_text("Meow "));
 
-        assert_parses_succeeds(input, expected);
+        assert_parse_succeeds(input, expected);
     }
 
     #[test]
@@ -1445,7 +1445,7 @@ mod test {
 
         let expected = paragraph().with(raw_text(" Meow"));
 
-        assert_parses_succeeds(input, expected);
+        assert_parse_succeeds(input, expected);
     }
 
     #[test]
@@ -1454,7 +1454,7 @@ mod test {
 
         let expected = paragraph().with(raw_text("Meow "));
 
-        assert_parses_succeeds(input, expected);
+        assert_parse_succeeds(input, expected);
     }
 
     #[test]
@@ -1463,7 +1463,7 @@ mod test {
 
         let expected = paragraph().with(raw_text("Great cats assemble!"));
 
-        assert_parses_succeeds(input, expected);
+        assert_parse_succeeds(input, expected);
     }
 
     #[test]
@@ -1472,7 +1472,7 @@ mod test {
 
         let expected = paragraph().with(text("Felines - fantastic!"));
 
-        assert_parses_succeeds(input, expected);
+        assert_parse_succeeds(input, expected);
     }
 
     #[test]
@@ -1481,7 +1481,7 @@ mod test {
 
         let expected = paragraph().with(text("Cool kitty"));
 
-        assert_parses_succeeds(input, expected);
+        assert_parse_succeeds(input, expected);
     }
 
     #[test]
@@ -1493,7 +1493,7 @@ mod test {
             .with(emphasised_text("cat cat"))
             .with(text(" cat."));
 
-        assert_parses_succeeds(input, expected);
+        assert_parse_succeeds(input, expected);
     }
 
     #[test]
@@ -1502,7 +1502,7 @@ mod test {
 
         let expected = paragraph().with(text("Cat cat"));
 
-        assert_parses_succeeds(input, expected);
+        assert_parse_succeeds(input, expected);
     }
 
     #[test]
@@ -1511,7 +1511,7 @@ mod test {
 
         let expected = paragraph().with(strong_text("Cat cat"));
 
-        assert_parses_succeeds(input, expected);
+        assert_parse_succeeds(input, expected);
     }
 
     #[test]
@@ -1520,7 +1520,7 @@ mod test {
 
         let expected = paragraph().with(raw_text("Cat   cat"));
 
-        assert_parses_succeeds(input, expected);
+        assert_parse_succeeds(input, expected);
     }
 
     #[test]
@@ -1529,7 +1529,7 @@ mod test {
 
         let expected = paragraph().with(text("Cat cat"));
 
-        assert_parses_succeeds(input, expected);
+        assert_parse_succeeds(input, expected);
     }
 
     #[test]
@@ -1538,7 +1538,7 @@ mod test {
 
         let expected = paragraph().with(strong_text("Cat cat"));
 
-        assert_parses_succeeds(input, expected);
+        assert_parse_succeeds(input, expected);
     }
 
     #[test]
@@ -1547,7 +1547,7 @@ mod test {
 
         let expected = paragraph().with(raw_text("Cat   cat"));
 
-        assert_parses_succeeds(input, expected);
+        assert_parse_succeeds(input, expected);
     }
 
     #[test]
@@ -1673,7 +1673,7 @@ mod test {
 
         let expected = paragraph().with(text("Cats cats cats"));
 
-        assert_parses_succeeds(input, expected);
+        assert_parse_succeeds(input, expected);
     }
 
     #[test]
@@ -1682,7 +1682,7 @@ mod test {
 
         let expected = paragraph().with(text("Cats cats cats"));
 
-        assert_parses_succeeds(input, expected);
+        assert_parse_succeeds(input, expected);
     }
 
     #[test]
@@ -1691,7 +1691,7 @@ mod test {
 
         let expected = paragraph().with(text("Cats cats cats"));
 
-        assert_parses_succeeds(input, expected);
+        assert_parse_succeeds(input, expected);
     }
 
     #[test]
@@ -1700,7 +1700,7 @@ mod test {
 
         let expected = paragraph().with(text("Cats are friends"));
 
-        assert_parses_succeeds(input, expected);
+        assert_parse_succeeds(input, expected);
     }
 
     #[test]
@@ -1709,7 +1709,7 @@ mod test {
 
         let expected = paragraph().with(text("Feline friends"));
 
-        assert_parses_succeeds(input, expected);
+        assert_parse_succeeds(input, expected);
     }
 
     #[test]
@@ -1718,7 +1718,7 @@ mod test {
 
         let expected = paragraph().with(strong_text("Cat")).with(text(" cat"));
 
-        assert_parses_succeeds(input, expected);
+        assert_parse_succeeds(input, expected);
     }
 
     #[test]
@@ -1729,7 +1729,7 @@ mod test {
             .with_block(paragraph().with(text("Cat")))
             .with_block(paragraph().with(text("cat")));
 
-        assert_parses_succeeds(input, expected);
+        assert_parse_succeeds(input, expected);
     }
 
     #[test]
@@ -1746,7 +1746,7 @@ mod test {
                 .with_title("Practical espionage for felines"),
         );
 
-        assert_parses_succeeds(input, expected);
+        assert_parse_succeeds(input, expected);
     }
 
     #[test]
@@ -1764,7 +1764,7 @@ mod test {
             .with_metadata(metadata().with_id("01.23"))
             .with_block(paragraph().with(text("Hello cats and kittens")));
 
-        assert_parses_succeeds(input, expected);
+        assert_parse_succeeds(input, expected);
     }
 
     #[test]
@@ -1773,7 +1773,7 @@ mod test {
 
         let expected = document().with_metadata(metadata().with_id("01.23"));
 
-        assert_parses_succeeds(input, expected);
+        assert_parse_succeeds(input, expected);
     }
 
     #[test]
@@ -1782,7 +1782,7 @@ mod test {
 
         let expected = document().with_metadata(metadata().with_id("01.23"));
 
-        assert_parses_succeeds(input, expected);
+        assert_parse_succeeds(input, expected);
     }
 
     #[test]
@@ -1823,7 +1823,7 @@ mod test {
             .with(paragraph().with(text("Here are some facts...")))
             .with(paragraph().with(text("...about the cats!")));
 
-        assert_parses_succeeds(input, expected);
+        assert_parse_succeeds(input, expected);
     }
 
     //TODO: We should probably allow this after all.
@@ -1879,7 +1879,7 @@ mod test {
 
         let expected = paragraph().with(text("Ripley - Cat"));
 
-        assert_parses_succeeds(input, expected);
+        assert_parse_succeeds(input, expected);
     }
 
     #[test]
@@ -1895,7 +1895,7 @@ mod test {
             .with(paragraph().with(text("Wet food is much better")))
             .with(paragraph().with(text("Water is important also")));
 
-        assert_parses_succeeds(input, expected);
+        assert_parse_succeeds(input, expected);
     }
 
     #[test]
@@ -1904,7 +1904,7 @@ mod test {
 
         let expected = list().with(paragraph().with(text("Meow - meow")));
 
-        assert_parses_succeeds(input, expected);
+        assert_parse_succeeds(input, expected);
     }
 
     #[test]
@@ -1923,7 +1923,7 @@ mod test {
             .with(paragraph().with(text("Wet food is much better")))
             .with(paragraph().with(text("Water is important also")));
 
-        assert_parses_succeeds(input, expected);
+        assert_parse_succeeds(input, expected);
     }
 
     #[test]
@@ -1951,7 +1951,7 @@ mod test {
                     .with(raw_text("important  also")),
             );
 
-        assert_parses_succeeds(input, expected);
+        assert_parse_succeeds(input, expected);
     }
 
     #[test]
@@ -1972,7 +1972,7 @@ mod test {
                     .with(paragraph().with(text("Beef"))),
             );
 
-        assert_parses_succeeds(input, expected);
+        assert_parse_succeeds(input, expected);
     }
 
     #[test]
@@ -1994,7 +1994,7 @@ mod test {
                 ),
             );
 
-        assert_parses_succeeds(input, expected);
+        assert_parse_succeeds(input, expected);
     }
 
     #[test]
@@ -2010,7 +2010,7 @@ mod test {
             )
             .with(list().with(paragraph().with(text("baz"))));
 
-        assert_parses_succeeds(input, expected);
+        assert_parse_succeeds(input, expected);
     }
 
     #[test]
@@ -2021,7 +2021,7 @@ mod test {
             .with(paragraph().with(text("Foo")))
             .with(paragraph().with(text("Bar")));
 
-        assert_parses_succeeds(input, expected);
+        assert_parse_succeeds(input, expected);
     }
 
     #[test]
@@ -2035,7 +2035,7 @@ mod test {
                 .with(text("r")),
         );
 
-        assert_parses_succeeds(input, expected);
+        assert_parse_succeeds(input, expected);
     }
 
     #[test]
@@ -2086,7 +2086,7 @@ mod test {
             )
             .with(paragraph().with(text("Nice things to drink")));
 
-        assert_parses_succeeds(input, expected);
+        assert_parse_succeeds(input, expected);
     }
 
     #[test]
@@ -2120,7 +2120,7 @@ mod test {
             )
             .with_reference("Ripley2020", "https://example.com");
 
-        assert_parses_succeeds(input, expected);
+        assert_parse_succeeds(input, expected);
     }
 
     //TODO: Do we want to enforce references being at the end?
