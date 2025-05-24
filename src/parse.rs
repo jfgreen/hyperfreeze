@@ -424,8 +424,10 @@ fn parse_list(scanner: &mut Scanner) -> ParseResult<Block> {
 
         if indent == stack.indent + 1 {
             stack.push();
-        } else if stack.indent > 0 && indent == stack.indent - 1 {
-            stack.pop();
+        } else if indent < stack.indent {
+            for _ in 0..(stack.indent - indent) {
+                stack.pop();
+            }
         } else if indent != stack.indent {
             //FIXME: Have a propper error for this
             todo!("oh no")
@@ -434,9 +436,7 @@ fn parse_list(scanner: &mut Scanner) -> ParseResult<Block> {
         let text = parse_text_runs(scanner, TextMode::List)?;
         stack.add_text(text);
 
-        while scanner.is_on_char(SPACE) {
-            scanner.skip_char();
-        }
+        scanner.skip_while_on_char(SPACE);
 
         //TODO: should we only eat this if next line has a list item
         if scanner.is_on_char(NEW_LINE) {
@@ -1995,40 +1995,6 @@ mod test {
     }
 
     #[test]
-    fn error_specifies_correct_row_and_column() {
-        let input = "Silly cat\ngoes *_*";
-
-        let expected = (7, 2);
-
-        let error = parse_str(input).unwrap_err();
-        let actual = (error.input_column, error.input_line);
-
-        assert_eq!(actual, expected);
-    }
-
-    #[test]
-    fn basic_link_with_reference() {
-        let input = concat!(
-            "For more info, consult [our guide on petting cats](Ripley2020),\n",
-            "created by our own in house experts.\n",
-            "\n",
-            "#references\n",
-            "Ripley2020 -> https://example.com"
-        );
-
-        let expected = document()
-            .with_block(
-                paragraph()
-                    .with(text("For more info, consult "))
-                    .with(linked_text("our guide on petting cats", "Ripley2020"))
-                    .with(text(", created by our own in house experts.")),
-            )
-            .with_reference("Ripley2020", "https://example.com");
-
-        assert_parses_succeeds(input, expected);
-    }
-
-    #[test]
     fn list_with_raw_over_newline() {
         let input = "- f`oo\n  ba`r\n  - baz";
 
@@ -2085,6 +2051,61 @@ mod test {
         let expected = ErrorKind::UnevenListIndent(1);
 
         assert_parse_fails(input, expected);
+    }
+
+    #[test]
+    fn list_skips_indent_at_end_of_item() {
+        let input = concat!(
+            "- Nice things to eat\n",
+            "  - Beef\n",
+            "    - Wagyu\n",
+            "- Nice things to drink\n",
+        );
+
+        let expected = list()
+            .with(paragraph().with(text("Nice things to eat")))
+            .with(
+                list()
+                    .with(paragraph().with(text("Beef")))
+                    .with(list().with(paragraph().with(text("Wagyu")))),
+            )
+            .with(paragraph().with(text("Nice things to drink")));
+
+        assert_parses_succeeds(input, expected);
+    }
+
+    #[test]
+    fn error_specifies_correct_row_and_column() {
+        let input = "Silly cat\ngoes *_*";
+
+        let expected = (7, 2);
+
+        let error = parse_str(input).unwrap_err();
+        let actual = (error.input_column, error.input_line);
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn basic_link_with_reference() {
+        let input = concat!(
+            "For more info, consult [our guide on petting cats](Ripley2020),\n",
+            "created by our own in house experts.\n",
+            "\n",
+            "#references\n",
+            "Ripley2020 -> https://example.com"
+        );
+
+        let expected = document()
+            .with_block(
+                paragraph()
+                    .with(text("For more info, consult "))
+                    .with(linked_text("our guide on petting cats", "Ripley2020"))
+                    .with(text(", created by our own in house experts.")),
+            )
+            .with_reference("Ripley2020", "https://example.com");
+
+        assert_parses_succeeds(input, expected);
     }
 
     //TODO: Do we want to enforce references being at the end?
