@@ -100,6 +100,7 @@ enum ErrorKind {
     ExpectedMetadataHeader,
     ExpectedReferencesHeader,
     UnevenListIndent(usize),
+    MissingListLevel((usize, usize)),
     UnexpectedEndOfInput,
 }
 
@@ -125,6 +126,9 @@ impl Display for ParseError {
             ExpectedMetadataHeader => write!(f, "expected 'metadata' header"),
             ExpectedReferencesHeader => write!(f, "expected 'references' header"),
             UnevenListIndent(spaces) => write!(f, "list indent of {} is not even", spaces),
+            MissingListLevel((from, to)) => {
+                write!(f, "list indent skipped from {} to {}", from, to)
+            }
             UnexpectedEndOfInput => write!(f, "unexpected end of input"),
         }?;
 
@@ -429,8 +433,7 @@ fn parse_list(scanner: &mut Scanner) -> ParseResult<Block> {
                 stack.pop();
             }
         } else if indent != stack.indent {
-            //FIXME: Have a propper error for this
-            todo!("oh no")
+            return parse_err!(MissingListLevel((stack.indent, indent)), start_of_line);
         }
 
         let text = parse_text_runs(scanner, TextMode::List)?;
@@ -2054,7 +2057,19 @@ mod test {
     }
 
     #[test]
-    fn list_skips_indent_at_end_of_item() {
+    fn list_that_skips_ascending_indent_level() {
+        let input = concat!(
+            "- Nice things to eat\n",
+            "    - Wagyu beef because it is oh so tender\n",
+        );
+
+        let expected = ErrorKind::MissingListLevel((0, 2));
+
+        assert_parse_fails(input, expected);
+    }
+
+    #[test]
+    fn list_that_skips_decending_indent_level() {
         let input = concat!(
             "- Nice things to eat\n",
             "  - Beef\n",
