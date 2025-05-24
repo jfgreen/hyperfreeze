@@ -99,6 +99,7 @@ enum ErrorKind {
     ExpectedLink,
     ExpectedMetadataHeader,
     ExpectedReferencesHeader,
+    UnevenListIndent(usize),
     UnexpectedEndOfInput,
 }
 
@@ -123,6 +124,7 @@ impl Display for ParseError {
             ExpectedLink => write!(f, "expected link"),
             ExpectedMetadataHeader => write!(f, "expected 'metadata' header"),
             ExpectedReferencesHeader => write!(f, "expected 'references' header"),
+            UnevenListIndent(spaces) => write!(f, "list indent of {} is not even", spaces),
             UnexpectedEndOfInput => write!(f, "unexpected end of input"),
         }?;
 
@@ -405,13 +407,14 @@ fn parse_list(scanner: &mut Scanner) -> ParseResult<Block> {
 
     while on_list_item(scanner) {
         let mut space_count = 0;
+        let start_of_line = scanner.position();
         while scanner.is_on_char(SPACE) {
             space_count += 1;
             scanner.skip_char();
         }
+
         if space_count % 2 != 0 {
-            todo!("oh no")
-            //FIXME: Have a propper error for this
+            return parse_err!(UnevenListIndent(space_count), start_of_line);
         }
 
         expect_char(scanner, DASH)?;
@@ -2071,6 +2074,15 @@ mod test {
         let input = "- f_oo\n  -ba_r";
 
         let expected = ErrorKind::ExpectedChar('_');
+
+        assert_parse_fails(input, expected);
+    }
+
+    #[test]
+    fn list_with_uneven_spaces() {
+        let input = "-foo\n -bar";
+
+        let expected = ErrorKind::UnevenListIndent(1);
 
         assert_parse_fails(input, expected);
     }
