@@ -82,6 +82,12 @@ impl<'a> Scanner<'a> {
         self.read_next_char();
     }
 
+    pub fn skip_chars(&mut self, count: usize) {
+        for _ in 0..count {
+            self.read_next_char();
+        }
+    }
+
     pub fn skip_while_on_char(&mut self, c1: char) {
         self.skip_while(|c2| c1 == c2)
     }
