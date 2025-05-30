@@ -141,15 +141,14 @@ impl Display for ParseError {
             )?;
             writeln!(f)?;
             writeln!(f, "{}", failing_line)?;
-            for _ in 1..self.input_column {
+            for _ in 2..self.input_column {
                 write!(f, " ")?;
             }
             writeln!(f, "^")?;
-
-            writeln!(f)?;
         }
 
         if self.backtrace.status() == BacktraceStatus::Captured {
+            writeln!(f)?;
             writeln!(f, "Parse backtrace:")?;
             writeln!(f, "{}", self.backtrace)?;
         }
@@ -358,15 +357,15 @@ fn parse_container(scanner: &mut Scanner) -> ParseResult<Container> {
 
 fn parse_block(scanner: &mut Scanner) -> ParseResult<Block> {
     let block = if scanner.is_on_char(HASH) {
-        scanner.skip_char();
         let block_position = scanner.position();
+        scanner.skip_char();
         let block_name = eat_identifier(scanner)?;
         expect_char(scanner, NEW_LINE)?;
 
         match block_name {
             "metadata" => parse_err!(MetadataNotAtStart, block_position),
-            "references" => panic!("TODO: thoughtful error"),
             "paragraph" => parse_paragraph(scanner),
+            "list" => parse_list(scanner),
             _ => parse_err!(UnknownBlock(block_name.into()), block_position),
         }
     } else if scanner.is_on_char(DASH) {
@@ -600,6 +599,7 @@ fn try_eat_text_space<'a>(scanner: &Scanner<'a>, mode: TextMode) -> Option<Scann
 
 fn parse_inline_raw_text_run(scanner: &mut Scanner) -> ParseResult<TextRun> {
     let mut run = String::new();
+    let run_start = scanner.position();
     expect_char(scanner, BACKTICK)?;
 
     loop {
@@ -632,7 +632,7 @@ fn parse_inline_raw_text_run(scanner: &mut Scanner) -> ParseResult<TextRun> {
     }
 
     if run.is_empty() {
-        return parse_err!(EmptyDelimitedText, scanner.position());
+        return parse_err!(EmptyDelimitedText, run_start);
     }
 
     Ok(TextRun {
@@ -1022,7 +1022,6 @@ mod test {
     }
 
     //TODO: See if we can group / order these ever growing tests...
-    //TODO: See if we can avoid the builder pattern somehow... macros?
 
     #[test]
     fn complete_doc_test() {
@@ -1959,6 +1958,23 @@ mod test {
     }
 
     #[test]
+    fn explicit_list() {
+        let input = concat!(
+            "#list\n",
+            "- Dry food is ok\n",
+            "- Wet food is much better\n",
+            "- Water is important also"
+        );
+
+        let expected = list()
+            .with(paragraph().with(text("Dry food is ok")))
+            .with(paragraph().with(text("Wet food is much better")))
+            .with(paragraph().with(text("Water is important also")));
+
+        assert_parse_succeeds(input, expected);
+    }
+
+    #[test]
     fn dash_in_list_text_is_not_treated_as_bullet() {
         let input = concat!("- Meow - meow\n",);
 
@@ -2188,6 +2204,4 @@ mod test {
     // TODO: test missing reference
     // Think about how to print a sensible error location...
     // ...scanner will be at end once we detect the missing reference
-
-    //TODO: test explicit list
 }

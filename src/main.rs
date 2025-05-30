@@ -53,7 +53,14 @@ impl Display for Error {
     }
 }
 
-fn main() -> Result<(), Error> {
+fn main() {
+    parse_doc().unwrap_or_else(|err| {
+        eprint!("{err}");
+        std::process::exit(1);
+    });
+}
+
+fn parse_doc() -> Result<(), Error> {
     let (input_path, output_path) = parse_args(std::env::args());
 
     let mut input = String::new();
