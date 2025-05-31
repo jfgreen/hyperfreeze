@@ -82,7 +82,7 @@ fn eat_char(scanner: &mut Scanner) -> ParseResult<char> {
 enum ErrorKind {
     LooseDelimiter,
     EmptyDelimitedText,
-    MetadataNotAtStart,
+    DocumentHeaderNotAtStart,
     UnknownMetadata(String),
     UnknownBlock(String),
     UnknownContainer(String),
@@ -97,8 +97,7 @@ enum ErrorKind {
     ExpectedMetadataValue,
     ExpectedSpace,
     ExpectedLink,
-    ExpectedMetadataHeader,
-    ExpectedReferencesHeader,
+    ExpectedReferencesBlock,
     UnevenListIndent(usize),
     MissingListLevel((usize, usize)),
     UnexpectedEndOfInput,
@@ -109,7 +108,7 @@ impl Display for ParseError {
         match &self.kind {
             LooseDelimiter => write!(f, "delimited text cant have leading/trailing whitespace"),
             EmptyDelimitedText => write!(f, "delimited text cant be empty"),
-            MetadataNotAtStart => write!(f, "metadata should be at start of document"),
+            DocumentHeaderNotAtStart => write!(f, "document header should be at start of document"),
             UnknownMetadata(key) => write!(f, "unknown metadata '{}", key),
             UnknownBlock(name) => write!(f, "unknown block '{}'", name),
             UnknownContainer(name) => write!(f, "unknown container '{}'", name),
@@ -124,8 +123,7 @@ impl Display for ParseError {
             ExpectedMetadataValue => write!(f, "expected metadata value"),
             ExpectedSpace => write!(f, "expected one or more spaces"),
             ExpectedLink => write!(f, "expected link"),
-            ExpectedMetadataHeader => write!(f, "expected 'metadata' header"),
-            ExpectedReferencesHeader => write!(f, "expected 'references' header"),
+            ExpectedReferencesBlock => write!(f, "expected 'references' header"),
             UnevenListIndent(spaces) => write!(f, "list indent of {} is not even", spaces),
             MissingListLevel((from, to)) => {
                 write!(f, "list indent skipped from {} to {}", from, to)
@@ -164,8 +162,7 @@ use ErrorKind::*;
 const SPACE: char = ' ';
 const NEW_LINE: char = '\n';
 const COLON: char = ':';
-const METADATA_HEADER: &str = "#metadata";
-const REFERENCES_HEADER: &str = "#references";
+const REFERENCES_BLOCK_HEADER: &str = "#references";
 const DELIMITED_CONATINER_START: &str = ">>>";
 const DELIMITED_CONTAINER_END: &str = "<<<";
 const HASH: char = '#';
@@ -177,6 +174,7 @@ const BACKTICK: char = '`';
 const ASTERISK: char = '*';
 const TILDE: char = '~';
 const UNDERSCORE: char = '_';
+const SLASH: char = '/';
 const BACKSLASH: char = '\\';
 const DASH: char = '-';
 const EXCLAMATION_MARK: char = '!';
@@ -213,6 +211,7 @@ fn char_usable_in_raw_frag(c: char) -> bool {
 enum TextMode {
     Paragraph,
     List,
+    Title,
 }
 
 pub fn parse_str(input: &str) -> Result<Document, ParseError> {
@@ -228,8 +227,8 @@ fn parse_document(scanner: &mut Scanner) -> ParseResult<Document> {
 
     scanner.skip_while_on_any(WHITESPACE_CHARS);
 
-    if scanner.is_on_str(METADATA_HEADER) {
-        metadata = parse_metadata_block(scanner)?;
+    if scanner.is_on_char(SLASH) {
+        metadata = parse_document_header(scanner)?;
     }
 
     while scanner.has_input() {
@@ -239,9 +238,13 @@ fn parse_document(scanner: &mut Scanner) -> ParseResult<Document> {
             let container = parse_container(scanner)?;
             let element = Element::Container(container);
             elements.push(element);
-        } else if scanner.is_on_str(REFERENCES_HEADER) {
+        //TODO: Ensure that references goes outside any container or section
+        } else if scanner.is_on_str(REFERENCES_BLOCK_HEADER) {
             let refs = parse_references(scanner)?;
             references.extend(refs);
+        } else if scanner.is_on_char(SLASH) {
+            //TODO: This will need reworking once we add sections propper
+            return parse_err!(DocumentHeaderNotAtStart, scanner.position());
         } else {
             let block = parse_block(scanner)?;
             let element = Element::Block(block);
@@ -256,19 +259,28 @@ fn parse_document(scanner: &mut Scanner) -> ParseResult<Document> {
     })
 }
 
-fn parse_metadata_block(scanner: &mut Scanner) -> ParseResult<Metadata> {
-    expect_char(scanner, HASH)?;
-    let ident_position = scanner.position();
-    let ident = eat_identifier(scanner)?;
-    if ident != "metadata" {
-        return parse_err!(ExpectedMetadataHeader, ident_position);
+fn parse_document_header(scanner: &mut Scanner) -> ParseResult<Metadata> {
+    expect_char(scanner, SLASH)?;
+    scanner.skip_while_on_char(SPACE);
+
+    if scanner.is_on_char(SLASH) {
+        todo!("not implemented - should reject")
     }
 
-    expect_char(scanner, NEW_LINE)?;
+    let title = parse_markup_text(scanner, TextMode::Title)?;
 
-    let mut metadata = Metadata::default();
+    scanner.skip_while_on_char(SPACE);
 
-    loop {
+    if scanner.has_input() {
+        expect_char(scanner, NEW_LINE)?;
+    }
+
+    let mut metadata = Metadata {
+        title,
+        ..Default::default()
+    };
+
+    while scanner.is_on(char_usable_in_identifier) {
         let key_position = scanner.position();
         let key = eat_identifier(scanner)?;
         scanner.skip_while_on_char(SPACE);
@@ -290,12 +302,6 @@ fn parse_metadata_block(scanner: &mut Scanner) -> ParseResult<Metadata> {
         if scanner.has_input() {
             expect_char(scanner, NEW_LINE)?;
         }
-
-        if scanner.is_on(char_usable_in_identifier) {
-            continue;
-        } else {
-            break;
-        }
     }
 
     Ok(metadata)
@@ -314,6 +320,7 @@ fn parse_container(scanner: &mut Scanner) -> ParseResult<Container> {
 
     let mut blocks = Vec::new();
 
+    //TODO: Ensure containers can not hold sections
     if scanner.is_on_str(DELIMITED_CONATINER_START) {
         scanner.skip_chars(3);
         expect_char(scanner, NEW_LINE)?;
@@ -363,7 +370,6 @@ fn parse_block(scanner: &mut Scanner) -> ParseResult<Block> {
         expect_char(scanner, NEW_LINE)?;
 
         match block_name {
-            "metadata" => parse_err!(MetadataNotAtStart, block_position),
             "paragraph" => parse_paragraph(scanner),
             "list" => parse_list(scanner),
             _ => parse_err!(UnknownBlock(block_name.into()), block_position),
@@ -553,8 +559,8 @@ fn parse_linked_text_run(scanner: &mut Scanner, mode: TextMode) -> ParseResult<T
 
 fn on_text_run(scanner: &Scanner, mode: TextMode) -> bool {
     let on_space = scanner.is_on_one_of(WHITESPACE_CHARS);
-    let on_header_or_footer = scanner.is_on_char(HASH);
-    let on_text_fragment = scanner.has_input() && !on_space && !on_header_or_footer;
+    let on_block_start = scanner.is_on_char(HASH);
+    let on_text_fragment = scanner.has_input() && !on_space && !on_block_start;
     let on_leading_whitespace = try_eat_text_space(scanner, mode).is_some();
 
     on_text_fragment || on_leading_whitespace
@@ -565,6 +571,7 @@ fn on_text_run(scanner: &Scanner, mode: TextMode) -> bool {
     // scanner.is_on(char_usable_in_text_run) || scanner.is_on_text_space_leading_to(char_usable_in_text_run)
 }
 
+//TODO: This is getting silly - passing a function would be easier to follow?
 fn try_eat_text_space<'a>(scanner: &Scanner<'a>, mode: TextMode) -> Option<Scanner<'a>> {
     if !scanner.is_on_one_of(WHITESPACE_CHARS) {
         return None;
@@ -574,6 +581,14 @@ fn try_eat_text_space<'a>(scanner: &Scanner<'a>, mode: TextMode) -> Option<Scann
     let mut has_new_line = false;
 
     peek.skip_while_on_char(SPACE);
+
+    if mode == TextMode::Title {
+        if peek.is_on(char_usable_in_text_frag) {
+            return Some(peek);
+        } else {
+            return None;
+        }
+    }
 
     if peek.is_on_char(NEW_LINE) {
         has_new_line = true;
@@ -646,7 +661,7 @@ fn parse_references(scanner: &mut Scanner) -> ParseResult<Vec<Reference>> {
     let ident_position = scanner.position();
     let ident = eat_identifier(scanner)?;
     if ident != "references" {
-        return parse_err!(ExpectedReferencesHeader, ident_position);
+        return parse_err!(ExpectedReferencesBlock, ident_position);
     }
 
     expect_char(scanner, NEW_LINE)?;
@@ -1026,9 +1041,8 @@ mod test {
     #[test]
     fn complete_doc_test() {
         let input = concat!(
-            "#metadata\n",
+            "/ Feline friendly flower arranging\n",
             "id: 01.42\n",
-            "title: Feline friendly flower arranging\n",
             "\n",
             "!info\n",
             "Did you know flower pots are for *more*\n",
@@ -1135,7 +1149,7 @@ mod test {
     }
 
     #[test]
-    fn block_header_without_new_line_is_rejected() {
+    fn block_without_new_line_is_rejected() {
         let input = "#paragraph";
 
         let expected = ErrorKind::ExpectedChar('\n');
@@ -1753,26 +1767,25 @@ mod test {
     }
 
     #[test]
-    fn doc_metadata() {
+    fn doc_header() {
         let input = concat!(
-            "#metadata\n",
+            "/ Practical espionage for felines in urban settings\n",
             "id: 01.23\n",
-            "title: Practical espionage for felines\n",
         );
 
         let expected = document().with_metadata(
             metadata()
                 .with_id("01.23")
-                .with_title("Practical espionage for felines"),
+                .with_title("Practical espionage for felines in urban settings"),
         );
 
         assert_parse_succeeds(input, expected);
     }
 
     #[test]
-    fn doc_metadata_with_folowing_para() {
+    fn doc_header_with_folowing_para() {
         let input = concat!(
-            "#metadata\n",
+            "/ Some Doc\n",
             "id: 01.23\n",
             "\n",
             "\n",
@@ -1781,48 +1794,51 @@ mod test {
         );
 
         let expected = document()
-            .with_metadata(metadata().with_id("01.23"))
+            .with_metadata(metadata().with_title("Some Doc").with_id("01.23"))
             .with_block(paragraph().with(text("Hello cats and kittens")));
 
         assert_parse_succeeds(input, expected);
     }
 
     #[test]
-    fn doc_metadata_with_alternate_spacing() {
-        let input = "#metadata\nid :01.23\n";
+    fn doc_header_with_worky_spacing() {
+        let input = "/My Very   Cool Document   \nid :01.23\n";
 
-        let expected = document().with_metadata(metadata().with_id("01.23"));
-
-        assert_parse_succeeds(input, expected);
-    }
-
-    #[test]
-    fn doc_metadata_with_no_trailing_newline() {
-        let input = "#metadata\nid :01.23";
-
-        let expected = document().with_metadata(metadata().with_id("01.23"));
+        let expected = document().with_metadata(
+            metadata()
+                .with_title("My Very Cool Document")
+                .with_id("01.23"),
+        );
 
         assert_parse_succeeds(input, expected);
     }
 
     #[test]
-    fn metadata_not_at_start_is_rejected() {
+    fn doc_header_with_no_trailing_newline() {
+        let input = "/Doc";
+
+        let expected = document().with_metadata(metadata().with_title("Doc"));
+
+        assert_parse_succeeds(input, expected);
+    }
+
+    #[test]
+    fn doc_header_not_at_start_is_rejected() {
         let input = concat!(
             "Hi!\n",
             "\n",
-            "#metadata\n",
+            "/ My Really Very Cool Document \n",
             "id: 01.23\n",
-            "title: Some document\n",
         );
 
-        let expected = ErrorKind::MetadataNotAtStart;
+        let expected = ErrorKind::DocumentHeaderNotAtStart;
 
         assert_parse_fails(input, expected);
     }
 
     #[test]
-    fn metadata_with_unknown_attribute_is_rejected() {
-        let input = "#metadata\nkibble: yes please\n";
+    fn doc_header_with_unknown_metadata_is_rejected() {
+        let input = "/Doc\nkibble: yes please\n";
 
         let expected = ErrorKind::UnknownMetadata(String::from("kibble"));
 
@@ -1872,7 +1888,7 @@ mod test {
     }
 
     #[test]
-    fn only_container_header_is_rejected() {
+    fn empty_container_is_rejected() {
         let input = "!info\n";
 
         let expected = ErrorKind::EmptyContainer;
@@ -1881,7 +1897,7 @@ mod test {
     }
 
     #[test]
-    fn detactched_container_header_is_rejected() {
+    fn detactched_container_is_rejected() {
         let input = "!info\n\ncats!";
 
         let expected = ErrorKind::EmptyContainer;
