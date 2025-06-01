@@ -162,7 +162,6 @@ use ErrorKind::*;
 const SPACE: char = ' ';
 const NEW_LINE: char = '\n';
 const COLON: char = ':';
-const REFERENCES_BLOCK_HEADER: &str = "#references";
 const DELIMITED_CONATINER_START: &str = ">>>";
 const DELIMITED_CONTAINER_END: &str = "<<<";
 const HASH: char = '#';
@@ -243,7 +242,7 @@ fn parse_document(scanner: &mut Scanner) -> ParseResult<Document> {
         // or we can enforce it comes second (if last, implication is nested in prior section)
         // If its not second or last, then it implicitly breaks the doc flow
         // Start is nice - easier parsing, can detect invalid refs as we go
-        } else if scanner.is_on_str(REFERENCES_BLOCK_HEADER) {
+        } else if scanner.is_on_char(AT_SIGN) {
             let refs = parse_references(scanner)?;
             references.extend(refs);
         } else if scanner.is_on_char(SLASH) {
@@ -687,7 +686,7 @@ fn parse_inline_raw_text_run(scanner: &mut Scanner) -> ParseResult<TextRun> {
 }
 
 fn parse_references(scanner: &mut Scanner) -> ParseResult<Vec<Reference>> {
-    expect_char(scanner, HASH)?;
+    expect_char(scanner, AT_SIGN)?;
     let ident_position = scanner.position();
     let ident = eat_identifier(scanner)?;
     if ident != "references" {
@@ -2229,7 +2228,7 @@ mod test {
             "For more info, consult [our guide on petting cats]@Ripley2020,\n",
             "created by our own in house experts.\n",
             "\n",
-            "#references\n",
+            "@references\n",
             "Ripley2020 -> https://example.com"
         );
 
@@ -2250,7 +2249,7 @@ mod test {
         let input = concat!(
             "We like [ petting cats ]@Ripley2020 a lot.\n",
             "\n",
-            "#references\n",
+            "@references\n",
             "Ripley2020 -> https://example.com"
         );
 
