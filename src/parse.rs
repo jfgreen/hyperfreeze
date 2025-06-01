@@ -37,47 +37,6 @@ macro_rules! build_parse_error {
     };
 }
 
-fn expect_char(scanner: &mut Scanner, expected: char) -> ParseResult<()> {
-    try_scan!(scanner.expect_char(expected), ExpectedChar(expected))
-}
-
-fn eat_identifier<'a>(scanner: &mut Scanner<'a>) -> ParseResult<&'a str> {
-    try_scan!(
-        scanner.eat_while(char_usable_in_identifier),
-        ExpectedIdentifier
-    )
-}
-
-fn eat_meta_value<'a>(scanner: &mut Scanner<'a>) -> ParseResult<&'a str> {
-    try_scan!(scanner.eat_until_char(NEW_LINE), ExpectedMetadataValue)
-}
-
-fn eat_link<'a>(scanner: &mut Scanner<'a>) -> ParseResult<&'a str> {
-    try_scan!(scanner.eat_until_one_of(WHITESPACE_CHARS), ExpectedLink)
-}
-
-fn eat_space<'a>(scanner: &mut Scanner<'a>) -> ParseResult<&'a str> {
-    try_scan!(scanner.eat_while_char(SPACE), ExpectedSpace)
-}
-
-fn eat_raw_fragment<'a>(scanner: &mut Scanner<'a>) -> ParseResult<&'a str> {
-    try_scan!(
-        scanner.eat_while(char_usable_in_raw_frag),
-        ExpectedRawFragment
-    )
-}
-
-fn eat_text_fragment<'a>(scanner: &mut Scanner<'a>) -> ParseResult<&'a str> {
-    try_scan!(
-        scanner.eat_while(char_usable_in_text_frag),
-        ExpectedRawFragment
-    )
-}
-
-fn eat_char(scanner: &mut Scanner) -> ParseResult<char> {
-    try_scan!(scanner.eat_char(), UnexpectedEndOfInput)
-}
-
 #[derive(PartialEq, Eq, Debug)]
 enum ErrorKind {
     LooseDelimiter,
@@ -205,6 +164,47 @@ fn char_usable_in_text_frag(c: char) -> bool {
 
 fn char_usable_in_raw_frag(c: char) -> bool {
     ![BACKTICK, SPACE, NEW_LINE].contains(&c)
+}
+
+fn expect_char(scanner: &mut Scanner, expected: char) -> ParseResult<()> {
+    try_scan!(scanner.expect_char(expected), ExpectedChar(expected))
+}
+
+fn eat_identifier<'a>(scanner: &mut Scanner<'a>) -> ParseResult<&'a str> {
+    try_scan!(
+        scanner.eat_while(char_usable_in_identifier),
+        ExpectedIdentifier
+    )
+}
+
+fn eat_meta_value<'a>(scanner: &mut Scanner<'a>) -> ParseResult<&'a str> {
+    try_scan!(scanner.eat_until_char(NEW_LINE), ExpectedMetadataValue)
+}
+
+fn eat_link<'a>(scanner: &mut Scanner<'a>) -> ParseResult<&'a str> {
+    try_scan!(scanner.eat_until_one_of(WHITESPACE_CHARS), ExpectedLink)
+}
+
+fn eat_space<'a>(scanner: &mut Scanner<'a>) -> ParseResult<&'a str> {
+    try_scan!(scanner.eat_while_char(SPACE), ExpectedSpace)
+}
+
+fn eat_raw_fragment<'a>(scanner: &mut Scanner<'a>) -> ParseResult<&'a str> {
+    try_scan!(
+        scanner.eat_while(char_usable_in_raw_frag),
+        ExpectedRawFragment
+    )
+}
+
+fn eat_text_fragment<'a>(scanner: &mut Scanner<'a>) -> ParseResult<&'a str> {
+    try_scan!(
+        scanner.eat_while(char_usable_in_text_frag),
+        ExpectedRawFragment
+    )
+}
+
+fn eat_char(scanner: &mut Scanner) -> ParseResult<char> {
+    try_scan!(scanner.eat_char(), UnexpectedEndOfInput)
 }
 
 #[derive(Clone, Copy, PartialEq)]
