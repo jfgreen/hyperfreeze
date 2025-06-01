@@ -1146,7 +1146,7 @@ mod test {
     fn explicit_paragraph_with_block_break_before_text_is_rejected() {
         let input = "#paragraph\n\nCats go meeow!";
 
-        let expected = ErrorKind::WhitespaceAtParagraphStart;
+        let expected = WhitespaceAtParagraphStart;
 
         assert_parse_fails(input, expected);
     }
@@ -1155,7 +1155,7 @@ mod test {
     fn unknown_block_is_rejected() {
         let input = "#feline\nMeow?";
 
-        let expected = ErrorKind::UnknownBlock("feline".into());
+        let expected = UnknownBlock("feline".into());
 
         assert_parse_fails(input, expected);
     }
@@ -1164,7 +1164,7 @@ mod test {
     fn unknown_block_starting_with_m_is_rejected() {
         let input = "#meowograph\nCats go meeow!";
 
-        let expected = ErrorKind::UnknownBlock("meowograph".into());
+        let expected = UnknownBlock("meowograph".into());
 
         assert_parse_fails(input, expected);
     }
@@ -1173,7 +1173,7 @@ mod test {
     fn empty_block_name_is_rejected() {
         let input = "#\nHi";
 
-        let expected = ErrorKind::ExpectedIdentifier;
+        let expected = ExpectedIdentifier;
 
         assert_parse_fails(input, expected);
     }
@@ -1182,7 +1182,7 @@ mod test {
     fn block_without_new_line_is_rejected() {
         let input = "#paragraph";
 
-        let expected = ErrorKind::ExpectedChar('\n');
+        let expected = ExpectedChar('\n');
 
         assert_parse_fails(input, expected);
     }
@@ -1303,7 +1303,7 @@ mod test {
             "ever so surprising\n"
         );
 
-        let expected = ErrorKind::ExpectedChar('\n');
+        let expected = ExpectedChar('\n');
 
         assert_parse_fails(input, expected);
     }
@@ -1618,7 +1618,7 @@ mod test {
     fn empty_emphasis() {
         let input = "Rules cats must follow: __.";
 
-        let expected = ErrorKind::EmptyDelimitedText;
+        let expected = EmptyDelimitedText;
 
         assert_parse_fails(input, expected);
     }
@@ -1627,7 +1627,7 @@ mod test {
     fn empty_raw() {
         let input = "Robot cat says: ``!.";
 
-        let expected = ErrorKind::EmptyDelimitedText;
+        let expected = EmptyDelimitedText;
 
         assert_parse_fails(input, expected);
     }
@@ -1636,7 +1636,7 @@ mod test {
     fn raw_with_double_linebreak() {
         let input = "`Erm...\n\nmeow?`";
 
-        let expected = ErrorKind::InlineRawHasBlockBreak;
+        let expected = InlineRawHasBlockBreak;
 
         assert_parse_fails(input, expected);
     }
@@ -1645,7 +1645,7 @@ mod test {
     fn raw_with_double_linebreak_containing_whitespace() {
         let input = "`Erm...\n \nmeow?`";
 
-        let expected = ErrorKind::InlineRawHasBlockBreak;
+        let expected = InlineRawHasBlockBreak;
 
         assert_parse_fails(input, expected);
     }
@@ -1654,7 +1654,7 @@ mod test {
     fn strikethrough_with_double_linebreak() {
         let input = "~Erm...\n\nmeow?~";
 
-        let expected = ErrorKind::ExpectedChar('~');
+        let expected = ExpectedChar('~');
 
         assert_parse_fails(input, expected);
     }
@@ -1663,7 +1663,7 @@ mod test {
     fn unmatched_emphasis_1() {
         let input = "_.";
 
-        let expected = ErrorKind::ExpectedChar('_');
+        let expected = ExpectedChar('_');
 
         assert_parse_fails(input, expected);
     }
@@ -1672,7 +1672,7 @@ mod test {
     fn unmatched_emphasis_2() {
         let input = "meow _meow.";
 
-        let expected = ErrorKind::ExpectedChar('_');
+        let expected = ExpectedChar('_');
 
         assert_parse_fails(input, expected);
     }
@@ -1681,7 +1681,7 @@ mod test {
     fn unmatched_emphasis_3() {
         let input = "meow meow_";
 
-        let expected = ErrorKind::ExpectedChar('_');
+        let expected = ExpectedChar('_');
 
         assert_parse_fails(input, expected);
     }
@@ -1690,7 +1690,7 @@ mod test {
     fn nested_styled_text() {
         let input = "_*meow!*_";
 
-        let expected = ErrorKind::ExpectedChar('_');
+        let expected = ExpectedChar('_');
 
         assert_parse_fails(input, expected);
     }
@@ -1699,7 +1699,7 @@ mod test {
     fn loose_strong_delimiter_start() {
         let input = "* meow meow*";
 
-        let expected = ErrorKind::LooseDelimiter;
+        let expected = LooseDelimiter;
 
         assert_parse_fails(input, expected);
     }
@@ -1708,7 +1708,7 @@ mod test {
     fn loose_strong_delimiter_end() {
         let input = "*meow meow *";
 
-        let expected = ErrorKind::LooseDelimiter;
+        let expected = LooseDelimiter;
 
         assert_parse_fails(input, expected);
     }
@@ -1717,7 +1717,7 @@ mod test {
     fn raw_immediately_in_emphasis() {
         let input = "_``_";
 
-        let expected = ErrorKind::ExpectedChar('_');
+        let expected = ExpectedChar('_');
 
         assert_parse_fails(input, expected);
     }
@@ -1726,7 +1726,7 @@ mod test {
     fn raw_within_in_emphasis() {
         let input = "_a``a_";
 
-        let expected = ErrorKind::ExpectedChar('_');
+        let expected = ExpectedChar('_');
 
         assert_parse_fails(input, expected);
     }
@@ -1861,7 +1861,7 @@ mod test {
             "id: 01.23\n",
         );
 
-        let expected = ErrorKind::DocumentHeaderNotAtStart;
+        let expected = DocumentHeaderNotAtStart;
 
         assert_parse_fails(input, expected);
     }
@@ -1870,7 +1870,7 @@ mod test {
     fn doc_header_with_unknown_metadata_is_rejected() {
         let input = "/Doc\nkibble: yes please\n";
 
-        let expected = ErrorKind::UnknownMetadata(String::from("kibble"));
+        let expected = UnknownMetadata(String::from("kibble"));
 
         assert_parse_fails(input, expected);
     }
@@ -1912,7 +1912,7 @@ mod test {
     fn container_missing_start_is_rejected() {
         let input = "Silly cat\n<<<";
 
-        let expected = ErrorKind::ContainerMissingStart;
+        let expected = ContainerMissingStart;
 
         assert_parse_fails(input, expected);
     }
@@ -1921,7 +1921,7 @@ mod test {
     fn empty_container_is_rejected() {
         let input = "!info\n";
 
-        let expected = ErrorKind::EmptyContainer;
+        let expected = EmptyContainer;
 
         assert_parse_fails(input, expected);
     }
@@ -1930,7 +1930,7 @@ mod test {
     fn detactched_container_is_rejected() {
         let input = "!info\n\ncats!";
 
-        let expected = ErrorKind::EmptyContainer;
+        let expected = EmptyContainer;
 
         assert_parse_fails(input, expected);
     }
@@ -1944,7 +1944,7 @@ mod test {
             "<<<"
         );
 
-        let expected = ErrorKind::ExpectedChar('\n');
+        let expected = ExpectedChar('\n');
 
         assert_parse_fails(input, expected);
     }
@@ -1958,7 +1958,7 @@ mod test {
             "<<<toy"
         );
 
-        let expected = ErrorKind::ExpectedChar('\n');
+        let expected = ExpectedChar('\n');
 
         assert_parse_fails(input, expected);
     }
@@ -1973,7 +1973,7 @@ mod test {
             "toy"
         );
 
-        let expected = ErrorKind::ExpectedChar('\n');
+        let expected = ExpectedChar('\n');
 
         assert_parse_fails(input, expected);
     }
@@ -2164,7 +2164,7 @@ mod test {
     fn list_with_emphasis_over_multiple_points() {
         let input = "- f_oo\n  -ba_r";
 
-        let expected = ErrorKind::ExpectedChar('_');
+        let expected = ExpectedChar('_');
 
         assert_parse_fails(input, expected);
     }
@@ -2173,7 +2173,7 @@ mod test {
     fn list_with_uneven_spaces() {
         let input = "-foo\n -bar";
 
-        let expected = ErrorKind::UnevenListIndent(1);
+        let expected = UnevenListIndent(1);
 
         assert_parse_fails(input, expected);
     }
@@ -2185,7 +2185,7 @@ mod test {
             "    - Wagyu beef because it is oh so tender\n",
         );
 
-        let expected = ErrorKind::MissingListLevel((0, 2));
+        let expected = MissingListLevel((0, 2));
 
         assert_parse_fails(input, expected);
     }
