@@ -98,6 +98,7 @@ enum ErrorKind {
     ExpectedSpace,
     ExpectedLink,
     ExpectedReferencesBlock,
+    ReferencesOutOfPlace,
     UnevenListIndent(usize),
     MissingListLevel((usize, usize)),
     UnexpectedEndOfInput,
@@ -124,6 +125,7 @@ impl Display for ParseError {
             ExpectedSpace => write!(f, "expected one or more spaces"),
             ExpectedLink => write!(f, "expected link"),
             ExpectedReferencesBlock => write!(f, "expected 'references' header"),
+            ReferencesOutOfPlace => write!(f, "references not in correct part of document"),
             UnevenListIndent(spaces) => write!(f, "list indent of {} is not even", spaces),
             MissingListLevel((from, to)) => {
                 write!(f, "list indent skipped from {} to {}", from, to)
@@ -229,6 +231,11 @@ fn parse_document(scanner: &mut Scanner) -> ParseResult<Document> {
         metadata = parse_document_header(scanner)?;
     }
 
+    if scanner.is_on_char(AT_SIGN) {
+        let refs = parse_references(scanner)?;
+        references.extend(refs);
+    }
+
     while scanner.has_input() {
         if scanner.is_on_one_of(WHITESPACE_CHARS) {
             scanner.skip_char();
@@ -236,15 +243,8 @@ fn parse_document(scanner: &mut Scanner) -> ParseResult<Document> {
             let container = parse_container(scanner)?;
             let element = Element::Container(container);
             elements.push(element);
-        //TODO: Ensure that references goes outside any container or section
-        // Either we can use a special char for metadata (and ensure last)
-        // or we can make part of doc header?
-        // or we can enforce it comes second (if last, implication is nested in prior section)
-        // If its not second or last, then it implicitly breaks the doc flow
-        // Start is nice - easier parsing, can detect invalid refs as we go
         } else if scanner.is_on_char(AT_SIGN) {
-            let refs = parse_references(scanner)?;
-            references.extend(refs);
+            return parse_err!(ReferencesOutOfPlace, scanner.position());
         } else if scanner.is_on_char(SLASH) {
             //TODO: This will need reworking once we add sections propper
             return parse_err!(DocumentHeaderNotAtStart, scanner.position());
@@ -2225,11 +2225,11 @@ mod test {
     #[test]
     fn basic_link_with_reference() {
         let input = concat!(
+            "@references\n",
+            "Ripley2020 -> https://example.com\n",
+            "\n",
             "For more info, consult [our guide on petting cats]@Ripley2020,\n",
             "created by our own in house experts.\n",
-            "\n",
-            "@references\n",
-            "Ripley2020 -> https://example.com"
         );
 
         let expected = document()
@@ -2247,19 +2247,30 @@ mod test {
     #[test]
     fn whitespace_around_linked_text_is_rejected() {
         let input = concat!(
-            "We like [ petting cats ]@Ripley2020 a lot.\n",
-            "\n",
             "@references\n",
-            "Ripley2020 -> https://example.com"
+            "Ripley2020 -> https://example.com\n",
+            "\n",
+            "We like [ petting cats ]@Ripley2020 a lot.\n",
         );
 
         let expected = LooseDelimiter;
         assert_parse_fails(input, expected);
     }
 
-    //TODO: Do we want to enforce references being at the end?
+    #[test]
+    fn references_after_content_rejected() {
+        let input = concat!(
+            "For more info, consult [our guide on petting cats]@Ripley2020,\n",
+            "created by our own in house experts.\n",
+            "\n",
+            "@references\n",
+            "Ripley2020 -> https://example.com"
+        );
+
+        let expected = ReferencesOutOfPlace;
+
+        assert_parse_fails(input, expected);
+    }
 
     // TODO: test missing reference
-    // Think about how to print a sensible error location...
-    // ...scanner will be at end once we detect the missing reference
 }
