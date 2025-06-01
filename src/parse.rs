@@ -166,8 +166,6 @@ const REFERENCES_BLOCK_HEADER: &str = "#references";
 const DELIMITED_CONATINER_START: &str = ">>>";
 const DELIMITED_CONTAINER_END: &str = "<<<";
 const HASH: char = '#';
-const LEFT_BRACKET: char = '(';
-const RIGHT_BRACKET: char = ')';
 const LEFT_SQUARE_BRACKET: char = '[';
 const RIGHT_SQUARE_BRACKET: char = ']';
 const BACKTICK: char = '`';
@@ -177,6 +175,7 @@ const UNDERSCORE: char = '_';
 const SLASH: char = '/';
 const BACKSLASH: char = '\\';
 const DASH: char = '-';
+const AT_SIGN: char = '@';
 const EXCLAMATION_MARK: char = '!';
 const GREATER_THAN: char = '>';
 const WHITESPACE_CHARS: &[char; 2] = &[SPACE, NEW_LINE];
@@ -239,6 +238,11 @@ fn parse_document(scanner: &mut Scanner) -> ParseResult<Document> {
             let element = Element::Container(container);
             elements.push(element);
         //TODO: Ensure that references goes outside any container or section
+        // Either we can use a special char for metadata (and ensure last)
+        // or we can make part of doc header?
+        // or we can enforce it comes second (if last, implication is nested in prior section)
+        // If its not second or last, then it implicitly breaks the doc flow
+        // Start is nice - easier parsing, can detect invalid refs as we go
         } else if scanner.is_on_str(REFERENCES_BLOCK_HEADER) {
             let refs = parse_references(scanner)?;
             references.extend(refs);
@@ -540,9 +544,8 @@ fn parse_linked_text_run(scanner: &mut Scanner, mode: TextMode) -> ParseResult<T
     expect_char(scanner, LEFT_SQUARE_BRACKET)?;
     let run = parse_markup_text(scanner, mode)?;
     expect_char(scanner, RIGHT_SQUARE_BRACKET)?;
-    expect_char(scanner, LEFT_BRACKET)?;
+    expect_char(scanner, AT_SIGN)?;
     let id = eat_identifier(scanner)?;
-    expect_char(scanner, RIGHT_BRACKET)?;
     Ok(TextRun {
         text: run,
         style: Style::Link(id.into()),
@@ -556,6 +559,26 @@ fn parse_linked_text_run(scanner: &mut Scanner, mode: TextMode) -> ParseResult<T
 // peeking past it are both trivial
 // Doesn't even have to be full RLE, could just store if SPACE | SINGLE BREAK | BLOCK
 // Equally it might be worth storing a str slice to the underlying whitespace string
+//
+// SO... we need to be able to look through whitespace if we are on it
+// and do any of the normal things we are used to doing on the sub string on the other side
+// but we also need to know about the composition of the whitespace
+
+// enum Blah {
+//     Char(&'a str)
+//     Whitespace(&'a str, WhiteSpaceKind)
+// }
+
+// or
+// enum Blah {
+//     Char(usize)
+//     Whitespace(usize, WhiteSpaceKind)
+// }
+// enum WhitespaceKind {
+//     Spaces
+//     SingleBreak
+//     MultiBreak
+// }
 
 fn on_text_run(scanner: &Scanner, mode: TextMode) -> bool {
     let on_space = scanner.is_on_one_of(WHITESPACE_CHARS);
@@ -2196,7 +2219,7 @@ mod test {
     #[test]
     fn basic_link_with_reference() {
         let input = concat!(
-            "For more info, consult [our guide on petting cats](Ripley2020),\n",
+            "For more info, consult [our guide on petting cats]@Ripley2020,\n",
             "created by our own in house experts.\n",
             "\n",
             "#references\n",
@@ -2214,6 +2237,49 @@ mod test {
 
         assert_parse_succeeds(input, expected);
     }
+
+    //TODO: FIgure out if we want to prohibit leading/trailing whitespace in ref text
+    // #[test]
+    // fn whitespace_around_reference_is_combined() {
+    //     let input = concat!(
+    //         "We like [ petting cats ]@Ripley2020 a lot.\n",
+    //         "\n",
+    //         "#references\n",
+    //         "Ripley2020 -> https://example.com"
+    //     );
+
+    //     let expected = document()
+    //         .with_block(
+    //             paragraph()
+    //                 .with(text("We like "))
+    //                 .with(linked_text("petting cats", "Ripley2020"))
+    //                 .with(text(", a lot.")),
+    //         )
+    //         .with_reference("Ripley2020", "https://example.com");
+
+    //     assert_parse_succeeds(input, expected);
+    // }
+
+    // #[test]
+    // fn whitespace_blah() {
+    //     let input = concat!(
+    //         "We like[ petting cats ]@Ripley2020.\n",
+    //         "\n",
+    //         "#references\n",
+    //         "Ripley2020 -> https://example.com"
+    //     );
+
+    //     let expected = document()
+    //         .with_block(
+    //             paragraph()
+    //                 .with(text("We like "))
+    //                 .with(linked_text("petting cats", "Ripley2020"))
+    //                 .with(text(", a lot.")),
+    //         )
+    //         .with_reference("Ripley2020", "https://example.com");
+
+    //     assert_parse_succeeds(input, expected);
+    // }
 
     //TODO: Do we want to enforce references being at the end?
 
