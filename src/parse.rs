@@ -541,8 +541,15 @@ fn parse_styled_text_run(scanner: &mut Scanner, mode: TextMode) -> ParseResult<T
 }
 
 fn parse_linked_text_run(scanner: &mut Scanner, mode: TextMode) -> ParseResult<TextRun> {
+    let delimiter_pos = scanner.position();
+
     expect_char(scanner, LEFT_SQUARE_BRACKET)?;
+
     let run = parse_markup_text(scanner, mode)?;
+    if run.starts_with(SPACE) || run.ends_with(SPACE) {
+        return parse_err!(LooseDelimiter, delimiter_pos);
+    }
+
     expect_char(scanner, RIGHT_SQUARE_BRACKET)?;
     expect_char(scanner, AT_SIGN)?;
     let id = eat_identifier(scanner)?;
@@ -2238,48 +2245,18 @@ mod test {
         assert_parse_succeeds(input, expected);
     }
 
-    //TODO: FIgure out if we want to prohibit leading/trailing whitespace in ref text
-    // #[test]
-    // fn whitespace_around_reference_is_combined() {
-    //     let input = concat!(
-    //         "We like [ petting cats ]@Ripley2020 a lot.\n",
-    //         "\n",
-    //         "#references\n",
-    //         "Ripley2020 -> https://example.com"
-    //     );
+    #[test]
+    fn whitespace_around_linked_text_is_rejected() {
+        let input = concat!(
+            "We like [ petting cats ]@Ripley2020 a lot.\n",
+            "\n",
+            "#references\n",
+            "Ripley2020 -> https://example.com"
+        );
 
-    //     let expected = document()
-    //         .with_block(
-    //             paragraph()
-    //                 .with(text("We like "))
-    //                 .with(linked_text("petting cats", "Ripley2020"))
-    //                 .with(text(", a lot.")),
-    //         )
-    //         .with_reference("Ripley2020", "https://example.com");
-
-    //     assert_parse_succeeds(input, expected);
-    // }
-
-    // #[test]
-    // fn whitespace_blah() {
-    //     let input = concat!(
-    //         "We like[ petting cats ]@Ripley2020.\n",
-    //         "\n",
-    //         "#references\n",
-    //         "Ripley2020 -> https://example.com"
-    //     );
-
-    //     let expected = document()
-    //         .with_block(
-    //             paragraph()
-    //                 .with(text("We like "))
-    //                 .with(linked_text("petting cats", "Ripley2020"))
-    //                 .with(text(", a lot.")),
-    //         )
-    //         .with_reference("Ripley2020", "https://example.com");
-
-    //     assert_parse_succeeds(input, expected);
-    // }
+        let expected = LooseDelimiter;
+        assert_parse_fails(input, expected);
+    }
 
     //TODO: Do we want to enforce references being at the end?
 
