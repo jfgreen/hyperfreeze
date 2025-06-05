@@ -771,8 +771,67 @@ impl ListStack {
 mod test {
     use super::*;
 
-    fn document() -> DocumentBuilder {
-        DocumentBuilder::new()
+    macro_rules! document {
+        ($($field:ident : $value:expr),* $(,)?) => {
+            Document {
+                $(
+                    $field: $value.into(),
+                )*
+              ..Default::default()
+            }
+
+        };
+    }
+
+    //TODO: Can we get away without an elements, or references macro?
+    // just the doc one...
+    macro_rules! elements {
+        ($($item:expr),* $(,)?) => {
+            vec![
+                $(
+                    Into::<Element>::into($item),
+                )*
+            ].into_boxed_slice()
+        };
+    }
+
+    macro_rules! references {
+        ($(($id:expr,$link:expr)),* $(,)?) => {
+            vec![
+                $(
+                    Reference{
+                        id: $id.to_string(),
+                        link: $link.to_string(),
+
+                    },
+                )*
+            ].into_boxed_slice()
+
+        };
+    }
+
+    impl Into<Metadata> for MetadataBuilder {
+        fn into(self) -> Metadata {
+            self.build()
+        }
+    }
+
+    impl Into<Element> for ParagraphBuilder {
+        fn into(self) -> Element {
+            Element::Block(Block::Paragraph(self.build()))
+        }
+    }
+
+    impl Into<Element> for ListBuilder {
+        fn into(self) -> Element {
+            Element::Block(Block::List(self.build()))
+        }
+    }
+
+    impl Into<Element> for ContainerBuilder {
+        fn into(self) -> Element {
+            Element::Container(Into::<Container>::into(self))
+        }
     }
 
     fn metadata() -> MetadataBuilder {
@@ -835,52 +894,6 @@ mod test {
 
     //TODO - is it possible to use macros to create the builders?
     // Or to replace builders entirely?
-
-    struct DocumentBuilder {
-        metadata: Metadata,
-        contents: Vec<Element>,
-        references: Vec<Reference>,
-    }
-
-    impl DocumentBuilder {
-        fn new() -> Self {
-            DocumentBuilder {
-                metadata: Metadata::default(),
-                contents: Vec::new(),
-                references: Vec::new(),
-            }
-        }
-
-        fn build(self) -> Document {
-            Document {
-                metadata: self.metadata,
-                contents: self.contents.into_boxed_slice(),
-                references: self.references.into_boxed_slice(),
-            }
-        }
-        fn with_metadata(mut self, metadata: MetadataBuilder) -> Self {
-            self.metadata = metadata.build();
-            self
-        }
-
-        fn with_block<T: Into<Block>>(mut self, block: T) -> Self {
-            self.contents.push(Element::Block(block.into()));
-            self
-        }
-
-        fn with_container<T: Into<Container>>(mut self, container: T) -> Self {
-            self.contents.push(Element::Container(container.into()));
-            self
-        }
-
-        fn with_reference(mut self, id: &str, link: &str) -> Self {
-            self.references.push(Reference {
-                id: id.into(),
-                link: link.into(),
-            });
-            self
-        }
-    }
 
     struct MetadataBuilder {
         metadata: Metadata,
@@ -1041,27 +1054,27 @@ mod test {
         }
     }
 
-    impl Into<Document> for DocumentBuilder {
-        fn into(self) -> Document {
-            self.build()
-        }
-    }
-
     impl Into<Document> for ContainerBuilder {
         fn into(self) -> Document {
-            document().with_container(self).build()
+            document!(
+                contents: elements![ self ]
+            )
         }
     }
 
     impl Into<Document> for ParagraphBuilder {
         fn into(self) -> Document {
-            document().with_block(self).build()
+            document!(
+                contents: elements![ self ]
+            )
         }
     }
 
     impl Into<Document> for ListBuilder {
         fn into(self) -> Document {
-            document().with_block(self).build()
+            document!(
+                contents: elements![ self ]
+            )
         }
     }
 
@@ -1088,37 +1101,33 @@ mod test {
             "     one\n"
         );
 
-        let expected = document()
-            .with_metadata(
-                metadata()
-                    .with_id("01.42")
-                    .with_title("Feline friendly flower arranging"),
-            )
-            .with_container(
-                info().with(
-                    paragraph()
-                        .with(text("Did you know flower pots are for "))
-                        .with(strong_text("more"))
-                        .with(text(" than simply knocking on the floor?")),
+        let expected = document!(
+        metadata: metadata()
+                .with_id("01.42")
+                .with_title("Feline friendly flower arranging"),
+        contents: elements![
+            info().with(
+                paragraph()
+                    .with(text("Did you know flower pots are for "))
+                    .with(strong_text("more"))
+                    .with(text(" than simply knocking on the floor?")),
+            ),
+            paragraph().with(text("Opposable thumbs are useful?")),
+            list()
+                .with(paragraph().with(text("Nose")))
+                .with(paragraph().with(text("Toes")))
+                .with(
+                    list()
+                        .with(paragraph().with(text("Big one")))
+                        .with(paragraph().with(text("Little one")))
+                        .with(
+                            paragraph()
+                                .with(emphasised_text("Other"))
+                                .with(text(" one")),
+                        ),
                 ),
-            )
-            .with_block(paragraph().with(text("Opposable thumbs are useful?")))
-            .with_block(
-                list()
-                    .with(paragraph().with(text("Nose")))
-                    .with(paragraph().with(text("Toes")))
-                    .with(
-                        list()
-                            .with(paragraph().with(text("Big one")))
-                            .with(paragraph().with(text("Little one")))
-                            .with(
-                                paragraph()
-                                    .with(emphasised_text("Other"))
-                                    .with(text(" one")),
-                            ),
-                    ),
-            )
-            .build();
+            ]
+        );
 
         assert_parse_succeeds(input, expected);
     }
@@ -1256,9 +1265,12 @@ mod test {
     fn two_new_lines_become_blocks() {
         let input = "Cats\n\nwhiskers";
 
-        let expected = document()
-            .with_block(paragraph().with(text("Cats")))
-            .with_block(paragraph().with(text("whiskers")));
+        let expected = document!(
+            contents: elements![
+                paragraph().with(text("Cats")),
+                paragraph().with(text("whiskers"))
+            ]
+        );
 
         assert_parse_succeeds(input, expected);
     }
@@ -1267,9 +1279,13 @@ mod test {
     fn three_new_lines_becomes_blocks() {
         let input = "Cats\n\n\nwhiskers";
 
-        let expected = document()
-            .with_block(paragraph().with(text("Cats")))
-            .with_block(paragraph().with(text("whiskers")));
+        //TODO: Try giving just elements
+        let expected = document!(
+            contents: elements![
+                paragraph().with(text("Cats")),
+                paragraph().with(text("whiskers"))
+            ]
+        );
 
         assert_parse_succeeds(input, expected);
     }
@@ -1277,9 +1293,12 @@ mod test {
     #[test]
     fn two_new_lines_with_whitespace_is_treated_as_blockbreak() {
         let input = "Cats\n \nwhiskers";
-        let expected = document()
-            .with_block(paragraph().with(text("Cats")))
-            .with_block(paragraph().with(text("whiskers")));
+        let expected = document!(
+            contents: elements![
+                paragraph().with(text("Cats")),
+                paragraph().with(text("whiskers"))
+            ]
+        );
 
         assert_parse_succeeds(input, expected);
     }
@@ -1287,9 +1306,12 @@ mod test {
     #[test]
     fn blockbreak_with_extra_whitespace() {
         let input = "Cats  \n    \n  whiskers";
-        let expected = document()
-            .with_block(paragraph().with(text("Cats")))
-            .with_block(paragraph().with(text("whiskers")));
+        let expected = document!(
+            contents: elements![
+                paragraph().with(text("Cats")),
+                paragraph().with(text("whiskers"))
+            ]
+        );
 
         assert_parse_succeeds(input, expected);
     }
@@ -1788,9 +1810,12 @@ mod test {
     fn leading_whitespace_on_paragraph_is_ignored() {
         let input = "Cat\n\n  cat";
 
-        let expected = document()
-            .with_block(paragraph().with(text("Cat")))
-            .with_block(paragraph().with(text("cat")));
+        let expected = document!(
+            contents: elements![
+                paragraph().with(text("Cat")),
+                paragraph().with(text("cat"))
+            ]
+        );
 
         assert_parse_succeeds(input, expected);
     }
@@ -1802,8 +1827,8 @@ mod test {
             "id: 01.23\n",
         );
 
-        let expected = document().with_metadata(
-            metadata()
+        let expected = document!(
+            metadata: metadata()
                 .with_id("01.23")
                 .with_title("Practical espionage for felines in urban settings"),
         );
@@ -1822,9 +1847,12 @@ mod test {
             "Hello cats and kittens"
         );
 
-        let expected = document()
-            .with_metadata(metadata().with_title("Some Doc").with_id("01.23"))
-            .with_block(paragraph().with(text("Hello cats and kittens")));
+        let expected = document!(
+            metadata: metadata().with_title("Some Doc").with_id("01.23"),
+            contents: elements![
+                paragraph().with(text("Hello cats and kittens"))
+            ]
+        );
 
         assert_parse_succeeds(input, expected);
     }
@@ -1833,10 +1861,10 @@ mod test {
     fn doc_header_with_worky_spacing() {
         let input = "/My Very   Cool Document   \nid :01.23\n";
 
-        let expected = document().with_metadata(
-            metadata()
+        let expected = document!(
+            metadata: metadata()
+                .with_id("01.23")
                 .with_title("My Very Cool Document")
-                .with_id("01.23"),
         );
 
         assert_parse_succeeds(input, expected);
@@ -1846,7 +1874,10 @@ mod test {
     fn doc_header_with_no_trailing_newline() {
         let input = "/Doc";
 
-        let expected = document().with_metadata(metadata().with_title("Doc"));
+        let expected = document!(
+            metadata: metadata()
+                .with_title("Doc")
+        );
 
         assert_parse_succeeds(input, expected);
     }
@@ -2232,14 +2263,17 @@ mod test {
             "created by our own in house experts.\n",
         );
 
-        let expected = document()
-            .with_block(
+        let expected = document!(
+            contents: elements![
                 paragraph()
                     .with(text("For more info, consult "))
                     .with(linked_text("our guide on petting cats", "Ripley2020"))
                     .with(text(", created by our own in house experts.")),
-            )
-            .with_reference("Ripley2020", "https://example.com");
+            ],
+            references: references![
+                ("Ripley2020", "https://example.com")
+            ]
+        );
 
         assert_parse_succeeds(input, expected);
     }

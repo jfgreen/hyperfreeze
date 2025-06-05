@@ -5,6 +5,17 @@ pub struct Document {
     pub references: Box<[Reference]>,
 }
 
+impl Default for Document {
+    fn default() -> Self {
+        Document {
+            metadata: Metadata::default(),
+            contents: Box::new([]),
+            references: Box::new([]),
+        }
+    }
+}
+
+// TODO: Make id, title be explicty optional
 #[derive(PartialEq, Eq, Debug, Default)]
 pub struct Metadata {
     pub id: String,
@@ -22,6 +33,7 @@ pub struct Reference {
 pub enum Element {
     Block(Block),
     Container(Container),
+    //Section(Section),
 }
 
 #[derive(PartialEq, Eq, Debug)]
@@ -34,6 +46,13 @@ pub enum Block {
 pub struct Container {
     pub content: Box<[Block]>,
     pub kind: ContainerKind,
+}
+
+#[derive(PartialEq, Eq, Debug)]
+pub struct Section {
+    pub content: Box<[Element]>,
+    pub title: String,
+    pub level: usize,
 }
 
 #[derive(PartialEq, Eq, Debug)]
