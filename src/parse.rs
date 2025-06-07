@@ -772,48 +772,83 @@ mod test {
     use super::*;
 
     macro_rules! document {
-        ($($field:ident : $value:expr),* $(,)?) => {
+        ($($tokens:tt)*) => {
+            doc_args!({} $($tokens)*)
+        };
+    }
+
+    macro_rules! doc_args{
+        ( {$($fields:tt)*} $(,)?) => {
             Document {
-                $(
-                    $field: $value.into(),
-                )*
+                $($fields)*
               ..Default::default()
             }
+        };
+
+        ({$($fields:tt)*} $(,)? metadata: { $($metadata:tt)* } $($tail:tt)*) => {
+            doc_args!(
+                {
+                    $($fields)*
+                    metadata: metadata!($($metadata)*),
+                }
+                $($tail)*
+            )
+
+        };
+        ({$($fields:tt)*} $(,)? contents: [ $($contents:tt)* ] $($tail:tt)*) => {
+            doc_args!(
+                {
+                    $($fields)*
+                    contents: contents!($($contents)*),
+                }
+                $($tail)*
+            )
+
+        };
+        ({$($fields:tt)*} $(,)? references: [ $($references:tt)* ] $($tail:tt)*) => {
+            doc_args!(
+                {
+                    $($fields)*
+                    references: references!($($references)*),
+                }
+                $($tail)*
+            )
 
         };
     }
 
-    //TODO: Can we get away without an elements, or references macro?
-    // just the doc one...
-    macro_rules! elements {
-        ($($item:expr),* $(,)?) => {
-            vec![
+    macro_rules! metadata {
+        ($($field:ident : $value:expr),* $(,)?) => {
+            Metadata {
                 $(
-                    Into::<Element>::into($item),
+                    $field: $value.into(),
                 )*
-            ].into_boxed_slice()
+                ..Default::default()
+            }
+        };
+    }
+
+    macro_rules! contents {
+        ($($element:expr),* $(,)?) => {
+            Box::new([
+                $(
+                    $element.into(),
+                )*
+            ])
         };
     }
 
     macro_rules! references {
-        ($(($id:expr,$link:expr)),* $(,)?) => {
-            vec![
+        ($( ($id:expr, $link:expr) ),* $(,)?) => {
+            Box::new([
                 $(
-                    Reference{
+                    Reference {
                         id: $id.to_string(),
                         link: $link.to_string(),
-
                     },
                 )*
-            ].into_boxed_slice()
-
+            ])
         };
-    }
-
-    impl Into<Metadata> for MetadataBuilder {
-        fn into(self) -> Metadata {
-            self.build()
-        }
     }
 
     impl Into<Element> for ParagraphBuilder {
@@ -832,10 +867,6 @@ mod test {
         fn into(self) -> Element {
             Element::Container(Into::<Container>::into(self))
         }
-    }
-
-    fn metadata() -> MetadataBuilder {
-        MetadataBuilder::new()
     }
 
     fn paragraph() -> ParagraphBuilder {
@@ -889,35 +920,6 @@ mod test {
         TextRun {
             text: text.to_string(),
             style: Style::Link(reference.to_string()),
-        }
-    }
-
-    //TODO - is it possible to use macros to create the builders?
-    // Or to replace builders entirely?
-
-    struct MetadataBuilder {
-        metadata: Metadata,
-    }
-
-    impl MetadataBuilder {
-        fn new() -> Self {
-            MetadataBuilder {
-                metadata: Metadata::default(),
-            }
-        }
-
-        fn with_id(mut self, id: &str) -> Self {
-            self.metadata.id = id.to_string();
-            self
-        }
-
-        fn with_title(mut self, title: &str) -> Self {
-            self.metadata.title = title.to_string();
-            self
-        }
-
-        fn build(self) -> Metadata {
-            self.metadata
         }
     }
 
@@ -1057,7 +1059,7 @@ mod test {
     impl Into<Document> for ContainerBuilder {
         fn into(self) -> Document {
             document!(
-                contents: elements![ self ]
+                contents: [ Element::Container(self.into()) ]
             )
         }
     }
@@ -1065,7 +1067,7 @@ mod test {
     impl Into<Document> for ParagraphBuilder {
         fn into(self) -> Document {
             document!(
-                contents: elements![ self ]
+                contents: [ Element::Block(self.into()) ]
             )
         }
     }
@@ -1073,7 +1075,7 @@ mod test {
     impl Into<Document> for ListBuilder {
         fn into(self) -> Document {
             document!(
-                contents: elements![ self ]
+                contents: [ Element::Block(self.into()) ]
             )
         }
     }
@@ -1102,30 +1104,31 @@ mod test {
         );
 
         let expected = document!(
-        metadata: metadata()
-                .with_id("01.42")
-                .with_title("Feline friendly flower arranging"),
-        contents: elements![
-            info().with(
-                paragraph()
-                    .with(text("Did you know flower pots are for "))
-                    .with(strong_text("more"))
-                    .with(text(" than simply knocking on the floor?")),
-            ),
-            paragraph().with(text("Opposable thumbs are useful?")),
-            list()
-                .with(paragraph().with(text("Nose")))
-                .with(paragraph().with(text("Toes")))
-                .with(
-                    list()
-                        .with(paragraph().with(text("Big one")))
-                        .with(paragraph().with(text("Little one")))
-                        .with(
-                            paragraph()
-                                .with(emphasised_text("Other"))
-                                .with(text(" one")),
-                        ),
+            metadata: {
+                id: "01.42",
+                title: "Feline friendly flower arranging"
+            }
+            contents: [
+                info().with(
+                    paragraph()
+                        .with(text("Did you know flower pots are for "))
+                        .with(strong_text("more"))
+                        .with(text(" than simply knocking on the floor?"))
                 ),
+                paragraph().with(text("Opposable thumbs are useful?")),
+                list()
+                    .with(paragraph().with(text("Nose")))
+                    .with(paragraph().with(text("Toes")))
+                    .with(
+                        list()
+                            .with(paragraph().with(text("Big one")))
+                            .with(paragraph().with(text("Little one")))
+                            .with(
+                                paragraph()
+                                    .with(emphasised_text("Other"))
+                                    .with(text(" one")),
+                            ),
+                    ),
             ]
         );
 
@@ -1266,7 +1269,7 @@ mod test {
         let input = "Cats\n\nwhiskers";
 
         let expected = document!(
-            contents: elements![
+            contents: [
                 paragraph().with(text("Cats")),
                 paragraph().with(text("whiskers"))
             ]
@@ -1279,9 +1282,8 @@ mod test {
     fn three_new_lines_becomes_blocks() {
         let input = "Cats\n\n\nwhiskers";
 
-        //TODO: Try giving just elements
         let expected = document!(
-            contents: elements![
+            contents: [
                 paragraph().with(text("Cats")),
                 paragraph().with(text("whiskers"))
             ]
@@ -1294,7 +1296,7 @@ mod test {
     fn two_new_lines_with_whitespace_is_treated_as_blockbreak() {
         let input = "Cats\n \nwhiskers";
         let expected = document!(
-            contents: elements![
+            contents: [
                 paragraph().with(text("Cats")),
                 paragraph().with(text("whiskers"))
             ]
@@ -1307,7 +1309,7 @@ mod test {
     fn blockbreak_with_extra_whitespace() {
         let input = "Cats  \n    \n  whiskers";
         let expected = document!(
-            contents: elements![
+            contents: [
                 paragraph().with(text("Cats")),
                 paragraph().with(text("whiskers"))
             ]
@@ -1811,7 +1813,7 @@ mod test {
         let input = "Cat\n\n  cat";
 
         let expected = document!(
-            contents: elements![
+            contents: [
                 paragraph().with(text("Cat")),
                 paragraph().with(text("cat"))
             ]
@@ -1828,9 +1830,10 @@ mod test {
         );
 
         let expected = document!(
-            metadata: metadata()
-                .with_id("01.23")
-                .with_title("Practical espionage for felines in urban settings"),
+            metadata: {
+                id: "01.23",
+                title: "Practical espionage for felines in urban settings",
+            }
         );
 
         assert_parse_succeeds(input, expected);
@@ -1848,8 +1851,11 @@ mod test {
         );
 
         let expected = document!(
-            metadata: metadata().with_title("Some Doc").with_id("01.23"),
-            contents: elements![
+            metadata: {
+                title:"Some Doc",
+                id: "01.23",
+            },
+            contents: [
                 paragraph().with(text("Hello cats and kittens"))
             ]
         );
@@ -1862,9 +1868,10 @@ mod test {
         let input = "/My Very   Cool Document   \nid :01.23\n";
 
         let expected = document!(
-            metadata: metadata()
-                .with_id("01.23")
-                .with_title("My Very Cool Document")
+            metadata: {
+                id:"01.23",
+                title:"My Very Cool Document",
+            }
         );
 
         assert_parse_succeeds(input, expected);
@@ -1875,8 +1882,7 @@ mod test {
         let input = "/Doc";
 
         let expected = document!(
-            metadata: metadata()
-                .with_title("Doc")
+            metadata: {title: "Doc"}
         );
 
         assert_parse_succeeds(input, expected);
@@ -2264,13 +2270,13 @@ mod test {
         );
 
         let expected = document!(
-            contents: elements![
+            contents: [
                 paragraph()
                     .with(text("For more info, consult "))
                     .with(linked_text("our guide on petting cats", "Ripley2020"))
                     .with(text(", created by our own in house experts.")),
             ],
-            references: references![
+            references: [
                 ("Ripley2020", "https://example.com")
             ]
         );
