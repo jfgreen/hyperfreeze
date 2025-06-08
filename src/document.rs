@@ -1,18 +1,8 @@
-#[derive(PartialEq, Eq, Debug)]
+#[derive(PartialEq, Eq, Debug, Default)]
 pub struct Document {
     pub metadata: Metadata,
     pub contents: Box<[Element]>,
     pub references: Box<[Reference]>,
-}
-
-impl Default for Document {
-    fn default() -> Self {
-        Document {
-            metadata: Metadata::default(),
-            contents: Box::new([]),
-            references: Box::new([]),
-        }
-    }
 }
 
 // TODO: Make id, title be explicty optional

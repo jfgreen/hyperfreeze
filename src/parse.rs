@@ -771,49 +771,28 @@ impl ListStack {
 mod test {
     use super::*;
 
+    //TODO: Enforce commas between fields?
     macro_rules! document {
-        ($($tokens:tt)*) => {
-            doc_args!({} $($tokens)*)
-        };
-    }
+        (
+            $(metadata: { $($metadata:tt)* } $(,)?)?
+            $(contents: [ $($contents:tt)* ] $(,)?)?
+            $(references: [ $($references:tt)* $(,)?])?
+        ) => {
+            document!(
+                {
+                    $(metadata: metadata!($($metadata)*), )?
+                    $(contents: contents!($($contents)*), )?
+                    $(references: references!($($references)*),)?
+                }
+            )
 
-    macro_rules! doc_args{
-        ( {$($fields:tt)*} $(,)?) => {
+        };
+
+        ( {$($fields:tt)*}) => {
             Document {
                 $($fields)*
               ..Default::default()
             }
-        };
-
-        ({$($fields:tt)*} $(,)? metadata: { $($metadata:tt)* } $($tail:tt)*) => {
-            doc_args!(
-                {
-                    $($fields)*
-                    metadata: metadata!($($metadata)*),
-                }
-                $($tail)*
-            )
-
-        };
-        ({$($fields:tt)*} $(,)? contents: [ $($contents:tt)* ] $($tail:tt)*) => {
-            doc_args!(
-                {
-                    $($fields)*
-                    contents: contents!($($contents)*),
-                }
-                $($tail)*
-            )
-
-        };
-        ({$($fields:tt)*} $(,)? references: [ $($references:tt)* ] $($tail:tt)*) => {
-            doc_args!(
-                {
-                    $($fields)*
-                    references: references!($($references)*),
-                }
-                $($tail)*
-            )
-
         };
     }
 
