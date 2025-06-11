@@ -771,6 +771,8 @@ impl ListStack {
 mod test {
     use super::*;
 
+    //TODO: Try to simplify macro structure
+
     //TODO: Enforce commas between fields?
     macro_rules! document {
         (
@@ -807,13 +809,71 @@ mod test {
         };
     }
 
+    //TODO: Could inline contents, metadata and refercnes macros into document macro?
+    //TODO: info should be list like, i.e info[...], so should list?
     macro_rules! contents {
-        ($($element:expr),* $(,)?) => {
+        ($($element:ident { $($content:tt)* }),* $(,)?) => {
             Box::new([
                 $(
-                    $element.into(),
+                    element!($element $($content)*),
                 )*
             ])
+        };
+    }
+
+    //TODO: What if we want to construct a paragraph directly?
+    macro_rules! element {
+        (info $( $block:ident { $($content:tt)* })*) => {
+            Element::Container(Container{
+                content: Box::new([
+                    $(
+                        block!($block $($content)*)
+                    )*
+                ]),
+                kind: ContainerKind::Info,
+            })
+        };
+
+        ($block:ident $($content:tt)*) => {
+            Element::Block(block!($block $($content)*))
+        };
+
+
+    }
+
+    macro_rules! block {
+        (paragraph $($text:expr),*) => {
+            Block::Paragraph(Box::new([
+                $(
+                    $text,
+                )*
+            ]))
+        };
+
+        (list $($item:ident { $($content:tt)* } $(,)?)*) => {
+            Block::List(Box::new([
+                $(
+                    list_item!($item $($content)*),
+                )*
+            ]))
+        };
+    }
+
+    macro_rules! list_item {
+        (paragraph $($text:expr),*) => {
+            ListItem::Text(Box::new([
+                $(
+                    $text,
+                )*
+            ]))
+        };
+
+        (list $($item:ident { $($content:tt)* } $(,)?)*) => {
+            ListItem::SubList(Box::new([
+                $(
+                    list_item!($item $($content)*),
+                )*
+            ]))
         };
     }
 
@@ -1037,25 +1097,28 @@ mod test {
 
     impl Into<Document> for ContainerBuilder {
         fn into(self) -> Document {
-            document!(
-                contents: [ Element::Container(self.into()) ]
-            )
+            Document {
+                contents: Box::new([Element::Container(self.into())]),
+                ..Default::default()
+            }
         }
     }
 
     impl Into<Document> for ParagraphBuilder {
         fn into(self) -> Document {
-            document!(
-                contents: [ Element::Block(self.into()) ]
-            )
+            Document {
+                contents: Box::new([Element::Block(self.into())]),
+                ..Default::default()
+            }
         }
     }
 
     impl Into<Document> for ListBuilder {
         fn into(self) -> Document {
-            document!(
-                contents: [ Element::Block(self.into()) ]
-            )
+            Document {
+                contents: Box::new([Element::Block(self.into())]),
+                ..Default::default()
+            }
         }
     }
 
@@ -1088,26 +1151,28 @@ mod test {
                 title: "Feline friendly flower arranging"
             }
             contents: [
-                info().with(
-                    paragraph()
-                        .with(text("Did you know flower pots are for "))
-                        .with(strong_text("more"))
-                        .with(text(" than simply knocking on the floor?"))
-                ),
-                paragraph().with(text("Opposable thumbs are useful?")),
-                list()
-                    .with(paragraph().with(text("Nose")))
-                    .with(paragraph().with(text("Toes")))
-                    .with(
-                        list()
-                            .with(paragraph().with(text("Big one")))
-                            .with(paragraph().with(text("Little one")))
-                            .with(
-                                paragraph()
-                                    .with(emphasised_text("Other"))
-                                    .with(text(" one")),
-                            ),
-                    ),
+                info {
+                    paragraph {
+                        text("Did you know flower pots are for "),
+                        strong_text("more"),
+                        text(" than simply knocking on the floor?")
+                    }
+                },
+                paragraph {
+                    text("Opposable thumbs are useful?")
+                },
+                list {
+                    paragraph { text("Nose") },
+                    paragraph { text("Toes") },
+                    list {
+                        paragraph { text("Big one") },
+                        paragraph { text("Little one") },
+                        paragraph {
+                            emphasised_text("Other"),
+                            text(" one")
+                        }
+                    }
+                }
             ]
         );
 
@@ -1249,8 +1314,8 @@ mod test {
 
         let expected = document!(
             contents: [
-                paragraph().with(text("Cats")),
-                paragraph().with(text("whiskers"))
+                paragraph { text("Cats") },
+                paragraph { text("whiskers") }
             ]
         );
 
@@ -1263,8 +1328,8 @@ mod test {
 
         let expected = document!(
             contents: [
-                paragraph().with(text("Cats")),
-                paragraph().with(text("whiskers"))
+                paragraph { text("Cats") },
+                paragraph { text("whiskers") }
             ]
         );
 
@@ -1276,8 +1341,8 @@ mod test {
         let input = "Cats\n \nwhiskers";
         let expected = document!(
             contents: [
-                paragraph().with(text("Cats")),
-                paragraph().with(text("whiskers"))
+                paragraph { text("Cats") },
+                paragraph { text("whiskers") }
             ]
         );
 
@@ -1289,8 +1354,8 @@ mod test {
         let input = "Cats  \n    \n  whiskers";
         let expected = document!(
             contents: [
-                paragraph().with(text("Cats")),
-                paragraph().with(text("whiskers"))
+                paragraph { text("Cats") },
+                paragraph { text("whiskers") }
             ]
         );
 
@@ -1793,8 +1858,8 @@ mod test {
 
         let expected = document!(
             contents: [
-                paragraph().with(text("Cat")),
-                paragraph().with(text("cat"))
+                paragraph { text("Cat") },
+                paragraph { text("cat") }
             ]
         );
 
@@ -1835,7 +1900,7 @@ mod test {
                 id: "01.23",
             },
             contents: [
-                paragraph().with(text("Hello cats and kittens"))
+                paragraph { text("Hello cats and kittens") }
             ]
         );
 
@@ -2250,10 +2315,11 @@ mod test {
 
         let expected = document!(
             contents: [
-                paragraph()
-                    .with(text("For more info, consult "))
-                    .with(linked_text("our guide on petting cats", "Ripley2020"))
-                    .with(text(", created by our own in house experts.")),
+                paragraph {
+                    text("For more info, consult "),
+                    linked_text("our guide on petting cats", "Ripley2020"),
+                    text(", created by our own in house experts.")
+                }
             ],
             references: [
                 ("Ripley2020", "https://example.com")
