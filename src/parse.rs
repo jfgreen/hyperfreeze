@@ -752,7 +752,8 @@ impl ListStack {
     }
 
     fn pop(&mut self) {
-        let sub_list = std::mem::replace(&mut self.items, self.stack.pop().expect("parent list"));
+        let parent = self.stack.pop().expect("parent list");
+        let sub_list = std::mem::replace(&mut self.items, parent);
         let sub_list = sub_list.into_boxed_slice();
         let sub_list = ListItem::SubList(sub_list);
         self.items.push(sub_list);
@@ -773,18 +774,43 @@ mod test {
 
     //TODO: Try to simplify macro structure
 
-    //TODO: Enforce commas between fields?
     macro_rules! document {
         (
-            $(metadata: { $($metadata:tt)* } $(,)?)?
-            $(contents: [ $($contents:tt)* ] $(,)?)?
-            $(references: [ $($references:tt)* $(,)?])?
+            $(
+                metadata: {
+                    $($meta_field:ident : $meta_value:expr),* $(,)?
+                }
+                $(,)?
+            )?
+            $(
+                contents: [
+                    $($element_name:ident { $($element_content:tt)* }),*
+                    $(,)?
+                ]
+                $(,)?
+            )?
+            $(
+                references: [
+                    $( ($ref_id:expr, $ref_link:expr) ),*
+                    $(,)?
+                ]
+            )?
         ) => {
             document!(
                 {
-                    $(metadata: metadata!($($metadata)*), )?
-                    $(contents: contents!($($contents)*), )?
-                    $(references: references!($($references)*),)?
+                    $(metadata: Metadata {
+                        $( $meta_field: $meta_value.into(), )*
+                        ..Default::default()
+                    },)?
+                    $(contents: Box::new(
+                        [$(element!($element_name $($element_content)*),)*]
+                    ),)?
+                    $(references: Box::new(
+                        [$(Reference {
+                            id: $ref_id.to_string(),
+                            link: $ref_link.to_string(),
+                        },)*]
+                    ),)?
                 }
             )
 
@@ -795,29 +821,6 @@ mod test {
                 $($fields)*
               ..Default::default()
             }
-        };
-    }
-
-    macro_rules! metadata {
-        ($($field:ident : $value:expr),* $(,)?) => {
-            Metadata {
-                $(
-                    $field: $value.into(),
-                )*
-                ..Default::default()
-            }
-        };
-    }
-
-    //TODO: Could inline contents, metadata and refercnes macros into document macro?
-    //TODO: info should be list like, i.e info[...], so should list?
-    macro_rules! contents {
-        ($($element:ident { $($content:tt)* }),* $(,)?) => {
-            Box::new([
-                $(
-                    element!($element $($content)*),
-                )*
-            ])
         };
     }
 
@@ -874,19 +877,6 @@ mod test {
                     list_item!($item $($content)*),
                 )*
             ]))
-        };
-    }
-
-    macro_rules! references {
-        ($( ($id:expr, $link:expr) ),* $(,)?) => {
-            Box::new([
-                $(
-                    Reference {
-                        id: $id.to_string(),
-                        link: $link.to_string(),
-                    },
-                )*
-            ])
         };
     }
 
