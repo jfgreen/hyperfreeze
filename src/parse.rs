@@ -772,7 +772,7 @@ impl ListStack {
 mod test {
     use super::*;
 
-    //TODO: Try to simplify macro structure
+    //TODO: Either enforce commas, or remove them
 
     macro_rules! document {
         (
@@ -824,13 +824,12 @@ mod test {
         };
     }
 
-    //TODO: What if we want to construct a paragraph directly?
     macro_rules! element {
-        (info $( $block:ident { $($content:tt)* })*) => {
+        (info $( $block:ident { $($content:tt)* } $(,)? )*) => {
             Element::Container(Container{
                 content: Box::new([
                     $(
-                        block!($block $($content)*)
+                        block!($block $($content)*),
                     )*
                 ]),
                 kind: ContainerKind::Info,
@@ -880,6 +879,15 @@ mod test {
         };
     }
 
+    macro_rules! info {
+        ($($content:tt)*) => {
+            Document {
+                contents: Box::new([element!(info $($content)*)]),
+                ..Default::default()
+            }
+        }
+    }
+
     impl Into<Element> for ParagraphBuilder {
         fn into(self) -> Element {
             Element::Block(Block::Paragraph(self.build()))
@@ -892,22 +900,12 @@ mod test {
         }
     }
 
-    impl Into<Element> for ContainerBuilder {
-        fn into(self) -> Element {
-            Element::Container(Into::<Container>::into(self))
-        }
-    }
-
     fn paragraph() -> ParagraphBuilder {
         ParagraphBuilder::new()
     }
 
     fn list() -> ListBuilder {
         ListBuilder::new()
-    }
-
-    fn info() -> ContainerBuilder {
-        ContainerBuilder::new(ContainerKind::Info)
     }
 
     fn text(text: &str) -> TextRun {
@@ -1016,34 +1014,6 @@ mod test {
         }
     }
 
-    struct ContainerBuilder {
-        content: Vec<Block>,
-        kind: ContainerKind,
-    }
-
-    impl ContainerBuilder {
-        fn new(kind: ContainerKind) -> Self {
-            ContainerBuilder {
-                content: Vec::new(),
-                kind,
-            }
-        }
-
-        fn with<T: Into<Block>>(mut self, block: T) -> Self {
-            self.content.push(block.into());
-            self
-        }
-    }
-
-    impl Into<Container> for ContainerBuilder {
-        fn into(self) -> Container {
-            Container {
-                content: self.content.into_boxed_slice(),
-                kind: self.kind,
-            }
-        }
-    }
-
     fn assert_parse_succeeds<T: Into<Document>>(input: &'static str, expected: T) {
         let expected = expected.into();
         let result = parse_str(input);
@@ -1081,15 +1051,6 @@ mod test {
 
                     panic!("Failed with wrong kind of error")
                 }
-            }
-        }
-    }
-
-    impl Into<Document> for ContainerBuilder {
-        fn into(self) -> Document {
-            Document {
-                contents: Box::new([Element::Container(self.into())]),
-                ..Default::default()
             }
         }
     }
@@ -1956,9 +1917,10 @@ mod test {
             "<<<"
         );
 
-        let expected = info()
-            .with(paragraph().with(text("Here are some facts...")))
-            .with(paragraph().with(text("...about the cats!")));
+        let expected = info! [
+            paragraph { text("Here are some facts...") },
+            paragraph { text("...about the cats!") }
+        ];
 
         assert_parse_succeeds(input, expected);
     }
@@ -1971,9 +1933,13 @@ mod test {
             "\n",
         );
 
-        let expected = info().with(paragraph().with(text(
-            "Did you know that cats sometimes like a nice long massage",
-        )));
+        let expected = info! [
+            paragraph {
+                text(
+                    "Did you know that cats sometimes like a nice long massage"
+                )
+            }
+        ];
 
         assert_parse_succeeds(input, expected);
     }
