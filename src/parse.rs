@@ -1991,11 +1991,11 @@ mod test {
             "- Water is important also\n"
         );
 
-        let expected = list! [
+        let expected = list! {
             paragraph { text("Dry food is ok")},
             paragraph { text("Wet food is much better")},
             paragraph { text("Water is important also")}
-        ];
+        };
         assert_parse_succeeds(input, expected);
     }
 
@@ -2008,11 +2008,11 @@ mod test {
             "- Water is important also"
         );
 
-        let expected = list! [
+        let expected = list! {
             paragraph { text("Dry food is ok") },
             paragraph { text("Wet food is much better") },
             paragraph { text("Water is important also") }
-        ];
+        };
 
         assert_parse_succeeds(input, expected);
     }
@@ -2021,7 +2021,7 @@ mod test {
     fn dash_in_list_text_is_not_treated_as_bullet() {
         let input = concat!("- Meow - meow\n",);
 
-        let expected = list![paragraph { text("Meow - meow") }];
+        let expected = list! {paragraph { text("Meow - meow") }};
 
         assert_parse_succeeds(input, expected);
     }
@@ -2037,11 +2037,11 @@ mod test {
             "    important also\n"
         );
 
-        let expected = list! [
+        let expected = list! {
             paragraph { text("Dry food is ok") },
             paragraph { text("Wet food is much better") },
             paragraph { text("Water is important also") },
-        ];
+        };
 
         assert_parse_succeeds(input, expected);
     }
@@ -2054,7 +2054,7 @@ mod test {
             "- Water is `important  also`\n"
         );
 
-        let expected = list! [
+        let expected = list! {
             paragraph {
                 text("Dry food is "),
                 strong_text("ok"),
@@ -2067,7 +2067,7 @@ mod test {
                 text("Water is "),
                 raw_text("important  also"),
             }
-        ];
+        };
 
         assert_parse_succeeds(input, expected);
     }
@@ -2081,14 +2081,14 @@ mod test {
             "  - Beef\n",
         );
 
-        let expected = list! [
+        let expected = list! {
             paragraph { text("Nice things to eat") }
             list {
                 paragraph { text("Tuna") },
                 paragraph { text("Chicken") },
                 paragraph { text("Beef") },
             }
-        ];
+        };
 
         assert_parse_succeeds(input, expected);
     }
@@ -2102,7 +2102,7 @@ mod test {
             "    - Wagyu\n",
         );
 
-        let expected = list! [
+        let expected = list! {
             paragraph { text("Nice things to eat") },
             list {
                 paragraph { text("Beef") },
@@ -2111,7 +2111,7 @@ mod test {
                     paragraph { text("Wagyu") },
                 }
             }
-        ];
+        };
 
         assert_parse_succeeds(input, expected);
     }
@@ -2120,14 +2120,14 @@ mod test {
     fn list_with_raw_over_newline() {
         let input = "- f`oo\n  ba`r\n  - baz";
 
-        let expected = list! [
+        let expected = list! {
             paragraph {
                 text("f"),
                 raw_text("oo   ba"),
                 text("r"),
             },
             list { paragraph { text("baz") }}
-        ];
+        };
 
         assert_parse_succeeds(input, expected);
     }
@@ -2136,10 +2136,10 @@ mod test {
     fn list_item_with_trailing_whitespace() {
         let input = "- Foo    \n- Bar";
 
-        let expected = list! [
+        let expected = list! {
             paragraph { text("Foo")},
             paragraph { text("Bar")},
-        ];
+        };
 
         assert_parse_succeeds(input, expected);
     }
@@ -2148,13 +2148,13 @@ mod test {
     fn list_with_raw_over_multiple_points() {
         let input = "- f`oo\n  -ba`r";
 
-        let expected = list! [
+        let expected = list! {
             paragraph {
                 text("f"),
                 raw_text("oo   -ba"),
                 text("r"),
             }
-        ];
+        };
 
         assert_parse_succeeds(input, expected);
     }
@@ -2198,7 +2198,7 @@ mod test {
             "- Nice things to drink\n",
         );
 
-        let expected = list! [
+        let expected = list! {
             paragraph { text("Nice things to eat") },
             list {
                 paragraph { text("Beef") },
@@ -2207,7 +2207,7 @@ mod test {
                 }
             }
             paragraph { text("Nice things to drink") }
-        ];
+        };
 
         assert_parse_succeeds(input, expected);
     }
