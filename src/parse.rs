@@ -844,7 +844,7 @@ mod test {
     }
 
     macro_rules! block {
-        (paragraph $($text:expr),*) => {
+        (paragraph $($text:expr),* $(,)?) => {
             Block::Paragraph(Box::new([
                 $(
                     $text,
@@ -862,7 +862,7 @@ mod test {
     }
 
     macro_rules! list_item {
-        (paragraph $($text:expr),*) => {
+        (paragraph $($text:expr),* $(,)?) => {
             ListItem::Text(Box::new([
                 $(
                     $text,
@@ -888,24 +888,23 @@ mod test {
         }
     }
 
+    macro_rules! list {
+        ($($content:tt)*) => {
+            Document {
+                contents: Box::new([element!(list $($content)*)]),
+                ..Default::default()
+            }
+        }
+    }
+
     impl Into<Element> for ParagraphBuilder {
         fn into(self) -> Element {
             Element::Block(Block::Paragraph(self.build()))
         }
     }
 
-    impl Into<Element> for ListBuilder {
-        fn into(self) -> Element {
-            Element::Block(Block::List(self.build()))
-        }
-    }
-
     fn paragraph() -> ParagraphBuilder {
         ParagraphBuilder::new()
-    }
-
-    fn list() -> ListBuilder {
-        ListBuilder::new()
     }
 
     fn text(text: &str) -> TextRun {
@@ -983,37 +982,6 @@ mod test {
         }
     }
 
-    struct ListBuilder {
-        items: Vec<ListItem>,
-    }
-
-    impl ListBuilder {
-        fn new() -> Self {
-            Self { items: Vec::new() }
-        }
-
-        fn with<T: Into<ListItem>>(mut self, item: T) -> Self {
-            self.items.push(item.into());
-            self
-        }
-
-        fn build(self) -> Box<[ListItem]> {
-            self.items.into_boxed_slice()
-        }
-    }
-
-    impl Into<Block> for ListBuilder {
-        fn into(self) -> Block {
-            Block::List(self.build())
-        }
-    }
-
-    impl Into<ListItem> for ListBuilder {
-        fn into(self) -> ListItem {
-            ListItem::SubList(self.build())
-        }
-    }
-
     fn assert_parse_succeeds<T: Into<Document>>(input: &'static str, expected: T) {
         let expected = expected.into();
         let result = parse_str(input);
@@ -1056,15 +1024,6 @@ mod test {
     }
 
     impl Into<Document> for ParagraphBuilder {
-        fn into(self) -> Document {
-            Document {
-                contents: Box::new([Element::Block(self.into())]),
-                ..Default::default()
-            }
-        }
-    }
-
-    impl Into<Document> for ListBuilder {
         fn into(self) -> Document {
             Document {
                 contents: Box::new([Element::Block(self.into())]),
@@ -1277,6 +1236,7 @@ mod test {
     fn three_new_lines_becomes_blocks() {
         let input = "Cats\n\n\nwhiskers";
 
+        //TODO: elements! macro?
         let expected = document!(
             contents: [
                 paragraph { text("Cats") },
@@ -2031,11 +1991,11 @@ mod test {
             "- Water is important also\n"
         );
 
-        let expected = list()
-            .with(paragraph().with(text("Dry food is ok")))
-            .with(paragraph().with(text("Wet food is much better")))
-            .with(paragraph().with(text("Water is important also")));
-
+        let expected = list! [
+            paragraph { text("Dry food is ok")},
+            paragraph { text("Wet food is much better")},
+            paragraph { text("Water is important also")}
+        ];
         assert_parse_succeeds(input, expected);
     }
 
@@ -2048,10 +2008,11 @@ mod test {
             "- Water is important also"
         );
 
-        let expected = list()
-            .with(paragraph().with(text("Dry food is ok")))
-            .with(paragraph().with(text("Wet food is much better")))
-            .with(paragraph().with(text("Water is important also")));
+        let expected = list! [
+            paragraph { text("Dry food is ok") },
+            paragraph { text("Wet food is much better") },
+            paragraph { text("Water is important also") }
+        ];
 
         assert_parse_succeeds(input, expected);
     }
@@ -2060,7 +2021,7 @@ mod test {
     fn dash_in_list_text_is_not_treated_as_bullet() {
         let input = concat!("- Meow - meow\n",);
 
-        let expected = list().with(paragraph().with(text("Meow - meow")));
+        let expected = list![paragraph { text("Meow - meow") }];
 
         assert_parse_succeeds(input, expected);
     }
@@ -2076,10 +2037,11 @@ mod test {
             "    important also\n"
         );
 
-        let expected = list()
-            .with(paragraph().with(text("Dry food is ok")))
-            .with(paragraph().with(text("Wet food is much better")))
-            .with(paragraph().with(text("Water is important also")));
+        let expected = list! [
+            paragraph { text("Dry food is ok") },
+            paragraph { text("Wet food is much better") },
+            paragraph { text("Water is important also") },
+        ];
 
         assert_parse_succeeds(input, expected);
     }
@@ -2092,22 +2054,20 @@ mod test {
             "- Water is `important  also`\n"
         );
 
-        let expected = list()
-            .with(
-                paragraph()
-                    .with(text("Dry food is "))
-                    .with(strong_text("ok")),
-            )
-            .with(
-                paragraph()
-                    .with(text("Wet food is "))
-                    .with(emphasised_text("much better")),
-            )
-            .with(
-                paragraph()
-                    .with(text("Water is "))
-                    .with(raw_text("important  also")),
-            );
+        let expected = list! [
+            paragraph {
+                text("Dry food is "),
+                strong_text("ok"),
+            }
+            paragraph {
+                text("Wet food is "),
+                emphasised_text("much better"),
+            }
+            paragraph {
+                text("Water is "),
+                raw_text("important  also"),
+            }
+        ];
 
         assert_parse_succeeds(input, expected);
     }
@@ -2121,14 +2081,14 @@ mod test {
             "  - Beef\n",
         );
 
-        let expected = list()
-            .with(paragraph().with(text("Nice things to eat")))
-            .with(
-                list()
-                    .with(paragraph().with(text("Tuna")))
-                    .with(paragraph().with(text("Chicken")))
-                    .with(paragraph().with(text("Beef"))),
-            );
+        let expected = list! [
+            paragraph { text("Nice things to eat") }
+            list {
+                paragraph { text("Tuna") },
+                paragraph { text("Chicken") },
+                paragraph { text("Beef") },
+            }
+        ];
 
         assert_parse_succeeds(input, expected);
     }
@@ -2142,15 +2102,16 @@ mod test {
             "    - Wagyu\n",
         );
 
-        let expected = list()
-            .with(paragraph().with(text("Nice things to eat")))
-            .with(
-                list().with(paragraph().with(text("Beef"))).with(
-                    list()
-                        .with(paragraph().with(text("Hereford")))
-                        .with(paragraph().with(text("Wagyu"))),
-                ),
-            );
+        let expected = list! [
+            paragraph { text("Nice things to eat") },
+            list {
+                paragraph { text("Beef") },
+                list {
+                    paragraph { text("Hereford") },
+                    paragraph { text("Wagyu") },
+                }
+            }
+        ];
 
         assert_parse_succeeds(input, expected);
     }
@@ -2159,14 +2120,14 @@ mod test {
     fn list_with_raw_over_newline() {
         let input = "- f`oo\n  ba`r\n  - baz";
 
-        let expected = list()
-            .with(
-                paragraph()
-                    .with(text("f"))
-                    .with(raw_text("oo   ba"))
-                    .with(text("r")),
-            )
-            .with(list().with(paragraph().with(text("baz"))));
+        let expected = list! [
+            paragraph {
+                text("f"),
+                raw_text("oo   ba"),
+                text("r"),
+            },
+            list { paragraph { text("baz") }}
+        ];
 
         assert_parse_succeeds(input, expected);
     }
@@ -2175,9 +2136,10 @@ mod test {
     fn list_item_with_trailing_whitespace() {
         let input = "- Foo    \n- Bar";
 
-        let expected = list()
-            .with(paragraph().with(text("Foo")))
-            .with(paragraph().with(text("Bar")));
+        let expected = list! [
+            paragraph { text("Foo")},
+            paragraph { text("Bar")},
+        ];
 
         assert_parse_succeeds(input, expected);
     }
@@ -2186,12 +2148,13 @@ mod test {
     fn list_with_raw_over_multiple_points() {
         let input = "- f`oo\n  -ba`r";
 
-        let expected = list().with(
-            paragraph()
-                .with(text("f"))
-                .with(raw_text("oo   -ba"))
-                .with(text("r")),
-        );
+        let expected = list! [
+            paragraph {
+                text("f"),
+                raw_text("oo   -ba"),
+                text("r"),
+            }
+        ];
 
         assert_parse_succeeds(input, expected);
     }
@@ -2235,14 +2198,16 @@ mod test {
             "- Nice things to drink\n",
         );
 
-        let expected = list()
-            .with(paragraph().with(text("Nice things to eat")))
-            .with(
-                list()
-                    .with(paragraph().with(text("Beef")))
-                    .with(list().with(paragraph().with(text("Wagyu")))),
-            )
-            .with(paragraph().with(text("Nice things to drink")));
+        let expected = list! [
+            paragraph { text("Nice things to eat") },
+            list {
+                paragraph { text("Beef") },
+                list {
+                    paragraph { text("Wagyu") }
+                }
+            }
+            paragraph { text("Nice things to drink") }
+        ];
 
         assert_parse_succeeds(input, expected);
     }
