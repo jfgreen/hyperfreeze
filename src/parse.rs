@@ -897,14 +897,13 @@ mod test {
         }
     }
 
-    impl Into<Element> for ParagraphBuilder {
-        fn into(self) -> Element {
-            Element::Block(Block::Paragraph(self.build()))
+    macro_rules! paragraph {
+        ($($content:tt)*) => {
+            Document {
+                contents: Box::new([element!(paragraph $($content)*)]),
+                ..Default::default()
+            }
         }
-    }
-
-    fn paragraph() -> ParagraphBuilder {
-        ParagraphBuilder::new()
     }
 
     fn text(text: &str) -> TextRun {
@@ -949,39 +948,6 @@ mod test {
         }
     }
 
-    struct ParagraphBuilder {
-        text_runs: Vec<TextRun>,
-    }
-
-    impl ParagraphBuilder {
-        fn new() -> Self {
-            ParagraphBuilder {
-                text_runs: Vec::new(),
-            }
-        }
-
-        fn with<T: Into<TextRun>>(mut self, text: T) -> Self {
-            self.text_runs.push(text.into());
-            self
-        }
-
-        fn build(self) -> Box<[TextRun]> {
-            self.text_runs.into_boxed_slice()
-        }
-    }
-
-    impl Into<Block> for ParagraphBuilder {
-        fn into(self) -> Block {
-            Block::Paragraph(self.build())
-        }
-    }
-
-    impl Into<ListItem> for ParagraphBuilder {
-        fn into(self) -> ListItem {
-            ListItem::Text(self.build())
-        }
-    }
-
     fn assert_parse_succeeds<T: Into<Document>>(input: &'static str, expected: T) {
         let expected = expected.into();
         let result = parse_str(input);
@@ -1019,15 +985,6 @@ mod test {
 
                     panic!("Failed with wrong kind of error")
                 }
-            }
-        }
-    }
-
-    impl Into<Document> for ParagraphBuilder {
-        fn into(self) -> Document {
-            Document {
-                contents: Box::new([Element::Block(self.into())]),
-                ..Default::default()
             }
         }
     }
@@ -1093,7 +1050,7 @@ mod test {
     fn one_line_paragraph() {
         let input = "We like cats very much";
 
-        let expected = paragraph().with(text("We like cats very much"));
+        let expected = paragraph! { text("We like cats very much") };
 
         assert_parse_succeeds(input, expected);
     }
@@ -1102,7 +1059,7 @@ mod test {
     fn explicit_paragraph() {
         let input = "#paragraph\nCats go meeow!";
 
-        let expected = paragraph().with(text("Cats go meeow!"));
+        let expected = paragraph! { text("Cats go meeow!") };
 
         assert_parse_succeeds(input, expected);
     }
@@ -1156,7 +1113,7 @@ mod test {
     fn double_space() {
         let input = "Nice  kitty!";
 
-        let expected = paragraph().with(text("Nice kitty!"));
+        let expected = paragraph! { text("Nice kitty!") };
 
         assert_parse_succeeds(input, expected);
     }
@@ -1165,7 +1122,7 @@ mod test {
     fn trailing_new_line_is_ignored() {
         let input = "Cats\n";
 
-        let expected = paragraph().with(text("Cats"));
+        let expected = paragraph! { text("Cats") };
 
         assert_parse_succeeds(input, expected);
     }
@@ -1174,7 +1131,7 @@ mod test {
     fn space_then_trailing_new_line_is_ignored() {
         let input = "Cats \n";
 
-        let expected = paragraph().with(text("Cats"));
+        let expected = paragraph! { text("Cats") };
 
         assert_parse_succeeds(input, expected);
     }
@@ -1183,7 +1140,7 @@ mod test {
     fn new_line_becomes_whitespace() {
         let input = "Cats\nwhiskers";
 
-        let expected = paragraph().with(text("Cats whiskers"));
+        let expected = paragraph! { text("Cats whiskers") };
 
         assert_parse_succeeds(input, expected);
     }
@@ -1192,9 +1149,10 @@ mod test {
     fn new_line_becomes_whitespace_given_plain_then_styled() {
         let input = "Cats\n*whiskers*";
 
-        let expected = paragraph()
-            .with(text("Cats "))
-            .with(strong_text("whiskers"));
+        let expected = paragraph! {
+            text("Cats "),
+            strong_text("whiskers"),
+        };
 
         assert_parse_succeeds(input, expected);
     }
@@ -1203,9 +1161,10 @@ mod test {
     fn new_line_becomes_whitespace_given_plain_then_raw() {
         let input = "Cats\n`nice whiskers`";
 
-        let expected = paragraph()
-            .with(text("Cats "))
-            .with(raw_text("nice whiskers"));
+        let expected = paragraph! {
+            text("Cats "),
+            raw_text("nice whiskers"),
+        };
 
         assert_parse_succeeds(input, expected);
     }
@@ -1213,7 +1172,7 @@ mod test {
     #[test]
     fn new_line_with_extra_whitespace_collapses() {
         let input = "Cats    \n    whiskers";
-        let expected = paragraph().with(text("Cats whiskers"));
+        let expected = paragraph! { text("Cats whiskers") };
 
         assert_parse_succeeds(input, expected);
     }
@@ -1290,7 +1249,7 @@ mod test {
     fn escaped_char() {
         let input = "\\A";
 
-        let expected = paragraph().with(text("A"));
+        let expected = paragraph! { text("A") };
 
         assert_parse_succeeds(input, expected);
     }
@@ -1299,7 +1258,7 @@ mod test {
     fn escaped_hash_in_markup() {
         let input = "My cat does backflips \\#coolcat";
 
-        let expected = paragraph().with(text("My cat does backflips #coolcat"));
+        let expected = paragraph! { text("My cat does backflips #coolcat") };
 
         assert_parse_succeeds(input, expected);
     }
@@ -1308,7 +1267,7 @@ mod test {
     fn escaped_underscore() {
         let input = "cat\\_case";
 
-        let expected = paragraph().with(text("cat_case"));
+        let expected = paragraph! { text("cat_case") };
 
         assert_parse_succeeds(input, expected);
     }
@@ -1317,7 +1276,7 @@ mod test {
     fn escaped_underscore_in_emphasis() {
         let input = "_cat\\_case_";
 
-        let expected = paragraph().with(emphasised_text("cat_case"));
+        let expected = paragraph! { emphasised_text("cat_case") };
 
         assert_parse_succeeds(input, expected);
     }
@@ -1326,7 +1285,7 @@ mod test {
     fn escaped_ignored_in_raw() {
         let input = "`cat\\_case`";
 
-        let expected = paragraph().with(raw_text("cat\\_case"));
+        let expected = paragraph! { raw_text("cat\\_case") };
 
         assert_parse_succeeds(input, expected);
     }
@@ -1335,10 +1294,11 @@ mod test {
     fn emphasised_words() {
         let input = "We _totally adore_ them";
 
-        let expected = paragraph()
-            .with(text("We "))
-            .with(emphasised_text("totally adore"))
-            .with(text(" them"));
+        let expected = paragraph! {
+            text("We "),
+            emphasised_text("totally adore"),
+            text(" them"),
+        };
 
         assert_parse_succeeds(input, expected);
     }
@@ -1347,10 +1307,11 @@ mod test {
     fn emphasis_at_end_of_line() {
         let input = "Cats like to _zoom_\naround";
 
-        let expected = paragraph()
-            .with(text("Cats like to "))
-            .with(emphasised_text("zoom"))
-            .with(text(" around"));
+        let expected = paragraph! {
+            text("Cats like to "),
+            emphasised_text("zoom"),
+            text(" around"),
+        };
 
         assert_parse_succeeds(input, expected);
     }
@@ -1359,10 +1320,11 @@ mod test {
     fn strong_words() {
         let input = "I *need to pet that cat* right away.";
 
-        let expected = paragraph()
-            .with(text("I "))
-            .with(strong_text("need to pet that cat"))
-            .with(text(" right away."));
+        let expected = paragraph! {
+            text("I "),
+            strong_text("need to pet that cat"),
+            text(" right away."),
+        };
 
         assert_parse_succeeds(input, expected);
     }
@@ -1371,10 +1333,11 @@ mod test {
     fn strong_mid_word() {
         let input = "I said: mee*ooOOo*ww!";
 
-        let expected = paragraph()
-            .with(text("I said: mee"))
-            .with(strong_text("ooOOo"))
-            .with(text("ww!"));
+        let expected = paragraph! {
+            text("I said: mee"),
+            strong_text("ooOOo"),
+            text("ww!"),
+        };
 
         assert_parse_succeeds(input, expected);
     }
@@ -1383,7 +1346,7 @@ mod test {
     fn strong_over_two_lines() {
         let input = "*me\now*";
 
-        let expected = paragraph().with(strong_text("me ow"));
+        let expected = paragraph! { strong_text("me ow") };
 
         assert_parse_succeeds(input, expected);
     }
@@ -1392,10 +1355,11 @@ mod test {
     fn strikethrough_words() {
         let input = "Cats are ~ok i guess~ magnificant";
 
-        let expected = paragraph()
-            .with(text("Cats are "))
-            .with(strikethrough_text("ok i guess"))
-            .with(text(" magnificant"));
+        let expected = paragraph! {
+            text("Cats are "),
+            strikethrough_text("ok i guess"),
+            text(" magnificant"),
+        };
 
         assert_parse_succeeds(input, expected);
     }
@@ -1404,10 +1368,11 @@ mod test {
     fn raw_words() {
         let input = "Robot cat says `bleep bloop`!";
 
-        let expected = paragraph()
-            .with(text("Robot cat says "))
-            .with(raw_text("bleep bloop"))
-            .with(text("!"));
+        let expected = paragraph! {
+            text("Robot cat says "),
+            raw_text("bleep bloop"),
+            text("!"),
+        };
 
         assert_parse_succeeds(input, expected);
     }
@@ -1416,10 +1381,11 @@ mod test {
     fn raw_mid_word() {
         let input = "Bl`eeee`p!";
 
-        let expected = paragraph()
-            .with(text("Bl"))
-            .with(raw_text("eeee"))
-            .with(text("p!"));
+        let expected = paragraph! {
+            text("Bl"),
+            raw_text("eeee"),
+            text("p!"),
+        };
 
         assert_parse_succeeds(input, expected);
     }
@@ -1428,10 +1394,11 @@ mod test {
     fn underscore_in_raw() {
         let input = "Set `PURR_LOUDLY` to true";
 
-        let expected = paragraph()
-            .with(text("Set "))
-            .with(raw_text("PURR_LOUDLY"))
-            .with(text(" to true"));
+        let expected = paragraph! {
+            text("Set "),
+            raw_text("PURR_LOUDLY"),
+            text(" to true"),
+        };
 
         assert_parse_succeeds(input, expected);
     }
@@ -1440,7 +1407,7 @@ mod test {
     fn extra_spaces_in_raw() {
         let input = "`Keep your       distance`";
 
-        let expected = paragraph().with(raw_text("Keep your       distance"));
+        let expected = paragraph! { raw_text("Keep your       distance") };
 
         assert_parse_succeeds(input, expected);
     }
@@ -1449,7 +1416,7 @@ mod test {
     fn raw_over_two_lines() {
         let input = "`Great\ncats`";
 
-        let expected = paragraph().with(raw_text("Great cats"));
+        let expected = paragraph! { raw_text("Great cats") };
 
         assert_parse_succeeds(input, expected);
     }
@@ -1458,7 +1425,7 @@ mod test {
     fn strikethrough_over_two_lines() {
         let input = "~Great\ndogs~";
 
-        let expected = paragraph().with(strikethrough_text("Great dogs"));
+        let expected = paragraph! { strikethrough_text("Great dogs") };
 
         assert_parse_succeeds(input, expected);
     }
@@ -1467,7 +1434,7 @@ mod test {
     fn raw_leading_with_new_line() {
         let input = "`\nMeow?`";
 
-        let expected = paragraph().with(raw_text(" Meow?"));
+        let expected = paragraph! { raw_text(" Meow?") };
 
         assert_parse_succeeds(input, expected);
     }
@@ -1476,7 +1443,7 @@ mod test {
     fn raw_trailing_with_new_line() {
         let input = "`Meow\n`";
 
-        let expected = paragraph().with(raw_text("Meow "));
+        let expected = paragraph! { raw_text("Meow ") };
 
         assert_parse_succeeds(input, expected);
     }
@@ -1485,7 +1452,7 @@ mod test {
     fn raw_leading_with_space() {
         let input = "` Meow`";
 
-        let expected = paragraph().with(raw_text(" Meow"));
+        let expected = paragraph! { raw_text(" Meow") };
 
         assert_parse_succeeds(input, expected);
     }
@@ -1494,7 +1461,7 @@ mod test {
     fn raw_trailing_with_space() {
         let input = "`Meow `";
 
-        let expected = paragraph().with(raw_text("Meow "));
+        let expected = paragraph! { raw_text("Meow ") };
 
         assert_parse_succeeds(input, expected);
     }
@@ -1503,7 +1470,7 @@ mod test {
     fn raw_over_three_lines() {
         let input = "`Great\ncats\nassemble!`";
 
-        let expected = paragraph().with(raw_text("Great cats assemble!"));
+        let expected = paragraph! { raw_text("Great cats assemble!") };
 
         assert_parse_succeeds(input, expected);
     }
@@ -1512,7 +1479,7 @@ mod test {
     fn standalone_dash() {
         let input = "Felines - fantastic!";
 
-        let expected = paragraph().with(text("Felines - fantastic!"));
+        let expected = paragraph! { text("Felines - fantastic!") };
 
         assert_parse_succeeds(input, expected);
     }
@@ -1521,7 +1488,7 @@ mod test {
     fn paragraph_with_trailing_whitespace() {
         let input = "Cool kitty   ";
 
-        let expected = paragraph().with(text("Cool kitty"));
+        let expected = paragraph! { text("Cool kitty") };
 
         assert_parse_succeeds(input, expected);
     }
@@ -1530,10 +1497,11 @@ mod test {
     fn underscore_in_awkward_places() {
         let input = "Cat cat_cat cat_ cat.";
 
-        let expected = paragraph()
-            .with(text("Cat cat"))
-            .with(emphasised_text("cat cat"))
-            .with(text(" cat."));
+        let expected = paragraph! {
+            text("Cat cat"),
+            emphasised_text("cat cat"),
+            text(" cat.")
+        };
 
         assert_parse_succeeds(input, expected);
     }
@@ -1542,7 +1510,7 @@ mod test {
     fn new_line_then_multiple_spaces_in_plain_text() {
         let input = "Cat\n  cat";
 
-        let expected = paragraph().with(text("Cat cat"));
+        let expected = paragraph! { text("Cat cat") };
 
         assert_parse_succeeds(input, expected);
     }
@@ -1551,7 +1519,7 @@ mod test {
     fn new_line_then_multiple_spaces_in_styled() {
         let input = "*Cat\n  cat*";
 
-        let expected = paragraph().with(strong_text("Cat cat"));
+        let expected = paragraph! { strong_text("Cat cat") };
 
         assert_parse_succeeds(input, expected);
     }
@@ -1560,7 +1528,7 @@ mod test {
     fn new_line_then_multiple_spaces_in_raw() {
         let input = "`Cat\n  cat`";
 
-        let expected = paragraph().with(raw_text("Cat   cat"));
+        let expected = paragraph! { raw_text("Cat   cat") };
 
         assert_parse_succeeds(input, expected);
     }
@@ -1569,7 +1537,7 @@ mod test {
     fn multiple_spaces_then_new_line_in_plain_text() {
         let input = "Cat  \ncat";
 
-        let expected = paragraph().with(text("Cat cat"));
+        let expected = paragraph! { text("Cat cat") };
 
         assert_parse_succeeds(input, expected);
     }
@@ -1578,7 +1546,7 @@ mod test {
     fn multiple_spaces_then_new_line_in_styled() {
         let input = "*Cat  \ncat*";
 
-        let expected = paragraph().with(strong_text("Cat cat"));
+        let expected = paragraph! { strong_text("Cat cat") };
 
         assert_parse_succeeds(input, expected);
     }
@@ -1587,7 +1555,7 @@ mod test {
     fn multiple_spaces_then_new_line_in_raw() {
         let input = "`Cat  \ncat`";
 
-        let expected = paragraph().with(raw_text("Cat   cat"));
+        let expected = paragraph! { raw_text("Cat   cat") };
 
         assert_parse_succeeds(input, expected);
     }
@@ -1713,7 +1681,7 @@ mod test {
     fn doc_with_leading_new_line() {
         let input = "\nCats cats cats";
 
-        let expected = paragraph().with(text("Cats cats cats"));
+        let expected = paragraph! { text("Cats cats cats") };
 
         assert_parse_succeeds(input, expected);
     }
@@ -1722,7 +1690,7 @@ mod test {
     fn doc_with_leading_new_lines() {
         let input = "\n\nCats cats cats";
 
-        let expected = paragraph().with(text("Cats cats cats"));
+        let expected = paragraph! { text("Cats cats cats") };
 
         assert_parse_succeeds(input, expected);
     }
@@ -1731,7 +1699,7 @@ mod test {
     fn doc_with_leading_spaces_and_new_line() {
         let input = "   \nCats cats cats";
 
-        let expected = paragraph().with(text("Cats cats cats"));
+        let expected = paragraph! { text("Cats cats cats") };
 
         assert_parse_succeeds(input, expected);
     }
@@ -1740,7 +1708,7 @@ mod test {
     fn doc_ending_with_new_line() {
         let input = "Cats are friends\n";
 
-        let expected = paragraph().with(text("Cats are friends"));
+        let expected = paragraph! { text("Cats are friends") };
 
         assert_parse_succeeds(input, expected);
     }
@@ -1749,7 +1717,7 @@ mod test {
     fn doc_ending_with_new_lines() {
         let input = "Feline friends\n\n";
 
-        let expected = paragraph().with(text("Feline friends"));
+        let expected = paragraph! { text("Feline friends") };
 
         assert_parse_succeeds(input, expected);
     }
@@ -1758,7 +1726,10 @@ mod test {
     fn new_line_and_space_between_styled_and_plain_text_runs() {
         let input = "*Cat*\n cat";
 
-        let expected = paragraph().with(strong_text("Cat")).with(text(" cat"));
+        let expected = paragraph! {
+            strong_text("Cat"),
+            text(" cat"),
+        };
 
         assert_parse_succeeds(input, expected);
     }
@@ -1978,7 +1949,7 @@ mod test {
     fn dash_in_paragraph_is_treated_as_part_of_text() {
         let input = "Ripley\n- Cat";
 
-        let expected = paragraph().with(text("Ripley - Cat"));
+        let expected = paragraph! { text("Ripley - Cat") };
 
         assert_parse_succeeds(input, expected);
     }
