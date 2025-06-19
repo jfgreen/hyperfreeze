@@ -20,6 +20,7 @@ pub fn render_html(document: &Document, out: &mut impl io::Write) -> io::Result<
                     render_block(block, out)?;
                 }
             }
+            Element::Section(_) => todo!(),
         }
     }
 

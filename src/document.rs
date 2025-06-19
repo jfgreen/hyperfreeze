@@ -23,9 +23,10 @@ pub struct Reference {
 pub enum Element {
     Block(Block),
     Container(Container),
-    //Section(Section),
+    Section(Section),
 }
 
+//TODO: Footnotes
 #[derive(PartialEq, Eq, Debug)]
 pub enum Block {
     Paragraph(Box<[TextRun]>),
@@ -38,6 +39,7 @@ pub struct Container {
     pub kind: ContainerKind,
 }
 
+//TODO: Consider enforcing only two levels of section
 #[derive(PartialEq, Eq, Debug)]
 pub struct Section {
     pub content: Box<[Element]>,

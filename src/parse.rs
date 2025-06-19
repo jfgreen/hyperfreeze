@@ -56,6 +56,7 @@ enum ErrorKind {
     ExpectedMetadataValue,
     ExpectedSpace,
     ExpectedLink,
+    ExpectedSectionHeader,
     ExpectedReferencesBlock,
     ReferencesOutOfPlace,
     UnevenListIndent(usize),
@@ -68,7 +69,7 @@ impl Display for ParseError {
         match &self.kind {
             LooseDelimiter => write!(f, "delimited text cant have leading/trailing whitespace"),
             EmptyDelimitedText => write!(f, "delimited text cant be empty"),
-            DocumentHeaderNotAtStart => write!(f, "document header should be at start of document"),
+            DocumentHeaderNotAtStart => write!(f, "document header is not at start of document"),
             UnknownMetadata(key) => write!(f, "unknown metadata '{}", key),
             UnknownBlock(name) => write!(f, "unknown block '{}'", name),
             UnknownContainer(name) => write!(f, "unknown container '{}'", name),
@@ -83,6 +84,7 @@ impl Display for ParseError {
             ExpectedMetadataValue => write!(f, "expected metadata value"),
             ExpectedSpace => write!(f, "expected one or more spaces"),
             ExpectedLink => write!(f, "expected link"),
+            ExpectedSectionHeader => write!(f, "expected start of section header"),
             ExpectedReferencesBlock => write!(f, "expected 'references' header"),
             ReferencesOutOfPlace => write!(f, "references not in correct part of document"),
             UnevenListIndent(spaces) => write!(f, "list indent of {} is not even", spaces),
@@ -95,7 +97,7 @@ impl Display for ParseError {
         if let Some(failing_line) = &self.failing_input_line {
             writeln!(
                 f,
-                " at line {} column {}:",
+                "\nEncountered at line {} column {}:",
                 self.input_line, self.input_column
             )?;
             writeln!(f)?;
@@ -133,6 +135,7 @@ const ASTERISK: char = '*';
 const TILDE: char = '~';
 const UNDERSCORE: char = '_';
 const SLASH: char = '/';
+const TRIPPLE_SLASH: &str = "///";
 const BACKSLASH: char = '\\';
 const DASH: char = '-';
 const AT_SIGN: char = '@';
@@ -207,6 +210,10 @@ fn eat_char(scanner: &mut Scanner) -> ParseResult<char> {
     try_scan!(scanner.eat_char(), UnexpectedEndOfInput)
 }
 
+fn eat_section_slashes<'a>(scanner: &mut Scanner<'a>) -> ParseResult<&'a str> {
+    try_scan!(scanner.eat_while_char(SLASH), ExpectedSectionHeader)
+}
+
 #[derive(Clone, Copy, PartialEq)]
 enum TextMode {
     Paragraph,
@@ -239,18 +246,8 @@ fn parse_document(scanner: &mut Scanner) -> ParseResult<Document> {
     while scanner.has_input() {
         if scanner.is_on_one_of(WHITESPACE_CHARS) {
             scanner.skip_char();
-        } else if scanner.is_on_char(EXCLAMATION_MARK) {
-            let container = parse_container(scanner)?;
-            let element = Element::Container(container);
-            elements.push(element);
-        } else if scanner.is_on_char(AT_SIGN) {
-            return parse_err!(ReferencesOutOfPlace, scanner.position());
-        } else if scanner.is_on_char(SLASH) {
-            //TODO: This will need reworking once we add sections propper
-            return parse_err!(DocumentHeaderNotAtStart, scanner.position());
         } else {
-            let block = parse_block(scanner)?;
-            let element = Element::Block(block);
+            let element = parse_element(scanner)?;
             elements.push(element);
         }
     }
@@ -260,6 +257,21 @@ fn parse_document(scanner: &mut Scanner) -> ParseResult<Document> {
         contents: elements.into_boxed_slice(),
         references: references.into_boxed_slice(),
     })
+}
+
+fn parse_element(scanner: &mut Scanner) -> Result<Element, ParseError> {
+    if scanner.is_on_char(EXCLAMATION_MARK) {
+        let container = parse_container(scanner)?;
+        Ok(Element::Container(container))
+    } else if scanner.is_on_char(AT_SIGN) {
+        parse_err!(ReferencesOutOfPlace, scanner.position())
+    } else if scanner.is_on_char(SLASH) {
+        let section = parse_section(scanner)?;
+        Ok(Element::Section(section))
+    } else {
+        let block = parse_block(scanner)?;
+        Ok(Element::Block(block))
+    }
 }
 
 fn parse_document_header(scanner: &mut Scanner) -> ParseResult<Metadata> {
@@ -365,6 +377,50 @@ fn parse_container(scanner: &mut Scanner) -> ParseResult<Container> {
     Ok(container)
 }
 
+fn parse_section(scanner: &mut Scanner) -> ParseResult<Section> {
+    let section_start = scanner.position();
+    let slashes = eat_section_slashes(scanner)?;
+    let section_level = slashes.len() - 1;
+    if section_level == 0 {
+        return parse_err!(DocumentHeaderNotAtStart, section_start);
+    }
+
+    //TODO: reject level 3 and beyond
+
+    scanner.skip_while_on_char(SPACE);
+
+    let name = parse_markup_text(scanner, TextMode::Title)?;
+
+    scanner.skip_while_on_char(SPACE);
+
+    expect_char(scanner, NEW_LINE)?;
+    scanner.skip_while_on_char(SPACE);
+    expect_char(scanner, NEW_LINE)?;
+
+    let mut elements = Vec::new();
+
+    while scanner.has_input() {
+        if scanner.is_on_one_of(WHITESPACE_CHARS) {
+            scanner.skip_char();
+        } else if scanner.is_on_char(SLASH)
+            && !(section_level == 1 && scanner.is_on_str(TRIPPLE_SLASH))
+        {
+            break;
+        } else {
+            let element = parse_element(scanner)?;
+            elements.push(element);
+        }
+    }
+
+    let section = Section {
+        content: elements.into_boxed_slice(),
+        title: name.to_string(),
+        level: section_level,
+    };
+
+    Ok(section)
+}
+
 fn parse_block(scanner: &mut Scanner) -> ParseResult<Block> {
     let block = if scanner.is_on_char(HASH) {
         let block_position = scanner.position();
@@ -431,6 +487,8 @@ fn parse_text_runs(scanner: &mut Scanner, mode: TextMode) -> ParseResult<Box<[Te
 }
 
 fn parse_list(scanner: &mut Scanner) -> ParseResult<Block> {
+    //TODO: is this stack based solution slightly incongruous with
+    // the rest of the parser that just uses recursive functions?
     let mut stack = ListStack::new();
 
     while on_list_item(scanner) {
@@ -784,7 +842,11 @@ mod test {
             )?
             $(
                 contents: [
-                    $($element_name:ident { $($element_content:tt)* }),*
+                    $(
+                      $element_type:ident
+                      $(($element_name:expr))?
+                      { $($element_content:tt)* }
+                    ),*
                     $(,)?
                 ]
                 $(,)?
@@ -803,7 +865,11 @@ mod test {
                         ..Default::default()
                     },)?
                     $(contents: Box::new(
-                        [$(element!($element_name $($element_content)*),)*]
+                        [$(element!(
+                            $element_type
+                            $(($element_name))?
+                            $($element_content)*
+                        ),)*]
                     ),)?
                     $(references: Box::new(
                         [$(Reference {
@@ -833,6 +899,30 @@ mod test {
                     )*
                 ]),
                 kind: ContainerKind::Info,
+            })
+        };
+
+        (section ($name:expr) $( $element:ident $(($element_name:expr))? { $($content:tt)* } $(,)? )*) => {
+            Element::Section(Section{
+                content: Box::new([
+                    $(
+                        element!($element $(($element_name))? $($content)*),
+                    )*
+                ]),
+                level: 1,
+                title: String::from($name)
+            })
+        };
+
+        (subsection ($name:expr) $( $element:ident $(($element_name:expr))? { $($content:tt)* } $(,)? )*) => {
+            Element::Section(Section{
+                content: Box::new([
+                    $(
+                        element!($element $(($element_name))? $($content)*),
+                    )*
+                ]),
+                level: 2,
+                title: String::from($name)
             })
         };
 
@@ -901,6 +991,28 @@ mod test {
         ($($content:tt)*) => {
             Document {
                 contents: Box::new([element!(paragraph $($content)*)]),
+                ..Default::default()
+            }
+        }
+    }
+
+    macro_rules! elements {
+        (
+            $(
+              $element_type:ident
+              $(($element_name:expr))?
+              { $($element_content:tt)* }
+            ),*
+            $(,)?
+        ) => {
+            Document {
+                contents: Box::new(
+                    [$(element!(
+                        $element_type
+                        $(($element_name))?
+                        $($element_content)*
+                    ),)*]
+                ),
                 ..Default::default()
             }
         }
@@ -1181,12 +1293,10 @@ mod test {
     fn two_new_lines_become_blocks() {
         let input = "Cats\n\nwhiskers";
 
-        let expected = document!(
-            contents: [
-                paragraph { text("Cats") },
-                paragraph { text("whiskers") }
-            ]
-        );
+        let expected = elements! {
+            paragraph { text("Cats") },
+            paragraph { text("whiskers") }
+        };
 
         assert_parse_succeeds(input, expected);
     }
@@ -1195,13 +1305,10 @@ mod test {
     fn three_new_lines_becomes_blocks() {
         let input = "Cats\n\n\nwhiskers";
 
-        //TODO: elements! macro?
-        let expected = document!(
-            contents: [
-                paragraph { text("Cats") },
-                paragraph { text("whiskers") }
-            ]
-        );
+        let expected = elements! {
+            paragraph { text("Cats") },
+            paragraph { text("whiskers") }
+        };
 
         assert_parse_succeeds(input, expected);
     }
@@ -1209,12 +1316,11 @@ mod test {
     #[test]
     fn two_new_lines_with_whitespace_is_treated_as_blockbreak() {
         let input = "Cats\n \nwhiskers";
-        let expected = document!(
-            contents: [
-                paragraph { text("Cats") },
-                paragraph { text("whiskers") }
-            ]
-        );
+
+        let expected = elements! {
+            paragraph { text("Cats") },
+            paragraph { text("whiskers") }
+        };
 
         assert_parse_succeeds(input, expected);
     }
@@ -1222,11 +1328,9 @@ mod test {
     #[test]
     fn blockbreak_with_extra_whitespace() {
         let input = "Cats  \n    \n  whiskers";
-        let expected = document!(
-            contents: [
-                paragraph { text("Cats") },
-                paragraph { text("whiskers") }
-            ]
+        let expected = elements!(
+            paragraph { text("Cats") },
+            paragraph { text("whiskers") }
         );
 
         assert_parse_succeeds(input, expected);
@@ -1738,11 +1842,9 @@ mod test {
     fn leading_whitespace_on_paragraph_is_ignored() {
         let input = "Cat\n\n  cat";
 
-        let expected = document!(
-            contents: [
-                paragraph { text("Cat") },
-                paragraph { text("cat") }
-            ]
+        let expected = elements!(
+            paragraph { text("Cat") },
+            paragraph { text("cat") }
         );
 
         assert_parse_succeeds(input, expected);
@@ -2247,6 +2349,65 @@ mod test {
         let expected = ReferencesOutOfPlace;
 
         assert_parse_fails(input, expected);
+    }
+
+    #[test]
+    fn document_with_sections() {
+        let input = concat!(
+            "/Speed running the kitchen at 4am\n",
+            "\n",
+            "This is a comprehensive guide.\n",
+            "\n",
+            "// Motivation\n",
+            "\n",
+            "Set a personal best,\n",
+            "while others rest!\n",
+            "\n",
+            "// Planning the perfect lap\n",
+            "\n",
+            "This requires care.\n",
+            "\n",
+            "/// Selecting a route\n",
+            "\n",
+            "Avoid the toaster.\n",
+            "\n",
+            "/// Choosing a victory scream\n",
+            "\n",
+            "\n",
+            "\n",
+            "Meeaaahhh?\n",
+            "\n",
+            "// Conclusion\n",
+            "\n",
+            "Go go go!"
+        );
+
+        let expected = document! {
+            metadata: {
+                title: "Speed running the kitchen at 4am"
+            },
+            contents: [
+                paragraph { text("This is a comprehensive guide.") },
+
+                section("Motivation") {
+                    paragraph { text("Set a personal best, while others rest!") },
+                },
+                section("Planning the perfect lap") {
+                    paragraph { text("This requires care.") },
+                    subsection("Selecting a route") {
+                        paragraph { text("Avoid the toaster.") },
+                    },
+                    subsection("Choosing a victory scream") {
+                        paragraph { text("Meeaaahhh?") },
+                    }
+                },
+                section("Conclusion") {
+                    paragraph { text("Go go go!") },
+                }
+            ]
+        };
+
+        assert_parse_succeeds(input, expected);
     }
 
     // TODO: test missing reference
