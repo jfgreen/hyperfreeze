@@ -5,11 +5,10 @@ pub struct Document {
     pub references: Box<[Reference]>,
 }
 
-// TODO: Make id, title be explicty optional
 #[derive(PartialEq, Eq, Debug, Default)]
 pub struct Metadata {
-    pub id: String,
-    pub title: String,
+    pub id: Option<String>,
+    pub title: Option<String>,
 }
 
 //TODO: Might be nice to also have an optional title and/or description

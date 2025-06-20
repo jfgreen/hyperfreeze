@@ -291,7 +291,7 @@ fn parse_document_header(scanner: &mut Scanner) -> ParseResult<Metadata> {
     }
 
     let mut metadata = Metadata {
-        title,
+        title: Some(title),
         ..Default::default()
     };
 
@@ -309,8 +309,8 @@ fn parse_document_header(scanner: &mut Scanner) -> ParseResult<Metadata> {
         let value = eat_meta_value(scanner)?;
 
         match key {
-            "id" => metadata.id.push_str(value),
-            "title" => metadata.title.push_str(value),
+            "id" => metadata.id = Some(value.to_string()),
+            "title" => metadata.title = Some(value.to_string()),
             _ => return parse_err!(UnknownMetadata(key.into()), key_position),
         };
 
@@ -861,7 +861,7 @@ mod test {
             document!(
                 {
                     $(metadata: Metadata {
-                        $( $meta_field: $meta_value.into(), )*
+                        $( $meta_field: Some($meta_value.into()), )*
                         ..Default::default()
                     },)?
                     $(contents: Box::new(

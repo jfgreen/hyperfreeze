@@ -8,7 +8,9 @@ pub fn render_html(document: &Document, out: &mut impl io::Write) -> io::Result<
     writeln!(out, "<html>")?;
     writeln!(out, "  <head>")?;
     writeln!(out, "    <meta charset=\"UTF-8\">")?;
-    writeln!(out, "    <title>{}</title>", document.metadata.title)?;
+    if let Some(title) = &document.metadata.title {
+        writeln!(out, "    <title>{}</title>", title)?;
+    }
     writeln!(out, "  </head>")?;
     writeln!(out, "  <body>")?;
 
