@@ -830,13 +830,13 @@ impl ListStack {
 mod test {
     use super::*;
 
-    //TODO: Either enforce commas, or remove them
+    // TODO: Either enforce commas, or remove them
 
     macro_rules! document {
         (
             $(
                 metadata: {
-                    $($meta_field:ident : $meta_value:expr),* $(,)?
+                    $($meta_arg:tt)*
                 }
                 $(,)?
             )?
@@ -860,10 +860,9 @@ mod test {
         ) => {
             document!(
                 {
-                    $(metadata: Metadata {
-                        $( $meta_field: Some($meta_value.into()), )*
-                        ..Default::default()
-                    },)?
+                    $(metadata:
+                        metadata!({} $($meta_arg)*)
+                    ,)?
                     $(contents: Box::new(
                         [$(element!(
                             $element_type
@@ -887,6 +886,35 @@ mod test {
                 $($fields)*
               ..Default::default()
             }
+        };
+    }
+
+    macro_rules! metadata {
+        ( {$($fields:tt)*} $field:ident : $value:expr $(, $($tail:tt)*)?) => {
+            metadata!(
+                {
+                    $field: metadata_arg!($field $value),
+                    $($fields)*
+                }
+                $($($tail)*)?
+            )
+        };
+
+        ( {$($fields:tt)*}) => {
+            Metadata{
+                $($fields)*
+              ..Default::default()
+            }
+        };
+    }
+
+    macro_rules! metadata_arg {
+        (tags $tags:expr) => {
+            Some(Box::new($tags.map(|t| t.into())))
+        };
+
+        ($field:ident $value:expr) => {
+            Some($value.into())
         };
     }
 
@@ -1892,6 +1920,24 @@ mod test {
     }
 
     #[test]
+    #[ignore]
+    fn doc_header_with_tags() {
+        let input = concat!(
+            "/ Feasts for felines\n",
+            "tags: cooking | eating | nice-smells\n",
+        );
+
+        let expected = document!(
+            metadata: {
+                title:"Feasts",
+                tags: ["cooking", "eating", "nice-smells"],
+            }
+        );
+
+        assert_parse_succeeds(input, expected);
+    }
+
+    #[test]
     fn doc_header_with_worky_spacing() {
         let input = "/My Very   Cool Document   \nid :01.23\n";
 
@@ -1910,7 +1956,9 @@ mod test {
         let input = "/Doc";
 
         let expected = document!(
-            metadata: {title: "Doc"}
+            metadata: {
+                title: "Doc"
+            }
         );
 
         assert_parse_succeeds(input, expected);

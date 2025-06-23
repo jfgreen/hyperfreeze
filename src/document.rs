@@ -9,6 +9,7 @@ pub struct Document {
 pub struct Metadata {
     pub id: Option<String>,
     pub title: Option<String>,
+    pub tags: Option<Box<[String]>>,
 }
 
 //TODO: Might be nice to also have an optional title and/or description
