@@ -564,7 +564,13 @@ fn parse_list(scanner: &mut Scanner) -> ParseResult<Block> {
         }
     }
 
-    let list = stack.collect();
+    let items = stack.collect();
+
+    let list = List {
+        items,
+        kind: ListKind::Unordered,
+    };
+
     Ok(Block::List(list))
 }
 
@@ -1036,11 +1042,16 @@ mod test {
         };
 
         (list $($item:ident { $($content:tt)* } $(,)?)*) => {
-            Block::List(Box::new([
-                $(
-                    list_item!($item $($content)*),
-                )*
-            ]))
+            Block::List(
+                List {
+                    items: Box::new([
+                    $(
+                        list_item!($item $($content)*),
+                    )*
+                    ]),
+                    kind: ListKind::Unordered,
+                }
+            )
         };
     }
 

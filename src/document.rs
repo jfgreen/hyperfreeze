@@ -30,7 +30,7 @@ pub enum Element {
 #[derive(PartialEq, Eq, Debug)]
 pub enum Block {
     Paragraph(Box<[TextRun]>),
-    List(Box<[ListItem]>),
+    List(List),
 }
 
 #[derive(PartialEq, Eq, Debug)]
@@ -54,9 +54,21 @@ pub enum ContainerKind {
 }
 
 #[derive(PartialEq, Eq, Debug)]
+pub struct List {
+    pub items: Box<[ListItem]>,
+    pub kind: ListKind,
+}
+
+#[derive(PartialEq, Eq, Debug)]
 pub enum ListItem {
     Text(Box<[TextRun]>),
     SubList(Box<[ListItem]>),
+}
+
+#[derive(PartialEq, Eq, Debug)]
+pub enum ListKind {
+    Unordered,
+    Ordered,
 }
 
 #[derive(PartialEq, Eq, Debug)]
