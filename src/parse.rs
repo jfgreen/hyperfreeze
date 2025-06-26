@@ -253,6 +253,8 @@ fn parse_document(scanner: &mut Scanner) -> ParseResult<Document> {
         metadata = parse_document_header(scanner)?;
     }
 
+    scanner.skip_while_on_any(WHITESPACE_CHARS);
+
     if scanner.is_on_char(AT_SIGN) {
         let refs = parse_references(scanner)?;
         references.extend(refs);
@@ -2459,6 +2461,27 @@ mod test {
         let expected = ReferencesOutOfPlace;
 
         assert_parse_fails(input, expected);
+    }
+
+    #[test]
+    fn document_with_title_and_references() {
+        let input = concat!(
+            "/ Boots and\n",
+            "\n",
+            "@references\n",
+            "Cats -> https://example.com\n",
+        );
+
+        let expected = document!(
+            metadata: {
+                title: "Boots and"
+            },
+            references: {
+                ("Cats", "https://example.com")
+            }
+        );
+
+        assert_parse_succeeds(input, expected);
     }
 
     #[test]
