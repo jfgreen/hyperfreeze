@@ -104,7 +104,7 @@ impl Display for ParseError {
             )?;
             writeln!(f)?;
             writeln!(f, "{}", failing_line)?;
-            for _ in 2..self.input_column {
+            for _ in 1..self.input_column {
                 write!(f, " ")?;
             }
             writeln!(f, "^")?;
