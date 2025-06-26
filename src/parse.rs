@@ -846,68 +846,48 @@ impl ListStack {
 mod test {
     use super::*;
 
-    // TODO: Either enforce commas, or remove them
-
     macro_rules! document {
-        (
-            $(
-                metadata: {
-                    $($meta_arg:tt)*
-                }
-                $(,)?
-            )?
-            $(
-                contents: [
-                    $(
-                      $element_type:ident
-                      $(($element_name:expr))?
-                      { $($element_content:tt)* }
-                    ),*
-                    $(,)?
-                ]
-                $(,)?
-            )?
-            $(
-                references: [
-                    $( ($ref_id:expr, $ref_link:expr) ),*
-                    $(,)?
-                ]
-            )?
-        ) => {
-            document!(
-                {
-                    $(metadata:
-                        metadata!({} $($meta_arg)*)
-                    ,)?
-                    $(contents: Box::new(
-                        [$(element!(
-                            $element_type
-                            $(($element_name))?
-                            $($element_content)*
-                        ),)*]
-                    ),)?
-                    $(references: Box::new(
-                        [$(Reference {
-                            id: $ref_id.to_string(),
-                            link: $ref_link.to_string(),
-                        },)*]
-                    ),)?
-                }
-            )
-
+        ($($token:tt)+) => {
+            build_document!({} $($token)+)
         };
+    }
 
-        ( {$($fields:tt)*}) => {
+    macro_rules! build_document {
+        ({$($fields:tt)*}) => {
             Document {
                 $($fields)*
               ..Default::default()
             }
         };
+
+        ({$($fields:tt)*} $field:ident : { $($token:tt)+ } $(, $($tail:tt)+)?) => {
+            build_document!(
+                {
+                    //TODO: can we return the field from document_field (foo: bar)
+                    $field: document_field!($field $($token)+),
+                    $($fields)*
+                }
+                $($($tail)+)?
+            )
+
+        };
     }
 
-    macro_rules! metadata {
+    macro_rules! document_field {
+        (metadata $($token:tt)+) => {
+            build_metadata!({} $($token)+)
+        };
+        (contents  $($token:tt)+) => {
+            build_contents!($($token)+)
+        };
+        (references $($token:tt)+) => {
+            build_references!($($token)+)
+        };
+    }
+
+    macro_rules! build_metadata {
         ( {$($fields:tt)*} $field:ident : $value:expr $(, $($tail:tt)*)?) => {
-            metadata!(
+            build_metadata!(
                 {
                     $field: metadata_arg!($field $value),
                     $($fields)*
@@ -931,6 +911,39 @@ mod test {
 
         ($field:ident $value:expr) => {
             Some($value.into())
+        };
+    }
+
+    macro_rules! build_contents {
+        (
+            $(
+              $element_type:ident
+              $(($element_name:expr))?
+              { $($element_content:tt)* }
+            ),*
+
+        ) => {
+            Box::new(
+                [$(element!(
+                    $element_type
+                    $(($element_name))?
+                    $($element_content)*
+                ),)*]
+            )
+        };
+    }
+
+    macro_rules! build_references {
+        (
+            $( ($ref_id:expr, $ref_link:expr) ),*
+            $(,)?
+        ) => {
+            Box::new(
+                [$(Reference {
+                    id: $ref_id.to_string(),
+                    link: $ref_link.to_string(),
+                },)*]
+            )
         };
     }
 
@@ -1172,8 +1185,8 @@ mod test {
             metadata: {
                 id: "01.42",
                 title: "Feline friendly flower arranging"
-            }
-            contents: [
+            },
+            contents: {
                 info {
                     paragraph {
                         text("Did you know flower pots are for "),
@@ -1196,7 +1209,7 @@ mod test {
                         }
                     }
                 }
-            ]
+            }
         );
 
         assert_parse_succeeds(input, expected);
@@ -1927,9 +1940,9 @@ mod test {
                 title:"Some Doc",
                 id: "01.23",
             },
-            contents: [
+            contents: {
                 paragraph { text("Hello cats and kittens") }
-            ]
+            }
         );
 
         assert_parse_succeeds(input, expected);
@@ -2372,16 +2385,16 @@ mod test {
         );
 
         let expected = document!(
-            contents: [
+            contents: {
                 paragraph {
                     text("For more info, consult "),
                     linked_text("our guide on petting cats", "Ripley2020"),
                     text(", created by our own in house experts.")
                 }
-            ],
-            references: [
+            },
+            references: {
                 ("Ripley2020", "https://example.com")
-            ]
+            }
         );
 
         assert_parse_succeeds(input, expected);
@@ -2450,7 +2463,7 @@ mod test {
             metadata: {
                 title: "Speed running the kitchen at 4am"
             },
-            contents: [
+            contents: {
                 paragraph { text("This is a comprehensive guide.") },
 
                 section("Motivation") {
@@ -2468,7 +2481,7 @@ mod test {
                 section("Conclusion") {
                     paragraph { text("Go go go!") },
                 }
-            ]
+            }
         };
 
         assert_parse_succeeds(input, expected);
