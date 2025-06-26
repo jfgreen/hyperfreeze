@@ -643,6 +643,22 @@ fn parse_linked_text_run(scanner: &mut Scanner, mode: TextMode) -> ParseResult<T
 //     SingleBreak
 //     MultiBreak
 // }
+//
+// Maybe a better would be to use the concept of read heads
+// Maintain:
+// - A current head
+// - start of next whitespace head
+// - After next whitespace head
+//
+// Main challenge is to figure out how to cascade reads from the first head
+// to the last, given that the space between the heads might be arbitrary
+//
+// Unless... we just dont do that? Ok to re tread old ground as the whole
+// string will be in memory anyway?
+//
+// Another aproach would be to only position the forward heads on demand
+//
+// Otherwise we have to figure out when to advance them.
 
 fn on_text_run(scanner: &Scanner, mode: TextMode) -> bool {
     let on_space = scanner.is_on_one_of(WHITESPACE_CHARS);
