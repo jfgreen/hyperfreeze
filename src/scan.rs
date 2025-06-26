@@ -142,10 +142,6 @@ impl<'a> Scanner<'a> {
         self.eat_while(|c| c == c1)
     }
 
-    pub fn eat_until_char(&mut self, c1: char) -> ScanResult<&'a str> {
-        self.eat_while(|c| c != c1)
-    }
-
     pub fn eat_until_one_of(&mut self, chars: &[char]) -> ScanResult<&'a str> {
         self.eat_while(|c| !chars.contains(&c))
     }

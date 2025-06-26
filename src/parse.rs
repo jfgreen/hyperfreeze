@@ -53,10 +53,11 @@ enum ErrorKind {
     ExpectedChar(char),
     ExpectedIdentifier,
     ExpectedRawFragment,
-    ExpectedMetadataValue,
     ExpectedSpace,
     ExpectedLink,
     ExpectedSectionHeader,
+    ExpectedMetadataId,
+    ExpectedMetadataTag,
     ExpectedReferencesBlock,
     ReferencesOutOfPlace,
     UnevenListIndent(usize),
@@ -81,10 +82,11 @@ impl Display for ParseError {
             ExpectedChar(c) => write!(f, "expected char '{}'", c.escape_default()),
             ExpectedIdentifier => write!(f, "expected identifier"),
             ExpectedRawFragment => write!(f, "expected raw fragment"),
-            ExpectedMetadataValue => write!(f, "expected metadata value"),
             ExpectedSpace => write!(f, "expected one or more spaces"),
             ExpectedLink => write!(f, "expected link"),
             ExpectedSectionHeader => write!(f, "expected start of section header"),
+            ExpectedMetadataId => write!(f, "expected id"),
+            ExpectedMetadataTag => write!(f, "expected tag"),
             ExpectedReferencesBlock => write!(f, "expected 'references' header"),
             ReferencesOutOfPlace => write!(f, "references not in correct part of document"),
             UnevenListIndent(spaces) => write!(f, "list indent of {} is not even", spaces),
@@ -141,6 +143,7 @@ const DASH: char = '-';
 const AT_SIGN: char = '@';
 const EXCLAMATION_MARK: char = '!';
 const GREATER_THAN: char = '>';
+const VERTICAL_BAR: char = '|';
 const WHITESPACE_CHARS: &[char; 2] = &[SPACE, NEW_LINE];
 const STYLE_DELIMITER_CHARS: &[char; 3] = &[ASTERISK, TILDE, UNDERSCORE];
 
@@ -159,6 +162,14 @@ const MARKUP_CHARS: &[char; 10] = &[
 
 fn char_usable_in_identifier(c: char) -> bool {
     c.is_alphanumeric()
+}
+
+fn char_usable_in_id(c: char) -> bool {
+    c.is_alphanumeric() || c == '_' || c == '-' || c == '.'
+}
+
+fn char_usable_in_tag(c: char) -> bool {
+    c.is_alphanumeric() || c == '_' || c == '-'
 }
 
 fn char_usable_in_text_frag(c: char) -> bool {
@@ -180,8 +191,12 @@ fn eat_identifier<'a>(scanner: &mut Scanner<'a>) -> ParseResult<&'a str> {
     )
 }
 
-fn eat_meta_value<'a>(scanner: &mut Scanner<'a>) -> ParseResult<&'a str> {
-    try_scan!(scanner.eat_until_char(NEW_LINE), ExpectedMetadataValue)
+fn eat_metadata_id<'a>(scanner: &mut Scanner<'a>) -> ParseResult<&'a str> {
+    try_scan!(scanner.eat_while(char_usable_in_id), ExpectedMetadataId)
+}
+
+fn eat_metadata_tag<'a>(scanner: &mut Scanner<'a>) -> ParseResult<&'a str> {
+    try_scan!(scanner.eat_while(char_usable_in_tag), ExpectedMetadataTag)
 }
 
 fn eat_link<'a>(scanner: &mut Scanner<'a>) -> ParseResult<&'a str> {
@@ -302,15 +317,15 @@ fn parse_document_header(scanner: &mut Scanner) -> ParseResult<Metadata> {
         expect_char(scanner, COLON)?;
         scanner.skip_while_on_char(SPACE);
 
-        // For now, the value is just everything untill the end of line
-        // This might get more complicated in the future
-        // e.g treating value as int, bool, list, etc?
-
-        let value = eat_meta_value(scanner)?;
-
         match key {
-            "id" => metadata.id = Some(value.to_string()),
-            "title" => metadata.title = Some(value.to_string()),
+            "id" => {
+                let id = eat_metadata_id(scanner)?;
+                metadata.id = Some(id.to_string());
+            }
+            "tags" => {
+                let tags = parse_tag_list(scanner)?;
+                metadata.tags = Some(tags);
+            }
             _ => return parse_err!(UnknownMetadata(key.into()), key_position),
         };
 
@@ -320,6 +335,25 @@ fn parse_document_header(scanner: &mut Scanner) -> ParseResult<Metadata> {
     }
 
     Ok(metadata)
+}
+
+fn parse_tag_list(scanner: &mut Scanner) -> ParseResult<Box<[String]>> {
+    let mut tags = Vec::new();
+
+    loop {
+        let tag = eat_metadata_tag(scanner)?;
+        tags.push(tag.to_string());
+        scanner.skip_while_on_char(SPACE);
+        if scanner.is_on_char(VERTICAL_BAR) {
+            scanner.skip_char();
+            scanner.skip_while_on_char(SPACE);
+        } else {
+            break;
+        }
+    }
+
+    let tags = tags.into_boxed_slice();
+    Ok(tags)
 }
 
 fn parse_container(scanner: &mut Scanner) -> ParseResult<Container> {
@@ -1949,7 +1983,6 @@ mod test {
     }
 
     #[test]
-    #[ignore]
     fn doc_header_with_tags() {
         let input = concat!(
             "/ Feasts for felines\n",
@@ -1958,7 +1991,7 @@ mod test {
 
         let expected = document!(
             metadata: {
-                title:"Feasts",
+                title:"Feasts for felines",
                 tags: ["cooking", "eating", "nice-smells"],
             }
         );
