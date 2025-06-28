@@ -239,6 +239,21 @@ enum TextMode {
     Title,
 }
 
+// TODO: Maybe have another go at tokenisation, using an outer/innfer
+// approach that clears up most of the context sensitiviy, but still
+// reads the whole document in one parse
+//
+// One challenge is figuring out when to have a section specific parser
+// give up and say its reached the end. e.g
+//
+// - Foo
+// - Bar
+//
+// Baz
+//
+//
+// Tokenisation _should_ help with this
+
 pub fn parse_str(input: &str) -> Result<Document, ParseError> {
     let scanner = &mut Scanner::new(input);
     parse_document(scanner)
@@ -593,8 +608,14 @@ fn parse_list(scanner: &mut Scanner) -> ParseResult<Block> {
 
         scanner.skip_while_on_char(SPACE);
 
+        //TODO: all getting a bit meh
         if scanner.is_on_char(NEW_LINE) {
-            scanner.skip_char();
+            let mut peek = scanner.peek();
+            peek.skip_char();
+            peek.skip_while_on_char(SPACE);
+            if peek.is_on_char(DASH) {
+                scanner.skip_char();
+            }
         }
     }
 
@@ -1278,7 +1299,9 @@ mod test {
             "  - Big one\n",
             "  - Little one\n",
             "  - _Other_\n",
-            "     one\n"
+            "     one\n",
+            "\n",
+            "Yay!"
         );
 
         let expected = document!(
@@ -1308,6 +1331,9 @@ mod test {
                             text(" one")
                         }
                     }
+                },
+                paragraph {
+                    text("Yay!")
                 }
             }
         );
