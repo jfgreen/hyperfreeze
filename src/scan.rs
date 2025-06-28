@@ -148,11 +148,18 @@ impl<'a> Scanner<'a> {
 
     fn read_next_char(&mut self) {
         if let Some((index, c)) = self.chars.next() {
-            if self.current_char == Some('\n') {
-                self.column = 0;
-                self.row += 1;
-            } else {
-                self.column += 1;
+            match self.current_char {
+                Some('\n') => {
+                    self.column = 0;
+                    self.row += 1;
+                }
+                Some(_) => {
+                    self.column += 1;
+                }
+                None => {
+                    self.column = 0;
+                    self.row = 0;
+                }
             }
 
             self.current_char = Some(c);

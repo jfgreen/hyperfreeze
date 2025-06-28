@@ -132,6 +132,9 @@ const DELIMITED_CONTAINER_END: &str = "<<<";
 const HASH: char = '#';
 const LEFT_SQUARE_BRACKET: char = '[';
 const RIGHT_SQUARE_BRACKET: char = ']';
+const LEFT_BRACKET: char = '(';
+const RIGHT_BRACKET: char = ')';
+const EQUALS: char = '=';
 const BACKTICK: char = '`';
 const ASTERISK: char = '*';
 const TILDE: char = '~';
@@ -462,7 +465,12 @@ fn parse_block(scanner: &mut Scanner) -> ParseResult<Block> {
         let block_position = scanner.position();
         scanner.skip_char();
         let block_name = eat_identifier(scanner)?;
-        expect_char(scanner, NEW_LINE)?;
+
+        if scanner.is_on_char(NEW_LINE) {
+            scanner.skip_char();
+        } else if !scanner.is_on_char(LEFT_BRACKET) {
+            return parse_err!(ExpectedChar(NEW_LINE), scanner.position());
+        }
 
         match block_name {
             "paragraph" => parse_paragraph(scanner),
@@ -527,6 +535,32 @@ fn parse_list(scanner: &mut Scanner) -> ParseResult<Block> {
     // the rest of the parser that just uses recursive functions?
     let mut stack = ListStack::new();
 
+    let style = if scanner.is_on_char(LEFT_BRACKET) {
+        //TODO: Might be worth having some common code for dealing with
+        // block arguments, e.g validating one of a valid set
+        scanner.skip_char();
+        scanner.skip_while_on_char(SPACE);
+        let argument = eat_identifier(scanner)?;
+        if argument != "style" {
+            todo!("error case for unknown argument")
+        }
+        scanner.skip_while_on_char(SPACE);
+        expect_char(scanner, EQUALS)?;
+        scanner.skip_while_on_char(SPACE);
+        let value = eat_identifier(scanner)?;
+        let style = match value {
+            "ordered" => ListStyle::Ordered,
+            "unordered" => ListStyle::Unordered,
+            _ => todo!("error case for unknown list style"),
+        };
+        scanner.skip_while_on_char(SPACE);
+        expect_char(scanner, RIGHT_BRACKET)?;
+        expect_char(scanner, NEW_LINE)?;
+        style
+    } else {
+        ListStyle::Unordered
+    };
+
     while on_list_item(scanner) {
         let mut space_count = 0;
         let start_of_line = scanner.position();
@@ -566,10 +600,7 @@ fn parse_list(scanner: &mut Scanner) -> ParseResult<Block> {
 
     let items = stack.collect();
 
-    let list = List {
-        items,
-        kind: ListKind::Unordered,
-    };
+    let list = List { items, style };
 
     Ok(Block::List(list))
 }
@@ -1049,7 +1080,20 @@ mod test {
                         list_item!($item $($content)*),
                     )*
                     ]),
-                    kind: ListKind::Unordered,
+                    style: ListStyle::Unordered,
+                }
+            )
+        };
+
+        (ordered_list $($item:ident { $($content:tt)* } $(,)?)*) => {
+            Block::List(
+                List {
+                    items: Box::new([
+                    $(
+                        list_item!($item $($content)*),
+                    )*
+                    ]),
+                    style: ListStyle::Ordered,
                 }
             )
         };
@@ -1086,6 +1130,15 @@ mod test {
         ($($content:tt)*) => {
             Document {
                 contents: Box::new([element!(list $($content)*)]),
+                ..Default::default()
+            }
+        }
+    }
+
+    macro_rules! ordered_list {
+        ($($content:tt)*) => {
+            Document {
+                contents: Box::new([element!(ordered_list $($content)*)]),
                 ..Default::default()
             }
         }
@@ -2210,6 +2263,23 @@ mod test {
             paragraph { text("Water is important also") }
         };
 
+        assert_parse_succeeds(input, expected);
+    }
+
+    #[test]
+    fn ordered_list() {
+        let input = concat!(
+            "#list(style=ordered)\n",
+            "- Dry food is ok\n",
+            "- Wet food is much better\n",
+            "- Water is important also\n"
+        );
+
+        let expected = ordered_list! {
+            paragraph { text("Dry food is ok")},
+            paragraph { text("Wet food is much better")},
+            paragraph { text("Water is important also")}
+        };
         assert_parse_succeeds(input, expected);
     }
 

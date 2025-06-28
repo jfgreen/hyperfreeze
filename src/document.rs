@@ -56,7 +56,7 @@ pub enum ContainerKind {
 #[derive(PartialEq, Eq, Debug)]
 pub struct List {
     pub items: Box<[ListItem]>,
-    pub kind: ListKind,
+    pub style: ListStyle,
 }
 
 #[derive(PartialEq, Eq, Debug)]
@@ -66,7 +66,7 @@ pub enum ListItem {
 }
 
 #[derive(PartialEq, Eq, Debug)]
-pub enum ListKind {
+pub enum ListStyle {
     Unordered,
     Ordered,
 }
