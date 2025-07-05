@@ -58,6 +58,8 @@ enum ErrorKind {
     ExpectedSectionHeader,
     ExpectedMetadataId,
     ExpectedMetadataTag,
+    ExpectedDelimitedBlockStart,
+    ExpectedDelimitedBlockEnd,
     ExpectedReferencesBlock,
     ReferencesOutOfPlace,
     UnevenListIndent(usize),
@@ -87,6 +89,8 @@ impl Display for ParseError {
             ExpectedSectionHeader => write!(f, "expected start of section header"),
             ExpectedMetadataId => write!(f, "expected id"),
             ExpectedMetadataTag => write!(f, "expected tag"),
+            ExpectedDelimitedBlockStart => write!(f, "expected delimited block start"),
+            ExpectedDelimitedBlockEnd => write!(f, "expected delimited block end"),
             ExpectedReferencesBlock => write!(f, "expected 'references' header"),
             ReferencesOutOfPlace => write!(f, "references not in correct part of document"),
             UnevenListIndent(spaces) => write!(f, "list indent of {} is not even", spaces),
@@ -129,6 +133,8 @@ const NEW_LINE: char = '\n';
 const COLON: char = ':';
 const DELIMITED_CONATINER_START: &str = ">>>";
 const DELIMITED_CONTAINER_END: &str = "<<<";
+const DELIMITED_BLOCK_START: &str = "---\n";
+const DELIMITED_BLOCK_END: &str = "---\n";
 const HASH: char = '#';
 const LEFT_SQUARE_BRACKET: char = '[';
 const RIGHT_SQUARE_BRACKET: char = ']';
@@ -187,6 +193,20 @@ fn expect_char(scanner: &mut Scanner, expected: char) -> ParseResult<()> {
     try_scan!(scanner.expect_char(expected), ExpectedChar(expected))
 }
 
+fn expect_delimited_block_start(scanner: &mut Scanner) -> ParseResult<()> {
+    try_scan!(
+        scanner.expect_str(DELIMITED_BLOCK_START),
+        ExpectedDelimitedBlockStart
+    )
+}
+
+fn expect_delimited_block_end(scanner: &mut Scanner) -> ParseResult<()> {
+    try_scan!(
+        scanner.expect_str(DELIMITED_BLOCK_END),
+        ExpectedDelimitedBlockEnd
+    )
+}
+
 fn eat_identifier<'a>(scanner: &mut Scanner<'a>) -> ParseResult<&'a str> {
     try_scan!(
         scanner.eat_while(char_usable_in_identifier),
@@ -230,6 +250,10 @@ fn eat_char(scanner: &mut Scanner) -> ParseResult<char> {
 
 fn eat_section_slashes<'a>(scanner: &mut Scanner<'a>) -> ParseResult<&'a str> {
     try_scan!(scanner.eat_while_char(SLASH), ExpectedSectionHeader)
+}
+
+fn eat_line<'a>(scanner: &mut Scanner<'a>) -> ParseResult<&'a str> {
+    try_scan!(scanner.eat_line(), UnexpectedEndOfInput)
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -490,6 +514,7 @@ fn parse_block(scanner: &mut Scanner) -> ParseResult<Block> {
         match block_name {
             "paragraph" => parse_paragraph(scanner),
             "list" => parse_list(scanner),
+            "code" => parse_code(scanner),
             _ => parse_err!(UnknownBlock(block_name.into()), block_position),
         }
     } else if scanner.is_on_char(DASH) {
@@ -548,6 +573,8 @@ fn parse_text_runs(scanner: &mut Scanner, mode: TextMode) -> ParseResult<Box<[Te
 fn parse_list(scanner: &mut Scanner) -> ParseResult<Block> {
     //TODO: is this stack based solution slightly incongruous with
     // the rest of the parser that just uses recursive functions?
+    //
+    // Or maybe the inverse is true?
     let mut stack = ListStack::new();
 
     let style = if scanner.is_on_char(LEFT_BRACKET) {
@@ -630,6 +657,26 @@ fn on_list_item(scanner: &Scanner) -> bool {
     let mut peek = scanner.peek();
     peek.skip_while_on_char(SPACE);
     peek.is_on_char(DASH)
+}
+
+fn parse_code(scanner: &mut Scanner) -> ParseResult<Block> {
+    expect_delimited_block_start(scanner)?;
+
+    let mut code = String::new();
+
+    while !scanner.is_on_str(DELIMITED_BLOCK_END) {
+        if !scanner.is_on_char('\n') {
+            let line = eat_line(scanner)?;
+            code.push_str(line);
+        }
+        expect_char(scanner, NEW_LINE)?;
+        code.push(NEW_LINE);
+    }
+
+    expect_delimited_block_end(scanner)?;
+
+    let block = Block::Code(code);
+    Ok(block)
 }
 
 fn parse_plain_text_run(scanner: &mut Scanner, mode: TextMode) -> ParseResult<TextRun> {
@@ -1118,6 +1165,10 @@ mod test {
                 }
             )
         };
+
+        (code $($text:expr),+ $(,)?) => {
+            Block::Code(concat!($($text,)+).to_string())
+        };
     }
 
     macro_rules! list_item {
@@ -1169,6 +1220,15 @@ mod test {
         ($($content:tt)*) => {
             Document {
                 contents: Box::new([element!(paragraph $($content)*)]),
+                ..Default::default()
+            }
+        }
+    }
+
+    macro_rules! code {
+        ($($content:tt)*) => {
+            Document {
+                contents: Box::new([element!(code $($content)*)]),
                 ..Default::default()
             }
         }
@@ -2651,4 +2711,30 @@ mod test {
     }
 
     // TODO: test missing reference
+
+    //TODO: Allow un-delimited code blocks
+
+    #[test]
+    fn code_block() {
+        let input = concat!(
+            "#code\n",
+            "---\n",
+            "Meow?\n",
+            "\n",
+            "Meow.\n",
+            "Me...           ...ow.\n",
+            "Meow!\n",
+            "---\n"
+        );
+
+        let expected = code! {
+        "Meow?\n",
+        "\n",
+        "Meow.\n",
+        "Me...           ...ow.\n",
+        "Meow!\n",
+        };
+
+        assert_parse_succeeds(input, expected);
+    }
 }

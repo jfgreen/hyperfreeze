@@ -111,6 +111,17 @@ impl<'a> Scanner<'a> {
         }
     }
 
+    pub fn expect_str(&mut self, s: &str) -> ScanResult<()> {
+        if self.is_on_str(s) {
+            for _ in 0..s.chars().count() {
+                self.read_next_char();
+            }
+            Ok(())
+        } else {
+            Err(self.position())
+        }
+    }
+
     pub fn eat_char(&mut self) -> ScanResult<char> {
         match self.current_char {
             Some(c) => {
@@ -144,6 +155,10 @@ impl<'a> Scanner<'a> {
 
     pub fn eat_until_one_of(&mut self, chars: &[char]) -> ScanResult<&'a str> {
         self.eat_while(|c| !chars.contains(&c))
+    }
+
+    pub fn eat_line(&mut self) -> ScanResult<&'a str> {
+        self.eat_while(|c| c != '\n')
     }
 
     fn read_next_char(&mut self) {

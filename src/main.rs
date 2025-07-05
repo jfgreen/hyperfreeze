@@ -72,7 +72,6 @@ fn parse_doc() -> Result<(), Error> {
     let mut out_file = File::create(&output_path)?;
     render_html(&doc, &mut out_file)?;
 
-    println!("{}, {}", input_path, output_path);
     Ok(())
 }
 
