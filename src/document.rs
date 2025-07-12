@@ -40,30 +40,17 @@ pub struct Container {
     pub kind: ContainerKind,
 }
 
-//TODO: Consider enforcing only two levels of section
-// .. and make the lower one a 'block'
-// Maybe // is a section and /// is a 'lower level heading', a block element
-//
-//Something like this:
-//
-//A document is made of elements
-//
-//Sections
-//Containers
-//Blocks
-//
-//Sections can contain :
-//Subsection Headers
-//Containers
-//Blocks
-//
-//Containers can contain blocks
-
 #[derive(PartialEq, Eq, Debug)]
 pub struct Section {
-    pub content: Box<[Element]>,
-    pub title: String,
-    pub level: usize,
+    pub content: Box<[SectionElement]>,
+    pub heading: String,
+}
+
+#[derive(PartialEq, Eq, Debug)]
+pub enum SectionElement {
+    Block(Block),
+    Container(Container),
+    SubHeading(String),
 }
 
 #[derive(PartialEq, Eq, Debug)]

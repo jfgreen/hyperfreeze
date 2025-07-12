@@ -56,6 +56,7 @@ enum ErrorKind {
     ExpectedSpace,
     ExpectedLink,
     ExpectedSectionHeader,
+    ExpectedSubSectionHeader,
     ExpectedMetadataId,
     ExpectedMetadataTag,
     ExpectedDelimitedBlockStart,
@@ -87,6 +88,7 @@ impl Display for ParseError {
             ExpectedSpace => write!(f, "expected one or more spaces"),
             ExpectedLink => write!(f, "expected link"),
             ExpectedSectionHeader => write!(f, "expected start of section header"),
+            ExpectedSubSectionHeader => write!(f, "expected start of sub section header"),
             ExpectedMetadataId => write!(f, "expected id"),
             ExpectedMetadataTag => write!(f, "expected tag"),
             ExpectedDelimitedBlockStart => write!(f, "expected delimited block start"),
@@ -146,6 +148,7 @@ const ASTERISK: char = '*';
 const TILDE: char = '~';
 const UNDERSCORE: char = '_';
 const SLASH: char = '/';
+const DOUBLE_SLASH: &str = "//";
 const TRIPPLE_SLASH: &str = "///";
 const BACKSLASH: char = '\\';
 const DASH: char = '-';
@@ -191,6 +194,14 @@ fn char_usable_in_raw_frag(c: char) -> bool {
 
 fn expect_char(scanner: &mut Scanner, expected: char) -> ParseResult<()> {
     try_scan!(scanner.expect_char(expected), ExpectedChar(expected))
+}
+
+fn expect_section_header(scanner: &mut Scanner) -> ParseResult<()> {
+    try_scan!(scanner.expect_str(DOUBLE_SLASH), ExpectedSectionHeader)
+}
+
+fn expect_subsection_header(scanner: &mut Scanner) -> ParseResult<()> {
+    try_scan!(scanner.expect_str(TRIPPLE_SLASH), ExpectedSubSectionHeader)
 }
 
 fn expect_delimited_block_start(scanner: &mut Scanner) -> ParseResult<()> {
@@ -248,10 +259,6 @@ fn eat_char(scanner: &mut Scanner) -> ParseResult<char> {
     try_scan!(scanner.eat_char(), UnexpectedEndOfInput)
 }
 
-fn eat_section_slashes<'a>(scanner: &mut Scanner<'a>) -> ParseResult<&'a str> {
-    try_scan!(scanner.eat_while_char(SLASH), ExpectedSectionHeader)
-}
-
 fn eat_line<'a>(scanner: &mut Scanner<'a>) -> ParseResult<&'a str> {
     try_scan!(scanner.eat_line(), UnexpectedEndOfInput)
 }
@@ -263,7 +270,7 @@ enum TextMode {
     Title,
 }
 
-// TODO: Maybe have another go at tokenisation, using an outer/innfer
+// TODO: Maybe have another go at tokenisation, using an outer/inner
 // approach that clears up most of the context sensitiviy, but still
 // reads the whole document in one parse
 //
@@ -277,6 +284,10 @@ enum TextMode {
 //
 //
 // Tokenisation _should_ help with this
+//
+// Bascially, just lean quite hard into context sensitive tokenisation
+// but put the smarts in the tokeniser this time, dont have the
+// parser dictate modes.
 
 pub fn parse_str(input: &str) -> Result<Document, ParseError> {
     let scanner = &mut Scanner::new(input);
@@ -318,19 +329,49 @@ fn parse_document(scanner: &mut Scanner) -> ParseResult<Document> {
     })
 }
 
-fn parse_element(scanner: &mut Scanner) -> Result<Element, ParseError> {
+fn parse_element(scanner: &mut Scanner) -> ParseResult<Element> {
     if scanner.is_on_char(EXCLAMATION_MARK) {
         let container = parse_container(scanner)?;
         Ok(Element::Container(container))
     } else if scanner.is_on_char(AT_SIGN) {
         parse_err!(ReferencesOutOfPlace, scanner.position())
-    } else if scanner.is_on_char(SLASH) {
+    } else if scanner.is_on_str(DOUBLE_SLASH) {
         let section = parse_section(scanner)?;
         Ok(Element::Section(section))
+    } else if scanner.is_on_char(SLASH) {
+        parse_err!(DocumentHeaderNotAtStart, scanner.position())
     } else {
         let block = parse_block(scanner)?;
         Ok(Element::Block(block))
     }
+}
+
+fn parse_section_element(scanner: &mut Scanner) -> ParseResult<SectionElement> {
+    if scanner.is_on_char(EXCLAMATION_MARK) {
+        let container = parse_container(scanner)?;
+        Ok(SectionElement::Container(container))
+    } else if scanner.is_on_char(AT_SIGN) {
+        parse_err!(ReferencesOutOfPlace, scanner.position())
+    } else if scanner.is_on_char(SLASH) {
+        let sub_heading = parse_subheading(scanner)?;
+        Ok(SectionElement::SubHeading(sub_heading))
+    } else {
+        let block = parse_block(scanner)?;
+        Ok(SectionElement::Block(block))
+    }
+}
+
+fn parse_subheading(scanner: &mut Scanner) -> ParseResult<String> {
+    expect_subsection_header(scanner)?;
+    scanner.skip_while_on_char(SPACE);
+    let title = parse_markup_text(scanner, TextMode::Title)?;
+
+    scanner.skip_while_on_char(SPACE);
+
+    if scanner.has_input() {
+        expect_char(scanner, NEW_LINE)?;
+    }
+    Ok(title)
 }
 
 fn parse_document_header(scanner: &mut Scanner) -> ParseResult<Metadata> {
@@ -338,7 +379,7 @@ fn parse_document_header(scanner: &mut Scanner) -> ParseResult<Metadata> {
     scanner.skip_while_on_char(SPACE);
 
     if scanner.is_on_char(SLASH) {
-        todo!("not implemented - should reject")
+        todo!("should reject")
     }
 
     let title = parse_markup_text(scanner, TextMode::Title)?;
@@ -456,14 +497,7 @@ fn parse_container(scanner: &mut Scanner) -> ParseResult<Container> {
 }
 
 fn parse_section(scanner: &mut Scanner) -> ParseResult<Section> {
-    let section_start = scanner.position();
-    let slashes = eat_section_slashes(scanner)?;
-    let section_level = slashes.len() - 1;
-    if section_level == 0 {
-        return parse_err!(DocumentHeaderNotAtStart, section_start);
-    }
-
-    //TODO: reject level 3 and beyond
+    expect_section_header(scanner)?;
 
     scanner.skip_while_on_char(SPACE);
 
@@ -478,22 +512,20 @@ fn parse_section(scanner: &mut Scanner) -> ParseResult<Section> {
     let mut elements = Vec::new();
 
     while scanner.has_input() {
-        if scanner.is_on_one_of(WHITESPACE_CHARS) {
-            scanner.skip_char();
-        } else if scanner.is_on_char(SLASH)
-            && !(section_level == 1 && scanner.is_on_str(TRIPPLE_SLASH))
-        {
+        //TODO: Bit meh
+        if scanner.is_on_str(DOUBLE_SLASH) && !scanner.is_on_str(TRIPPLE_SLASH) {
             break;
+        } else if scanner.is_on_one_of(WHITESPACE_CHARS) {
+            scanner.skip_char();
         } else {
-            let element = parse_element(scanner)?;
+            let element = parse_section_element(scanner)?;
             elements.push(element);
         }
     }
 
     let section = Section {
         content: elements.into_boxed_slice(),
-        title: name.to_string(),
-        level: section_level,
+        heading: name.to_string(),
     };
 
     Ok(section)
@@ -1018,7 +1050,7 @@ mod test {
         (metadata $($token:tt)+) => {
             build_metadata!({} $($token)+)
         };
-        (contents  $($token:tt)+) => {
+        (contents $($token:tt)+) => {
             build_contents!($($token)+)
         };
         (references $($token:tt)+) => {
@@ -1030,7 +1062,7 @@ mod test {
         ( {$($fields:tt)*} $field:ident : $value:expr $(, $($tail:tt)*)?) => {
             build_metadata!(
                 {
-                    $field: metadata_arg!($field $value),
+                    $field: metadata_field!($field $value),
                     $($fields)*
                 }
                 $($($tail)*)?
@@ -1045,7 +1077,7 @@ mod test {
         };
     }
 
-    macro_rules! metadata_arg {
+    macro_rules! metadata_field {
         (tags $tags:expr) => {
             Some(Box::new($tags.map(|t| t.into())))
         };
@@ -1088,6 +1120,7 @@ mod test {
         };
     }
 
+    //TODO: Less confusing for macros to be more like (info: {...}) => {...}
     macro_rules! element {
         (info $( $block:ident { $($content:tt)* } $(,)? )*) => {
             Element::Container(Container{
@@ -1104,23 +1137,10 @@ mod test {
             Element::Section(Section{
                 content: Box::new([
                     $(
-                        element!($element $(($element_name))? $($content)*),
+                        section_element!($element $(($element_name))? $($content)*),
                     )*
                 ]),
-                level: 1,
-                title: String::from($name)
-            })
-        };
-
-        (subsection ($name:expr) $( $element:ident $(($element_name:expr))? { $($content:tt)* } $(,)? )*) => {
-            Element::Section(Section{
-                content: Box::new([
-                    $(
-                        element!($element $(($element_name))? $($content)*),
-                    )*
-                ]),
-                level: 2,
-                title: String::from($name)
+                heading: String::from($name)
             })
         };
 
@@ -1128,6 +1148,29 @@ mod test {
             Element::Block(block!($block $($content)*))
         };
 
+
+    }
+
+    //TODO: Clear up repetition between this and section element
+    macro_rules! section_element {
+        (info $( $block:ident { $($content:tt)* } $(,)? )*) => {
+            SectionElement::Container(Container{
+                content: Box::new([
+                    $(
+                        block!($block $($content)*),
+                    )*
+                ]),
+                kind: ContainerKind::Info,
+            })
+        };
+
+        (subheading $name:expr) => {
+            SectionElement::SubHeading($name.to_string())
+        };
+
+        ($block:ident $($content:tt)*) => {
+            SectionElement::Block(block!($block $($content)*))
+        };
 
     }
 
@@ -2694,12 +2737,10 @@ mod test {
                 },
                 section("Planning the perfect lap") {
                     paragraph { text("This requires care.") },
-                    subsection("Selecting a route") {
-                        paragraph { text("Avoid the toaster.") },
-                    },
-                    subsection("Choosing a victory scream") {
-                        paragraph { text("Meeaaahhh?") },
-                    }
+                    subheading { "Selecting a route" },
+                    paragraph { text("Avoid the toaster.") },
+                    subheading { "Choosing a victory scream"},
+                    paragraph { text("Meeaaahhh?") },
                 },
                 section("Conclusion") {
                     paragraph { text("Go go go!") },
@@ -2711,8 +2752,8 @@ mod test {
     }
 
     // TODO: test missing reference
-
-    //TODO: Allow un-delimited code blocks
+    // TODO: Allow un-delimited code blocks
+    // TODO: Test we cant have sections or sub sections in containers
 
     #[test]
     fn code_block() {

@@ -39,6 +39,16 @@ fn render_element(element: &Element, out: &mut impl io::Write) -> io::Result<()>
     Ok(())
 }
 
+fn render_section_element(element: &SectionElement, out: &mut impl io::Write) -> io::Result<()> {
+    match element {
+        SectionElement::Block(block) => render_block(block, out)?,
+        SectionElement::Container(container) => render_container(container, out)?,
+        SectionElement::SubHeading(subheading) => render_section_subheading(subheading, out)?,
+    }
+
+    Ok(())
+}
+
 fn render_block(block: &Block, out: &mut impl io::Write) -> io::Result<()> {
     match block {
         Block::Paragraph(text) => render_text(text, out)?,
@@ -58,28 +68,18 @@ fn render_container(container: &Container, out: &mut impl io::Write) -> io::Resu
 
 fn render_section(section: &Section, out: &mut impl io::Write) -> io::Result<()> {
     writeln!(out, "<section>")?;
-    //TODO: This is a bit meh
-    match section.level {
-        1 => write!(out, "<h2>")?,
-        2 => write!(out, "<h3>")?,
-        _ => panic!(),
-    }
-
-    out.write_all(section.title.as_bytes())?;
-
-    match section.level {
-        1 => write!(out, "</h2>")?,
-        2 => write!(out, "</h3>")?,
-        _ => panic!(),
-    }
-
-    writeln!(out)?;
+    writeln!(out, "<h2>{}</h2>", section.heading)?;
 
     for element in &section.content {
-        render_element(element, out)?;
+        render_section_element(element, out)?;
     }
 
     writeln!(out, "</section>")?;
+    Ok(())
+}
+
+fn render_section_subheading(subheading: &String, out: &mut impl io::Write) -> io::Result<()> {
+    writeln!(out, "<h3>{}</h3>", subheading)?;
     Ok(())
 }
 
