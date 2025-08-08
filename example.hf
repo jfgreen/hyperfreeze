@@ -1,0 +1,67 @@
+/ Cat facts
+id: 10.21.cat-facts
+tags: cats | cool | insightful
+
+@references
+Ripley2020 -> https://example.com
+
+Hello there, this is a really cool blog post about *cats*!
+
+If you dont like cats, you should find a different post to read. In fact, we
+are going to be exploring so many feline secrets that even if you like cats this
+post might _still_ be [to detailed]@Ripley2020 for you.
+
+!info
+This document is really interesting.
+
+Are you ready? Lets go!
+
+// Fantastic Felines
+
+Reasons to pet the cat:
+
+#list(style=ordered)
+- They are soft
+- They make nice purring sounds
+- It makes them feel _good_
+- It makes *you feel good too*
+
+!info
+>>>
+Some cats are actually quite naughty.
+
+This might be surprising, but not when you think about how crafty they are and
+how they want feeding all the time.
+
+#code
+---
+def meow():
+  print("MEooowww!")
+---
+
+<<<
+
+// Speed running the kitchen at 4am
+
+Some notes
+
+/// Motivation
+
+Set a personal best,
+while others rest!
+
+/// Planning the perfect lap
+
+This requires care.
+
+/// Selecting a route
+
+Avoid the toaster.
+
+/// Choosing a victory scream
+
+Meeaaahhh?
+
+// Conclusion
+
+Go go go!
