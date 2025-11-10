@@ -9,6 +9,7 @@ mod document;
 mod parse;
 mod render;
 mod scan;
+mod tokenise;
 
 // Implementation ideas we could look into:
 // - Stream processing (as opposed loading whole input into memory)
@@ -87,3 +88,16 @@ fn parse_args(args: std::env::Args) -> (String, String) {
         }
     }
 }
+
+//TODO: Helpful error printing
+// writeln!(
+//     f,
+//     "\nEncountered at line {} column {}:",
+//     self.input_line, self.input_column
+// )?;
+// writeln!(f)?;
+// writeln!(f, "{}", failing_line)?;
+// for _ in 1..self.input_column {
+//     write!(f, " ")?;
+// }
+// writeln!(f, "^")?;

@@ -23,6 +23,7 @@ Reasons to pet the cat:
 #list(style=ordered)
 - They are soft
 - They make nice purring sounds
+  that are just so soothing
 - It makes them feel _good_
 - It makes *you feel good too*
 
@@ -34,8 +35,14 @@ This might be surprising, but not when you think about how crafty they are and
 how they want feeding all the time.
 
 #code
+x = 42
+
+#code
 ---
 def meow():
+  print("meow?")
+
+def meow_harder():
   print("MEooowww!")
 ---
 

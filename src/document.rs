@@ -46,10 +46,18 @@ pub struct Section {
     pub heading: String,
 }
 
+//TODO: Do subsections like this?
+// #[derive(PartialEq, Eq, Debug)]
+// pub struct SubSection {
+//     pub content: Box<[SubSectionElement]>,
+//     pub heading: String,
+// }
+
 #[derive(PartialEq, Eq, Debug)]
 pub enum SectionElement {
     Block(Block),
     Container(Container),
+    //TODO: Might it be more consistent to have subsection nest?
     SubHeading(String),
 }
 

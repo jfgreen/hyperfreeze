@@ -1,81 +1,71 @@
 use std::str::CharIndices;
 
-pub type ScanResult<'a, T> = Result<T, ScannerPosition<'a>>;
+const NEW_LINE: char = '\n';
+const SPACE: char = ' ';
 
-#[derive(Debug)]
-pub struct ScannerPosition<'a> {
-    pub input: &'a str,
+#[derive(Clone, Copy, Debug)]
+pub struct Position {
     pub column: u32,
     pub row: u32,
-}
-
-impl<'a> ScannerPosition<'a> {
-    pub fn line(&self) -> Option<&'a str> {
-        self.input.lines().nth(self.row as usize)
-    }
 }
 
 #[derive(Debug, Clone)]
 pub struct Scanner<'a> {
     input: &'a str,
     chars: CharIndices<'a>,
-    current_char: Option<char>,
-    current_index: usize,
+    index: usize,
     column: u32,
     row: u32,
 }
 
 impl<'a> Scanner<'a> {
     pub fn new(input: &'a str) -> Self {
-        let mut scanner = Self {
+        let mut char_iter = input.char_indices();
+        char_iter.next();
+
+        Self {
             input,
-            chars: input.char_indices(),
-            current_char: None,
-            current_index: 0,
+            chars: char_iter,
+            index: 0,
             column: 0,
             row: 0,
-        };
-
-        // Place the first char of the input into `next`
-        scanner.read_next_char();
-
-        scanner
+        }
     }
 
     pub fn has_input(&self) -> bool {
-        self.current_char.is_some()
+        self.index < self.input.len()
     }
 
-    pub fn position(&self) -> ScannerPosition<'a> {
-        ScannerPosition {
-            input: self.input,
+    pub fn position(&self) -> Position {
+        Position {
             column: self.column,
             row: self.row,
         }
     }
 
     pub fn is_on(&self, predicate: impl Fn(char) -> bool) -> bool {
-        self.current_char.is_some_and(&predicate)
+        self.input[self.index..].starts_with(predicate)
     }
 
     pub fn is_on_str(&self, s: &str) -> bool {
-        self.input[self.current_index..].starts_with(s)
+        self.input[self.index..].starts_with(s)
     }
 
     pub fn is_on_char(&self, c: char) -> bool {
-        self.current_char == Some(c)
+        self.input[self.index..].starts_with(c)
     }
 
     pub fn is_on_one_of(&self, chars: &[char]) -> bool {
-        self.current_char.is_some_and(|c| chars.contains(&c))
+        self.input[self.index..].starts_with(chars)
     }
 
-    pub fn peek(&self) -> Scanner<'a> {
-        self.clone()
-    }
-
-    pub fn advance_to(&mut self, other: &Scanner<'a>) {
-        *self = other.clone()
+    pub fn is_on_empty_line(&self) -> bool {
+        // TODO: if we could have an internal version of
+        // this that returns the index of the new line
+        // then we could be a lot more optimised
+        self.input[self.index..]
+            .trim_start_matches(SPACE)
+            .starts_with(NEW_LINE)
     }
 
     pub fn skip_char(&mut self) {
@@ -88,100 +78,67 @@ impl<'a> Scanner<'a> {
         }
     }
 
-    pub fn skip_while_on_char(&mut self, c1: char) {
-        self.skip_while(|c2| c1 == c2)
-    }
-
-    pub fn skip_while_on_any(&mut self, chars: &[char]) {
-        self.skip_while(|c| chars.contains(&c))
-    }
-
-    fn skip_while(&mut self, predicate: impl Fn(char) -> bool) {
-        while self.current_char.is_some_and(&predicate) {
+    pub fn skip_while_on(&mut self, c: char) -> usize {
+        let mut i = 0;
+        while self.input[self.index..].starts_with(c) {
             self.read_next_char();
+            i += 1;
         }
+        i
     }
 
-    pub fn expect_char(&mut self, c: char) -> ScanResult<()> {
-        if self.current_char == Some(c) {
-            self.read_next_char();
-            Ok(())
-        } else {
-            Err(self.position())
-        }
-    }
-
-    pub fn expect_str(&mut self, s: &str) -> ScanResult<()> {
-        if self.is_on_str(s) {
-            for _ in 0..s.chars().count() {
+    pub fn skip_while_on_empty_line(&mut self) {
+        // TODO: This is not that efficient...
+        // once we have put in the work to look ahead,
+        // can we use this to skip to new line
+        while self.is_on_empty_line() {
+            while self.is_on_one_of(&[SPACE, NEW_LINE]) {
                 self.read_next_char();
             }
-            Ok(())
-        } else {
-            Err(self.position())
         }
     }
 
-    pub fn eat_char(&mut self) -> ScanResult<char> {
-        match self.current_char {
-            Some(c) => {
-                self.read_next_char();
-                Ok(c)
-            }
-            None => Err(self.position()),
+    pub fn eat_char(&mut self) -> &'a str {
+        let i1 = self.index;
+        self.read_next_char();
+        let i2 = self.index;
+        &self.input[i1..i2]
+    }
+
+    pub fn eat_while(&mut self, predicate: impl Fn(char) -> bool) -> &'a str {
+        let i1 = self.index;
+
+        while self.input[self.index..].starts_with(&predicate) {
+            self.read_next_char();
         }
+
+        let i2 = self.index;
+        &self.input[i1..i2]
     }
 
-    pub fn eat_while(&mut self, predicate: impl Fn(char) -> bool) -> ScanResult<&'a str> {
-        let position = self.position();
+    pub fn eat_until_line_starting_with(&mut self, prefix: &str) -> &'a str {
+        let i1 = self.index;
 
-        let i1 = self.current_index;
-
-        self.skip_while(&predicate);
-
-        let i2 = self.current_index;
-        let string = &self.input[i1..i2];
-
-        if string.is_empty() {
-            Err(position)
-        } else {
-            Ok(string)
+        while !(self.column == 0 && self.input[self.index..].starts_with(prefix)) {
+            self.read_next_char();
         }
-    }
 
-    pub fn eat_while_char(&mut self, c1: char) -> ScanResult<&'a str> {
-        self.eat_while(|c| c == c1)
-    }
-
-    pub fn eat_until_one_of(&mut self, chars: &[char]) -> ScanResult<&'a str> {
-        self.eat_while(|c| !chars.contains(&c))
-    }
-
-    pub fn eat_line(&mut self) -> ScanResult<&'a str> {
-        self.eat_while(|c| c != '\n')
+        let i2 = self.index;
+        &self.input[i1..i2]
     }
 
     fn read_next_char(&mut self) {
-        if let Some((index, c)) = self.chars.next() {
-            match self.current_char {
-                Some('\n') => {
-                    self.column = 0;
-                    self.row += 1;
-                }
-                Some(_) => {
-                    self.column += 1;
-                }
-                None => {
-                    self.column = 0;
-                    self.row = 0;
-                }
+        if let Some((index, _)) = self.chars.next() {
+            if self.is_on_char('\n') {
+                self.column = 0;
+                self.row += 1;
+            } else {
+                self.column += 1;
             }
 
-            self.current_char = Some(c);
-            self.current_index = index;
+            self.index = index;
         } else {
-            self.current_char = None;
-            self.current_index = self.input.len();
+            self.index = self.input.len();
         }
     }
 }
