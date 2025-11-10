@@ -27,7 +27,6 @@ const DASH: char = '-';
 const AT_SIGN: char = '@';
 const EXCLAMATION_MARK: char = '!';
 const VERTICAL_BAR: char = '|';
-const ARROW: &str = "->";
 
 const MARKUP_CHARS: &[char; 10] = &[
     UNDERSCORE,
@@ -65,7 +64,8 @@ fn char_usable_in_parameter_value(c: char) -> bool {
 }
 
 fn char_usable_in_reference_id(c: char) -> bool {
-    c.is_alphanumeric()
+    // c.is_alphanumeric() || c == '_' || c == '-' || c == '.'
+    c.is_alphanumeric() || c == '_'
 }
 
 fn char_usable_in_reference_link(c: char) -> bool {
@@ -104,7 +104,6 @@ pub enum Token<'a> {
     BlockParameterNameValueSeperator,
     BlockBreak,
     MetadataListSeperator,
-    //TODO: Just call this arrow?
     MetadataKeyValueSeperator,
     MetadataKey(&'a str),
     MetadataValue(&'a str),
@@ -123,7 +122,6 @@ pub enum Token<'a> {
     LinkToReferenceJoiner,
     ReferenceIdentifier(&'a str),
     ReferenceLink(&'a str),
-    ReferenceIdLinkSeperator,
     ListBullet(Indent),
     //TODO: More rubbish naming
     DelimitedBlockDelimiter,
@@ -169,7 +167,7 @@ impl<'a> Display for Token<'a> {
             LinkToReferenceJoiner => write!(f, "link to reference joiner '@'"),
             ReferenceIdentifier(identifier) => write!(f, "reference identifier '{identifier}'"),
             ReferenceLink(link) => write!(f, "reference link '{link}'"),
-            ReferenceIdLinkSeperator => write!(f, "reference id-link seperator"),
+            MetadataKeyValueSeperator => write!(f, "reference id-link seperator"),
             ListBullet(indent) => write!(f, "list bullet (indent {indent})"),
             DelimitedBlockDelimiter => write!(f, "delimited block delimiter"),
             DelimitedContainerStart => write!(f, "delimited container start"),
@@ -452,7 +450,7 @@ impl<'a> Tokeniser<'a> {
                 Unknown(c)
             }
         } else if self.state == References {
-            if self.current == ReferenceIdLinkSeperator
+            if self.current == MetadataKeyValueSeperator
                 && scanner.is_on(char_usable_in_reference_link)
             {
                 let link = scanner.eat_while(char_usable_in_reference_link);
@@ -461,10 +459,10 @@ impl<'a> Tokeniser<'a> {
                 let identifier = scanner.eat_while(char_usable_in_reference_id);
                 scanner.skip_while_on(SPACE);
                 ReferenceIdentifier(identifier)
-            } else if scanner.is_on_str(ARROW) {
-                scanner.skip_chars(2);
+            } else if scanner.is_on_char(COLON) {
+                scanner.skip_chars(1);
                 scanner.skip_while_on(SPACE);
-                ReferenceIdLinkSeperator
+                MetadataKeyValueSeperator
             } else {
                 let c = scanner.eat_char();
                 Unknown(c)

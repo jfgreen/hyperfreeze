@@ -233,7 +233,7 @@ fn parse_references(tokeniser: &mut Tokeniser) -> ParseResult<Box<[Reference]>> 
 
     while let ReferenceIdentifier(id) = tokeniser.current() {
         tokeniser.advance();
-        consume!(tokeniser, ReferenceIdLinkSeperator)?;
+        consume!(tokeniser, MetadataKeyValueSeperator)?;
         let link = consume_value!(tokeniser, ReferenceLink)?;
 
         // TODO: This is a common pattern - macro? Or refactor to not
@@ -2335,9 +2335,9 @@ mod test {
     fn basic_link_with_reference() {
         let input = concat!(
             "@references\n",
-            "Ripley2020 -> https://example.com\n",
+            "ripley_2020: https://example.com\n",
             "\n",
-            "For more info, consult [our guide on petting cats]@Ripley2020,\n",
+            "For more info, consult [our guide on petting cats]@ripley_2020,\n",
             "created by our own in house experts.\n",
         );
 
@@ -2345,12 +2345,12 @@ mod test {
             contents: {
                 paragraph {
                     text("For more info, consult "),
-                    linked_text("our guide on petting cats", "Ripley2020"),
+                    linked_text("our guide on petting cats", "ripley_2020"),
                     text(", created by our own in house experts.")
                 }
             },
             references: {
-                ("Ripley2020", "https://example.com")
+                ("ripley_2020", "https://example.com")
             }
         );
 
@@ -2361,9 +2361,9 @@ mod test {
     fn whitespace_around_linked_text_is_rejected() {
         let input = concat!(
             "@references\n",
-            "Ripley2020 -> https://example.com\n",
+            "ripley_2020: https://example.com\n",
             "\n",
-            "We like [ petting cats ]@Ripley2020 a lot.\n",
+            "We like [ petting cats ]@ripley_2020 a lot.\n",
         );
 
         let expected = LooseDelimiter;
@@ -2373,11 +2373,11 @@ mod test {
     #[test]
     fn references_after_content_rejected() {
         let input = concat!(
-            "For more info, consult [our guide on petting cats]@Ripley2020,\n",
+            "For more info, consult [our guide on petting cats]@ripley_2020,\n",
             "created by our own in house experts.\n",
             "\n",
             "@references\n",
-            "Ripley2020 -> https://example.com"
+            "ripley_2020: https://example.com"
         );
 
         let expected = ReferencesOutOfPlace;
@@ -2391,7 +2391,7 @@ mod test {
             "/ Boots and\n",
             "\n",
             "@references\n",
-            "Cats -> https://example.com\n",
+            "cats: https://example.com\n",
         );
 
         let expected = document!(
@@ -2399,7 +2399,7 @@ mod test {
                 title: "Boots and"
             },
             references: {
-                ("Cats", "https://example.com")
+                ("cats", "https://example.com")
             }
         );
 
