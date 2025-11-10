@@ -1,15 +1,17 @@
-/ Cat facts
+@metadata
 id: 10.21.cat-facts
 tags: cats | cool | insightful
 
 @references
-Ripley2020 -> https://example.com
+ripley_2020: https://example.com
+
+/ Cat facts
 
 Hello there, this is a really cool blog post about *cats*!
 
 If you dont like cats, you should find a different post to read. In fact, we
 are going to be exploring so many feline secrets that even if you like cats this
-post might _still_ be [to detailed]@Ripley2020 for you.
+post might _still_ be [to detailed]@ripley_2020 for you.
 
 !info
 This document is really interesting.

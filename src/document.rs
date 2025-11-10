@@ -5,6 +5,7 @@ pub struct Document {
     pub references: Box<[Reference]>,
 }
 
+//TODO: Title should not live in metadata, should be it own element
 #[derive(PartialEq, Eq, Debug, Default)]
 pub struct Metadata {
     pub id: Option<String>,

@@ -31,9 +31,10 @@ macro_rules! parse_err {
 enum ErrorKind {
     LooseDelimiter,
     EmptyDelimitedText,
-    ReferencesOutOfPlace,
     MissingListLevel((usize, usize)),
-    DocumentTitleNotAtStart,
+    TitleNotAtStart,
+    MetadataNotAtStart,
+    ReferencesOutOfPlace,
     UnexpectedToken(String),
     UnknownMetadata(String),
     UnevenListIndent(usize),
@@ -54,11 +55,12 @@ impl Display for ParseError {
             LooseDelimiter => write!(f, "delimited text cant have leading/trailing whitespace"),
             EmptyDelimitedText => write!(f, "delimited text cant be empty"),
             UnknownMetadata(key) => write!(f, "unknown metadata '{}'", key),
-            ReferencesOutOfPlace => write!(f, "references not in correct part of document"),
             MissingListLevel((from, to)) => {
                 write!(f, "list indent skipped from {} to {}", from, to)
             }
-            DocumentTitleNotAtStart => write!(f, "document title is not at start of document"),
+            TitleNotAtStart => write!(f, "document title is not at start of document"),
+            MetadataNotAtStart => write!(f, "document metadata is not at start of document"),
+            ReferencesOutOfPlace => write!(f, "references not in at start of document"),
             UnexpectedToken(token) => write!(f, "unexpected token, {}", token),
             UnevenListIndent(count) => write!(f, "list indent of {} is not even", count),
             UnknownBlock(name) => write!(f, "unknown block '{}'", name),
@@ -151,13 +153,17 @@ fn parse_document(tokeniser: &mut Tokeniser) -> ParseResult<Document> {
     let mut metadata = Metadata::default();
     let mut references = Vec::new();
 
-    if tokeniser.current() == DocumentDirective {
-        metadata = parse_document_header(tokeniser)?;
+    if tokeniser.current() == StructuredDataDirective("metadata") {
+        parse_metadata(tokeniser, &mut metadata)?;
     }
 
-    if tokeniser.current() == MetadataDirective("references") {
+    if tokeniser.current() == StructuredDataDirective("references") {
         let refs = parse_references(tokeniser)?;
         references.extend(refs);
+    }
+
+    if tokeniser.current() == DocumentDirective {
+        parse_document_header(tokeniser, &mut metadata)?;
     }
 
     while tokeniser.current() != EndOfInput {
@@ -172,35 +178,38 @@ fn parse_document(tokeniser: &mut Tokeniser) -> ParseResult<Document> {
     })
 }
 
-fn parse_document_header(tokeniser: &mut Tokeniser) -> ParseResult<Metadata> {
+fn parse_document_header(tokeniser: &mut Tokeniser, metadata: &mut Metadata) -> ParseResult<()> {
     consume!(tokeniser, DocumentDirective)?;
 
     let title = parse_header_text(tokeniser)?;
 
-    let mut metadata = Metadata {
-        title: Some(title),
-        ..Default::default()
-    };
+    metadata.title = Some(title);
 
     if tokeniser.current() == BlockBreak {
         tokeniser.advance();
-        return Ok(metadata);
+        return Ok(());
     }
 
     if tokeniser.current() != EndOfInput {
         consume!(tokeniser, LineBreak)?;
     }
+    Ok(())
+}
+
+fn parse_metadata(tokeniser: &mut Tokeniser, metadata: &mut Metadata) -> ParseResult<()> {
+    consume!(tokeniser, StructuredDataDirective("metadata"))?;
+    consume!(tokeniser, LineBreak)?;
 
     //TODO: this could be a while let? Would need a new macro?
-    while matches!(tokeniser.current(), MetadataKey(_)) {
+    while matches!(tokeniser.current(), DataKey(_)) {
         let key_position = tokeniser.position();
-        let key = consume_value!(tokeniser, MetadataKey)?;
+        let key = consume_value!(tokeniser, DataKey)?;
 
-        consume!(tokeniser, MetadataKeyValueSeperator)?;
+        consume!(tokeniser, DataKeyValueSeperator)?;
 
         match key {
             "id" => {
-                let id = consume_value!(tokeniser, MetadataValue)?;
+                let id = consume_value!(tokeniser, DataValue)?;
                 metadata.id = Some(id.to_string());
             }
             "tags" => {
@@ -219,22 +228,20 @@ fn parse_document_header(tokeniser: &mut Tokeniser) -> ParseResult<Metadata> {
         consume!(tokeniser, BlockBreak)?;
     }
 
-    Ok(metadata)
+    Ok(())
 }
 
+//TODO: parse_references and parse_metadata _should_ share mechanics
 fn parse_references(tokeniser: &mut Tokeniser) -> ParseResult<Box<[Reference]>> {
-    consume!(tokeniser, MetadataDirective("references"))?;
-
-    if tokeniser.current() != EndOfInput {
-        consume!(tokeniser, LineBreak)?;
-    }
+    consume!(tokeniser, StructuredDataDirective("references"))?;
+    consume!(tokeniser, LineBreak)?;
 
     let mut references = Vec::new();
 
-    while let ReferenceIdentifier(id) = tokeniser.current() {
+    while let DataKey(id) = tokeniser.current() {
         tokeniser.advance();
-        consume!(tokeniser, MetadataKeyValueSeperator)?;
-        let link = consume_value!(tokeniser, ReferenceLink)?;
+        consume!(tokeniser, DataKeyValueSeperator)?;
+        let link = consume_value!(tokeniser, DataValue)?;
 
         // TODO: This is a common pattern - macro? Or refactor to not
         // need these delimiter tokens?
@@ -278,12 +285,12 @@ fn parse_header_text(tokeniser: &mut Tokeniser) -> ParseResult<String> {
 fn parse_metadata_list(tokeniser: &mut Tokeniser) -> ParseResult<Box<[String]>> {
     let mut tags = Vec::new();
 
-    let first_tag = consume_value!(tokeniser, MetadataValue)?;
+    let first_tag = consume_value!(tokeniser, DataValue)?;
     tags.push(first_tag.to_string());
 
-    while matches!(tokeniser.current(), MetadataListSeperator) {
+    while matches!(tokeniser.current(), DataListSeperator) {
         tokeniser.advance();
-        let tag = consume_value!(tokeniser, MetadataValue)?;
+        let tag = consume_value!(tokeniser, DataValue)?;
         tags.push(tag.to_string());
     }
 
@@ -294,7 +301,7 @@ fn parse_metadata_list(tokeniser: &mut Tokeniser) -> ParseResult<Box<[String]>> 
 fn parse_element(tokeniser: &mut Tokeniser) -> ParseResult<Element> {
     match tokeniser.current() {
         DocumentDirective => {
-            parse_err!(DocumentTitleNotAtStart, tokeniser.position())
+            parse_err!(TitleNotAtStart, tokeniser.position())
         }
         SectionDirective => {
             let section = parse_section(tokeniser)?;
@@ -388,7 +395,7 @@ fn parse_section_element(tokeniser: &mut Tokeniser) -> ParseResult<SectionElemen
     //TODO: Very simmilar to parse_element, possible re-use?
     match tokeniser.current() {
         DocumentDirective => {
-            parse_err!(DocumentTitleNotAtStart, tokeniser.position())
+            parse_err!(TitleNotAtStart, tokeniser.position())
         }
         SubSectionDirective => {
             let sub_heading = parse_subheading(tokeniser)?;
@@ -418,7 +425,10 @@ fn parse_block(tokeniser: &mut Tokeniser) -> ParseResult<Block> {
         BlockDirective("paragraph") => parse_paragraph(tokeniser)?,
         BlockDirective("list") => parse_list(tokeniser)?,
         BlockDirective("code") => parse_code(tokeniser)?,
-        MetadataDirective("references") => {
+        StructuredDataDirective("metadata") => {
+            return parse_err!(MetadataNotAtStart, tokeniser.position());
+        }
+        StructuredDataDirective("references") => {
             return parse_err!(ReferencesOutOfPlace, tokeniser.position());
         }
         BlockDirective(unknown) => {
@@ -707,6 +717,7 @@ fn parse_code(tokeniser: &mut Tokeniser) -> ParseResult<Block> {
 //   ---
 // <<<
 
+//TODO: Implement a concat with auto newlines macro?
 //TODO: test for leading whitespace like '    / Hello'
 #[cfg(test)]
 mod test {
@@ -1080,8 +1091,10 @@ mod test {
     #[test]
     fn complete_doc_test() {
         let input = concat!(
-            "/ Feline friendly flower arranging\n",
+            "@metadata\n",
             "id: 01.42\n",
+            "\n",
+            "/ Feline friendly flower arranging\n",
             "\n",
             "!info\n",
             "Did you know flower pots are for *more*\n",
@@ -1834,15 +1847,65 @@ mod test {
     }
 
     #[test]
-    fn doc_header() {
+    fn doc_metadata() {
+        let input = concat!("@metadata\n", "id: 12.03\n");
+
+        let expected = document!(
+            metadata: {
+                id: "12.03"
+            }
+        );
+
+        assert_parse_succeeds(input, expected);
+    }
+
+    #[test]
+    fn doc_metadata_with_tags() {
         let input = concat!(
-            "/ Practical espionage for felines in urban settings\n",
-            "id: 01.23\n",
+            "@metadata\n",
+            "id: feline.feasts.25\n",
+            "tags: cooking | eating | nice-smells\n",
         );
 
         let expected = document!(
             metadata: {
-                id: "01.23",
+                id:"feline.feasts.25",
+                tags: ["cooking", "eating", "nice-smells"],
+            }
+        );
+
+        assert_parse_succeeds(input, expected);
+    }
+
+    #[test]
+    fn doc_metadata_with_unknown_identifier_is_rejected() {
+        let input = "@metadata\nkibble: yes please\n";
+
+        let expected = UnknownMetadata(String::from("kibble"));
+
+        assert_parse_fails(input, expected);
+    }
+
+    #[test]
+    fn doc_metadata_not_at_start_is_rejected() {
+        let input = concat!(
+            "Helloo there. Metadata should not follow this.!\n",
+            "\n",
+            "@metadata\n",
+            "id: 01.23\n"
+        );
+
+        let expected = MetadataNotAtStart;
+
+        assert_parse_fails(input, expected);
+    }
+
+    #[test]
+    fn doc_title() {
+        let input = concat!("/ Practical espionage for felines in urban settings\n",);
+
+        let expected = document!(
+            metadata: {
                 title: "Practical espionage for felines in urban settings",
             }
         );
@@ -1851,10 +1914,10 @@ mod test {
     }
 
     #[test]
-    fn doc_header_with_folowing_para() {
+    fn doc_title_with_folowing_para() {
         let input = concat!(
             "/ Some Doc\n",
-            "id: 01.23\n",
+            "\n",
             "\n",
             "\n",
             "\n",
@@ -1864,7 +1927,6 @@ mod test {
         let expected = document!(
             metadata: {
                 title:"Some Doc",
-                id: "01.23",
             },
             contents: {
                 paragraph { text("Hello cats and kittens") }
@@ -1875,29 +1937,11 @@ mod test {
     }
 
     #[test]
-    fn doc_header_with_tags() {
-        let input = concat!(
-            "/ Feasts for felines\n",
-            "tags: cooking | eating | nice-smells\n",
-        );
+    fn doc_title_with_wonky_spacing() {
+        let input = "/My Very   Cool Document   \n\n";
 
         let expected = document!(
             metadata: {
-                title:"Feasts for felines",
-                tags: ["cooking", "eating", "nice-smells"],
-            }
-        );
-
-        assert_parse_succeeds(input, expected);
-    }
-
-    #[test]
-    fn doc_header_with_wonky_spacing() {
-        let input = "/My Very   Cool Document   \nid :01.23\n";
-
-        let expected = document!(
-            metadata: {
-                id:"01.23",
                 title:"My Very Cool Document",
             }
         );
@@ -1906,7 +1950,7 @@ mod test {
     }
 
     #[test]
-    fn doc_header_with_no_trailing_newline() {
+    fn doc_title_with_no_trailing_newline() {
         let input = "/Some Doc";
 
         let expected = document!(
@@ -1919,24 +1963,41 @@ mod test {
     }
 
     #[test]
-    fn doc_header_not_at_start_is_rejected() {
+    fn doc_title_in_not_at_start() {
         let input = concat!(
-            "Hi!\n",
+            "Document should not be after this!\n",
             "\n",
-            "/ My Really Very Cool Document \n",
-            "id: 01.23\n",
+            "/Some Document Title"
         );
 
-        let expected = DocumentTitleNotAtStart;
+        let expected = TitleNotAtStart;
 
         assert_parse_fails(input, expected);
     }
 
     #[test]
-    fn doc_header_with_unknown_metadata_is_rejected() {
-        let input = "/Doc\nkibble: yes please\n";
+    fn doc_title_in_section() {
+        let input = concat!(
+            "// Some important document section\n",
+            "\n",
+            "/Some Document Title"
+        );
 
-        let expected = UnknownMetadata(String::from("kibble"));
+        let expected = TitleNotAtStart;
+
+        assert_parse_fails(input, expected);
+    }
+
+    #[test]
+    #[ignore]
+    fn doc_title_in_subsection() {
+        let input = concat!(
+            "/// Some important document section\n",
+            "\n",
+            "/Some Document Title"
+        );
+
+        let expected = TitleNotAtStart;
 
         assert_parse_fails(input, expected);
     }
@@ -2383,27 +2444,6 @@ mod test {
         let expected = ReferencesOutOfPlace;
 
         assert_parse_fails(input, expected);
-    }
-
-    #[test]
-    fn document_with_title_and_references() {
-        let input = concat!(
-            "/ Boots and\n",
-            "\n",
-            "@references\n",
-            "cats: https://example.com\n",
-        );
-
-        let expected = document!(
-            metadata: {
-                title: "Boots and"
-            },
-            references: {
-                ("cats", "https://example.com")
-            }
-        );
-
-        assert_parse_succeeds(input, expected);
     }
 
     #[test]

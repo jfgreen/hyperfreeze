@@ -47,12 +47,12 @@ fn char_usable_in_block_name(c: char) -> bool {
     c.is_alphanumeric()
 }
 
-fn char_usable_in_metadata_key(c: char) -> bool {
-    c.is_alphanumeric()
+fn char_usable_in_data_key(c: char) -> bool {
+    c.is_alphanumeric() || c == '_' || c == '-' || c == '.'
 }
 
-fn char_usable_in_metadata_value(c: char) -> bool {
-    c.is_alphanumeric() || c == '_' || c == '-' || c == '.'
+fn char_usable_in_data_value(c: char) -> bool {
+    !(c.is_whitespace() || c == '|')
 }
 
 fn char_usable_in_parameter_name(c: char) -> bool {
@@ -61,15 +61,6 @@ fn char_usable_in_parameter_name(c: char) -> bool {
 
 fn char_usable_in_parameter_value(c: char) -> bool {
     c.is_alphanumeric()
-}
-
-fn char_usable_in_reference_id(c: char) -> bool {
-    // c.is_alphanumeric() || c == '_' || c == '-' || c == '.'
-    c.is_alphanumeric() || c == '_'
-}
-
-fn char_usable_in_reference_link(c: char) -> bool {
-    !c.is_whitespace()
 }
 
 fn char_usable_in_text_frag(c: char) -> bool {
@@ -90,8 +81,8 @@ pub enum Token<'a> {
     StartOfInput,
     EndOfInput,
     Unknown(&'a str),
-    MetadataDirective(&'a str), //TODO: What is currently called Metadata should be called properties or something?
-    DocumentDirective,          //TODO: rename DocumentDirective to TitleDirective
+    StructuredDataDirective(&'a str),
+    DocumentDirective, //TODO: rename DocumentDirective to TitleDirective
     SectionDirective,
     SubSectionDirective,
     ContainerDirective(&'a str),
@@ -103,10 +94,10 @@ pub enum Token<'a> {
     //TODO: This name is meh, just call it what it is: equals sign?
     BlockParameterNameValueSeperator,
     BlockBreak,
-    MetadataListSeperator,
-    MetadataKeyValueSeperator,
-    MetadataKey(&'a str),
-    MetadataValue(&'a str),
+    DataListSeperator,
+    DataKeyValueSeperator,
+    DataKey(&'a str),
+    DataValue(&'a str),
     TitleText(&'a str),
     TitleTextSpace,
     LineBreak,
@@ -136,7 +127,7 @@ impl<'a> Display for Token<'a> {
             StartOfInput => write!(f, "start of input"),
             EndOfInput => write!(f, "end of input"),
             Unknown(value) => write!(f, "unknown '{value}'"),
-            MetadataDirective(title) => write!(f, "metadata directive '{title}'"),
+            StructuredDataDirective(title) => write!(f, "structured data directive '{title}'"),
             DocumentDirective => write!(f, "document directive"),
             SectionDirective => write!(f, "section directive"),
             SubSectionDirective => write!(f, "subsection directive"),
@@ -148,10 +139,10 @@ impl<'a> Display for Token<'a> {
             BlockParameterValue(value) => write!(f, "block parameter value '{value}'"),
             BlockParameterNameValueSeperator => write!(f, "block parameter name value seperator"),
             BlockBreak => write!(f, "block break"),
-            MetadataListSeperator => write!(f, "metadata list seperator"),
-            MetadataKeyValueSeperator => write!(f, "metadata key value seperator"),
-            MetadataKey(key) => write!(f, "metadata key '{key}'"),
-            MetadataValue(value) => write!(f, "metadata value '{value}'"),
+            DataListSeperator => write!(f, "metadata list seperator"),
+            DataKeyValueSeperator => write!(f, "metadata key value seperator"),
+            DataKey(key) => write!(f, "metadata key '{key}'"),
+            DataValue(value) => write!(f, "metadata value '{value}'"),
             TitleText(text) => write!(f, "title text '{text}'"),
             TitleTextSpace => write!(f, "title text space"),
             LineBreak => write!(f, "linebreak"),
@@ -167,7 +158,6 @@ impl<'a> Display for Token<'a> {
             LinkToReferenceJoiner => write!(f, "link to reference joiner '@'"),
             ReferenceIdentifier(identifier) => write!(f, "reference identifier '{identifier}'"),
             ReferenceLink(link) => write!(f, "reference link '{link}'"),
-            MetadataKeyValueSeperator => write!(f, "reference id-link seperator"),
             ListBullet(indent) => write!(f, "list bullet (indent {indent})"),
             DelimitedBlockDelimiter => write!(f, "delimited block delimiter"),
             DelimitedContainerStart => write!(f, "delimited container start"),
@@ -192,7 +182,7 @@ enum State {
     SectionHeader,
     SubsectionHeader,
     ContainerHeader,
-    References,
+    StructuredData,
     Paragraph,
     ParagraphRaw,
     List,
@@ -258,6 +248,8 @@ impl<'a> Tokeniser<'a> {
         self.current = value;
     }
 
+    // TODO: If we do have to have an unknown, maybe take larger chunks?
+    // (e.g until next space)
     fn read_next_token(&mut self) -> Token<'a> {
         //TODO: Try and gradually simplify this mess
         let scanner = &mut self.scanner;
@@ -362,9 +354,8 @@ impl<'a> Tokeniser<'a> {
             scanner.skip_char();
             self.on_header_line = true;
             let name = scanner.eat_while(char_usable_in_block_name);
-            //TODO: rework references and metadata to be simmilar:
-            self.state = References;
-            MetadataDirective(name)
+            self.state = StructuredData;
+            StructuredDataDirective(name)
         } else if on_start_of_block && scanner.is_on_char(EXCLAMATION_MARK) {
             scanner.skip_char();
             self.on_header_line = true;
@@ -400,28 +391,35 @@ impl<'a> Tokeniser<'a> {
             let text = scanner.eat_while(|c| c != SPACE && c != NEW_LINE);
             TitleText(text)
         } else if self.state == DocumentHeader {
+            //TODO: Can this now share logic with the other headers?
             if matches!(self.current, DocumentDirective | TitleTextSpace,)
                 && !scanner.is_on_one_of(&[SPACE, NEW_LINE])
             {
                 //TODO: char_usable_in_title_text would be helpful?
                 let text = scanner.eat_while(|c| c != SPACE && c != NEW_LINE);
                 TitleText(text)
-            } else if scanner.is_on(char_usable_in_metadata_key) && column == 0 {
-                let key = scanner.eat_while(char_usable_in_metadata_key);
+            } else {
+                let c = scanner.eat_char();
+                Unknown(c)
+            }
+        } else if self.state == StructuredData {
+            //TODO: Should data key be called 'identifier' or something?
+            if scanner.is_on(char_usable_in_data_key) && column == 0 {
+                let key = scanner.eat_while(char_usable_in_data_key);
                 scanner.skip_while_on(SPACE);
-                MetadataKey(key)
-            } else if scanner.is_on(char_usable_in_metadata_value) {
-                let value = scanner.eat_while(char_usable_in_metadata_value);
-                scanner.skip_while_on(SPACE);
-                MetadataValue(value)
+                DataKey(key)
             } else if scanner.is_on_char(COLON) {
                 scanner.skip_char();
                 scanner.skip_while_on(SPACE);
-                MetadataKeyValueSeperator
+                DataKeyValueSeperator
             } else if scanner.is_on_char(VERTICAL_BAR) {
                 scanner.skip_char();
                 scanner.skip_while_on(SPACE);
-                MetadataListSeperator
+                DataListSeperator
+            } else if scanner.is_on(char_usable_in_data_value) {
+                let value = scanner.eat_while(char_usable_in_data_value);
+                scanner.skip_while_on(SPACE);
+                DataValue(value)
             } else {
                 let c = scanner.eat_char();
                 Unknown(c)
@@ -449,24 +447,6 @@ impl<'a> Tokeniser<'a> {
                 let c = scanner.eat_char();
                 Unknown(c)
             }
-        } else if self.state == References {
-            if self.current == MetadataKeyValueSeperator
-                && scanner.is_on(char_usable_in_reference_link)
-            {
-                let link = scanner.eat_while(char_usable_in_reference_link);
-                ReferenceLink(link)
-            } else if scanner.is_on(char_usable_in_reference_id) {
-                let identifier = scanner.eat_while(char_usable_in_reference_id);
-                scanner.skip_while_on(SPACE);
-                ReferenceIdentifier(identifier)
-            } else if scanner.is_on_char(COLON) {
-                scanner.skip_chars(1);
-                scanner.skip_while_on(SPACE);
-                MetadataKeyValueSeperator
-            } else {
-                let c = scanner.eat_char();
-                Unknown(c)
-            }
         } else if self.state == Paragraph {
             if scanner.is_on_char(LEFT_SQUARE_BRACKET) {
                 scanner.skip_char();
@@ -478,9 +458,10 @@ impl<'a> Tokeniser<'a> {
                 scanner.skip_char();
                 LinkToReferenceJoiner
             } else if self.current == LinkToReferenceJoiner
-                && scanner.is_on(char_usable_in_reference_id)
+                && scanner.is_on(char_usable_in_data_key)
             {
-                let identifier = scanner.eat_while(char_usable_in_reference_id);
+                let identifier = scanner.eat_while(char_usable_in_data_key);
+                //TODO: This token needs to die
                 ReferenceIdentifier(identifier)
             } else if scanner.is_on_char(ASTERISK) {
                 scanner.skip_char();
@@ -522,9 +503,9 @@ impl<'a> Tokeniser<'a> {
                 scanner.skip_char();
                 LinkToReferenceJoiner
             } else if self.current == LinkToReferenceJoiner
-                && scanner.is_on(char_usable_in_reference_id)
+                && scanner.is_on(char_usable_in_data_key)
             {
-                let identifier = scanner.eat_while(char_usable_in_reference_id);
+                let identifier = scanner.eat_while(char_usable_in_data_key);
                 ReferenceIdentifier(identifier)
             } else if scanner.is_on_char(ASTERISK) {
                 scanner.skip_char();
