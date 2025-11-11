@@ -197,9 +197,9 @@ fn parse_metadata(tokeniser: &mut Tokeniser, metadata: &mut Metadata) -> ParseRe
     consume!(tokeniser, LineBreak)?;
 
     //TODO: this could be a while let? Would need a new macro?
-    while matches!(tokeniser.current(), DataKey(_)) {
+    while matches!(tokeniser.current(), DataIdentifier(_)) {
         let key_position = tokeniser.position();
-        let key = consume_value!(tokeniser, DataKey)?;
+        let key = consume_value!(tokeniser, DataIdentifier)?;
 
         consume!(tokeniser, DataKeyValueSeperator)?;
 
@@ -234,7 +234,7 @@ fn parse_references(tokeniser: &mut Tokeniser) -> ParseResult<Box<[Reference]>> 
 
     let mut references = Vec::new();
 
-    while let DataKey(id) = tokeniser.current() {
+    while let DataIdentifier(id) = tokeniser.current() {
         tokeniser.advance();
         consume!(tokeniser, DataKeyValueSeperator)?;
         let link = consume_value!(tokeniser, DataValue)?;
@@ -654,7 +654,7 @@ fn parse_linked_text_run(tokeniser: &mut Tokeniser) -> ParseResult<TextRun> {
 
     consume!(tokeniser, LinkClosingDelimiter)?;
     consume!(tokeniser, LinkToReferenceJoiner)?;
-    let identifier = consume_value!(tokeniser, ReferenceIdentifier)?;
+    let identifier = consume_value!(tokeniser, DataIdentifier)?;
 
     Ok(TextRun {
         text: run,

@@ -41,13 +41,11 @@ const MARKUP_CHARS: &[char; 10] = &[
     RIGHT_SQUARE_BRACKET,
 ];
 
-//TODO: Make references and meta share the same tokens / logic
-
 fn char_usable_in_block_name(c: char) -> bool {
     c.is_alphanumeric()
 }
 
-fn char_usable_in_data_key(c: char) -> bool {
+fn char_usable_in_identifier(c: char) -> bool {
     c.is_alphanumeric() || c == '_' || c == '-' || c == '.'
 }
 
@@ -61,6 +59,10 @@ fn char_usable_in_parameter_name(c: char) -> bool {
 
 fn char_usable_in_parameter_value(c: char) -> bool {
     c.is_alphanumeric()
+}
+
+fn char_usable_in_title_text(c: char) -> bool {
+    c != SPACE && c != NEW_LINE
 }
 
 fn char_usable_in_text_frag(c: char) -> bool {
@@ -82,7 +84,7 @@ pub enum Token<'a> {
     EndOfInput,
     Unknown(&'a str),
     StructuredDataDirective(&'a str),
-    TitleDirective, //TODO: rename DocumentDirective to TitleDirective
+    TitleDirective,
     SectionDirective,
     SubSectionDirective,
     ContainerDirective(&'a str),
@@ -96,7 +98,7 @@ pub enum Token<'a> {
     BlockBreak,
     DataListSeperator,
     DataKeyValueSeperator,
-    DataKey(&'a str),
+    DataIdentifier(&'a str),
     DataValue(&'a str),
     TitleText(&'a str),
     TitleTextSpace,
@@ -111,8 +113,6 @@ pub enum Token<'a> {
     LinkOpeningDelimiter,
     LinkClosingDelimiter,
     LinkToReferenceJoiner,
-    ReferenceIdentifier(&'a str),
-    ReferenceLink(&'a str),
     ListBullet(Indent),
     //TODO: More rubbish naming
     DelimitedBlockDelimiter,
@@ -121,7 +121,7 @@ pub enum Token<'a> {
     Raw(&'a str),
 }
 
-impl<'a> Display for Token<'a> {
+impl Display for Token<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             StartOfInput => write!(f, "start of input"),
@@ -141,7 +141,7 @@ impl<'a> Display for Token<'a> {
             BlockBreak => write!(f, "block break"),
             DataListSeperator => write!(f, "metadata list seperator"),
             DataKeyValueSeperator => write!(f, "metadata key value seperator"),
-            DataKey(key) => write!(f, "metadata key '{key}'"),
+            DataIdentifier(identifier) => write!(f, "metadata identifier'{identifier}'"),
             DataValue(value) => write!(f, "metadata value '{value}'"),
             TitleText(text) => write!(f, "title text '{text}'"),
             TitleTextSpace => write!(f, "title text space"),
@@ -156,8 +156,6 @@ impl<'a> Display for Token<'a> {
             LinkOpeningDelimiter => write!(f, "link opening delimiter"),
             LinkClosingDelimiter => write!(f, "link closing delimiter"),
             LinkToReferenceJoiner => write!(f, "link to reference joiner '@'"),
-            ReferenceIdentifier(identifier) => write!(f, "reference identifier '{identifier}'"),
-            ReferenceLink(link) => write!(f, "reference link '{link}'"),
             ListBullet(indent) => write!(f, "list bullet (indent {indent})"),
             DelimitedBlockDelimiter => write!(f, "delimited block delimiter"),
             DelimitedContainerStart => write!(f, "delimited container start"),
@@ -178,10 +176,8 @@ impl<'a> Display for Token<'a> {
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum State {
     Start,
-    DocumentHeader,
-    SectionHeader,
-    SubsectionHeader,
     ContainerHeader,
+    HeaderText,
     StructuredData,
     Paragraph,
     ParagraphRaw,
@@ -333,20 +329,18 @@ impl<'a> Tokeniser<'a> {
         } else if on_start_of_block && scanner.is_on_char(SLASH) {
             self.on_header_line = true;
             scanner.skip_char();
+            self.state = HeaderText;
             if scanner.is_on_char(SLASH) {
                 scanner.skip_char();
                 if scanner.is_on_char(SLASH) {
                     scanner.skip_char();
-                    self.state = SubsectionHeader;
                     scanner.skip_while_on(SPACE);
                     SubSectionDirective
                 } else {
-                    self.state = SectionHeader;
                     scanner.skip_while_on(SPACE);
                     SectionDirective
                 }
             } else {
-                self.state = DocumentHeader;
                 scanner.skip_while_on(SPACE);
                 TitleDirective
             }
@@ -387,27 +381,14 @@ impl<'a> Tokeniser<'a> {
             scanner.skip_chars(3);
             scanner.skip_while_on(SPACE);
             DelimitedContainerEnd
-        } else if matches!(self.state, SectionHeader | SubsectionHeader) {
-            let text = scanner.eat_while(|c| c != SPACE && c != NEW_LINE);
+        } else if self.state == HeaderText {
+            let text = scanner.eat_while(char_usable_in_title_text);
             TitleText(text)
-        } else if self.state == DocumentHeader {
-            //TODO: Can this now share logic with the other headers?
-            if matches!(self.current, TitleDirective | TitleTextSpace)
-                && !scanner.is_on_one_of(&[SPACE, NEW_LINE])
-            {
-                //TODO: char_usable_in_title_text would be helpful?
-                let text = scanner.eat_while(|c| c != SPACE && c != NEW_LINE);
-                TitleText(text)
-            } else {
-                let c = scanner.eat_char();
-                Unknown(c)
-            }
         } else if self.state == StructuredData {
-            //TODO: Should data key be called 'identifier' or something?
-            if scanner.is_on(char_usable_in_data_key) && column == 0 {
-                let key = scanner.eat_while(char_usable_in_data_key);
+            if scanner.is_on(char_usable_in_identifier) && column == 0 {
+                let key = scanner.eat_while(char_usable_in_identifier);
                 scanner.skip_while_on(SPACE);
-                DataKey(key)
+                DataIdentifier(key)
             } else if scanner.is_on_char(COLON) {
                 scanner.skip_char();
                 scanner.skip_while_on(SPACE);
@@ -458,11 +439,10 @@ impl<'a> Tokeniser<'a> {
                 scanner.skip_char();
                 LinkToReferenceJoiner
             } else if self.current == LinkToReferenceJoiner
-                && scanner.is_on(char_usable_in_data_key)
+                && scanner.is_on(char_usable_in_identifier)
             {
-                let identifier = scanner.eat_while(char_usable_in_data_key);
-                //TODO: This token needs to die
-                ReferenceIdentifier(identifier)
+                let identifier = scanner.eat_while(char_usable_in_identifier);
+                DataIdentifier(identifier)
             } else if scanner.is_on_char(ASTERISK) {
                 scanner.skip_char();
                 StrongDelimiter
@@ -503,10 +483,10 @@ impl<'a> Tokeniser<'a> {
                 scanner.skip_char();
                 LinkToReferenceJoiner
             } else if self.current == LinkToReferenceJoiner
-                && scanner.is_on(char_usable_in_data_key)
+                && scanner.is_on(char_usable_in_identifier)
             {
-                let identifier = scanner.eat_while(char_usable_in_data_key);
-                ReferenceIdentifier(identifier)
+                let identifier = scanner.eat_while(char_usable_in_identifier);
+                DataIdentifier(identifier)
             } else if scanner.is_on_char(ASTERISK) {
                 scanner.skip_char();
                 StrongDelimiter
