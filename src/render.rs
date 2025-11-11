@@ -5,7 +5,7 @@ use crate::document::*;
 //TODO: Have some kind of helper for writing HTML, with indent
 pub fn render_html(document: &Document, out: &mut impl io::Write) -> io::Result<()> {
     //FIXME: Decide on if to enforce this, or to have a fallback?
-    let title = &document.metadata.title;
+    let title = &document.title;
     let title = title.as_ref().expect("document should have title");
 
     writeln!(out, "<!DOCTYPE html>")?;

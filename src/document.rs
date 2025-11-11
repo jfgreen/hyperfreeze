@@ -1,15 +1,14 @@
 #[derive(PartialEq, Eq, Debug, Default)]
 pub struct Document {
+    pub title: Option<String>,
     pub metadata: Metadata,
     pub contents: Box<[Element]>,
     pub references: Box<[Reference]>,
 }
 
-//TODO: Title should not live in metadata, should be it own element
 #[derive(PartialEq, Eq, Debug, Default)]
 pub struct Metadata {
     pub id: Option<String>,
-    pub title: Option<String>,
     pub tags: Option<Box<[String]>>,
 }
 

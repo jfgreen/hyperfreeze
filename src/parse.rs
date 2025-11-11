@@ -150,6 +150,7 @@ pub fn parse_str(input: &str) -> Result<Document, ParseError> {
 fn parse_document(tokeniser: &mut Tokeniser) -> ParseResult<Document> {
     let mut elements = Vec::new();
 
+    let mut title = None;
     let mut metadata = Metadata::default();
     let mut references = Vec::new();
 
@@ -162,8 +163,9 @@ fn parse_document(tokeniser: &mut Tokeniser) -> ParseResult<Document> {
         references.extend(refs);
     }
 
-    if tokeniser.current() == DocumentDirective {
-        parse_document_header(tokeniser, &mut metadata)?;
+    if tokeniser.current() == TitleDirective {
+        let heading = parse_document_title(tokeniser)?;
+        title = Some(heading);
     }
 
     while tokeniser.current() != EndOfInput {
@@ -172,28 +174,22 @@ fn parse_document(tokeniser: &mut Tokeniser) -> ParseResult<Document> {
     }
 
     Ok(Document {
+        title,
         metadata,
         contents: elements.into_boxed_slice(),
         references: references.into_boxed_slice(),
     })
 }
 
-fn parse_document_header(tokeniser: &mut Tokeniser, metadata: &mut Metadata) -> ParseResult<()> {
-    consume!(tokeniser, DocumentDirective)?;
-
+fn parse_document_title(tokeniser: &mut Tokeniser) -> ParseResult<String> {
+    consume!(tokeniser, TitleDirective)?;
     let title = parse_header_text(tokeniser)?;
 
-    metadata.title = Some(title);
-
-    if tokeniser.current() == BlockBreak {
-        tokeniser.advance();
-        return Ok(());
-    }
-
     if tokeniser.current() != EndOfInput {
-        consume!(tokeniser, LineBreak)?;
+        consume!(tokeniser, BlockBreak)?;
     }
-    Ok(())
+
+    Ok(title)
 }
 
 fn parse_metadata(tokeniser: &mut Tokeniser, metadata: &mut Metadata) -> ParseResult<()> {
@@ -300,7 +296,7 @@ fn parse_metadata_list(tokeniser: &mut Tokeniser) -> ParseResult<Box<[String]>> 
 
 fn parse_element(tokeniser: &mut Tokeniser) -> ParseResult<Element> {
     match tokeniser.current() {
-        DocumentDirective => {
+        TitleDirective => {
             parse_err!(TitleNotAtStart, tokeniser.position())
         }
         SectionDirective => {
@@ -394,7 +390,7 @@ fn parse_section(tokeniser: &mut Tokeniser) -> ParseResult<Section> {
 fn parse_section_element(tokeniser: &mut Tokeniser) -> ParseResult<SectionElement> {
     //TODO: Very simmilar to parse_element, possible re-use?
     match tokeniser.current() {
-        DocumentDirective => {
+        TitleDirective => {
             parse_err!(TitleNotAtStart, tokeniser.position())
         }
         SubSectionDirective => {
@@ -748,9 +744,23 @@ mod test {
             )
 
         };
+
+        ({$($fields:tt)*} $field:ident : $value:expr $(, $($tail:tt)+)?) => {
+            build_document!(
+                {
+                    $field: document_field!($field $value),
+                    $($fields)*
+                }
+                $($($tail)+)?
+            )
+
+        };
     }
 
     macro_rules! document_field {
+        (title $value:expr) => {
+            Some(String::from($value))
+        };
         (metadata $($token:tt)+) => {
             build_metadata!({} $($token)+)
         };
@@ -1113,10 +1123,19 @@ mod test {
             "Yay!"
         );
 
+        //TODO: Simplify macro - dont need explicit nesting of elements ?
+        // document!(
+        // metadata: {...}
+        // references: { ... },
+        // title {},
+        // info {}
+        // )
+        //
+
         let expected = document!(
+            title: "Feline friendly flower arranging",
             metadata: {
                 id: "01.42",
-                title: "Feline friendly flower arranging"
             },
             contents: {
                 info {
@@ -1902,12 +1921,10 @@ mod test {
 
     #[test]
     fn doc_title() {
-        let input = concat!("/ Practical espionage for felines in urban settings\n",);
+        let input = "/ Practical espionage for felines in urban settings";
 
         let expected = document!(
-            metadata: {
-                title: "Practical espionage for felines in urban settings",
-            }
+            title: "Practical espionage for felines in urban settings"
         );
 
         assert_parse_succeeds(input, expected);
@@ -1925,9 +1942,7 @@ mod test {
         );
 
         let expected = document!(
-            metadata: {
-                title:"Some Doc",
-            },
+            title: "Some Doc",
             contents: {
                 paragraph { text("Hello cats and kittens") }
             }
@@ -1941,9 +1956,7 @@ mod test {
         let input = "/My Very   Cool Document   \n\n";
 
         let expected = document!(
-            metadata: {
-                title:"My Very Cool Document",
-            }
+            title: "My Very Cool Document"
         );
 
         assert_parse_succeeds(input, expected);
@@ -1954,9 +1967,7 @@ mod test {
         let input = "/Some Doc";
 
         let expected = document!(
-            metadata: {
-                title: "Some Doc"
-            }
+            title: "Some Doc"
         );
 
         assert_parse_succeeds(input, expected);
@@ -2478,9 +2489,7 @@ mod test {
         );
 
         let expected = document! {
-            metadata: {
-                title: "Speed running the kitchen at 4am"
-            },
+            title: "Speed running the kitchen at 4am",
             contents: {
                 paragraph { text("This is a comprehensive guide.") },
 
@@ -2512,9 +2521,7 @@ mod test {
         );
 
         let expected = document! {
-            metadata: {
-                title: "Speed running the kitchen at 4am"
-            },
+            title: "Speed running the kitchen at 4am",
             contents: {
                 paragraph { text("This is a comprehensive guide.") }
             }

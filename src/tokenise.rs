@@ -82,7 +82,7 @@ pub enum Token<'a> {
     EndOfInput,
     Unknown(&'a str),
     StructuredDataDirective(&'a str),
-    DocumentDirective, //TODO: rename DocumentDirective to TitleDirective
+    TitleDirective, //TODO: rename DocumentDirective to TitleDirective
     SectionDirective,
     SubSectionDirective,
     ContainerDirective(&'a str),
@@ -128,7 +128,7 @@ impl<'a> Display for Token<'a> {
             EndOfInput => write!(f, "end of input"),
             Unknown(value) => write!(f, "unknown '{value}'"),
             StructuredDataDirective(title) => write!(f, "structured data directive '{title}'"),
-            DocumentDirective => write!(f, "document directive"),
+            TitleDirective => write!(f, "document directive"),
             SectionDirective => write!(f, "section directive"),
             SubSectionDirective => write!(f, "subsection directive"),
             ContainerDirective(title) => write!(f, "container directive '{title}'"),
@@ -348,7 +348,7 @@ impl<'a> Tokeniser<'a> {
             } else {
                 self.state = DocumentHeader;
                 scanner.skip_while_on(SPACE);
-                DocumentDirective
+                TitleDirective
             }
         } else if on_start_of_block && scanner.is_on_char(AT_SIGN) {
             scanner.skip_char();
@@ -392,7 +392,7 @@ impl<'a> Tokeniser<'a> {
             TitleText(text)
         } else if self.state == DocumentHeader {
             //TODO: Can this now share logic with the other headers?
-            if matches!(self.current, DocumentDirective | TitleTextSpace,)
+            if matches!(self.current, TitleDirective | TitleTextSpace)
                 && !scanner.is_on_one_of(&[SPACE, NEW_LINE])
             {
                 //TODO: char_usable_in_title_text would be helpful?
