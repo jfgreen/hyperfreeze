@@ -726,9 +726,9 @@ fn parse_markup_text(tokeniser: &mut Tokeniser) -> ParseResult<String> {
 fn parse_code(tokeniser: &mut Tokeniser) -> ParseResult<Block> {
     consume!(tokeniser, BlockDirective("code"))?;
     consume!(tokeniser, LineBreak)?;
-    consume!(tokeniser, DelimitedBlockDelimiter)?;
-    let code = consume_value!(tokeniser, Raw)?;
-    consume!(tokeniser, DelimitedBlockDelimiter)?;
+    consume!(tokeniser, CodeDelimiter)?;
+    let code = consume_value!(tokeniser, Code)?;
+    consume!(tokeniser, CodeDelimiter)?;
 
     let block = Block::Code(String::from(code));
     Ok(block)

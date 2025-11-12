@@ -10,7 +10,7 @@ const NEW_LINE: char = '\n';
 const COLON: char = ':';
 const DELIMITED_CONTAINER_START: &str = ">>>";
 const DELIMITED_CONTAINER_END: &str = "<<<";
-const DELIMITED_BLOCK_DELIMITER: &str = "---\n";
+const CODE_DELIMITER: &str = "---\n";
 const HASH: char = '#';
 const LEFT_SQUARE_BRACKET: char = '[';
 const RIGHT_SQUARE_BRACKET: char = ']';
@@ -110,15 +110,15 @@ pub enum Token<'a> {
     RawFragment(&'a str),
     MarkupText(&'a str),
     MarkupTextSpace,
+    Code(&'a str),
     LinkOpeningDelimiter,
     LinkClosingDelimiter,
     LinkToReferenceJoiner,
     ListBullet(Indent),
     //TODO: More rubbish naming
-    DelimitedBlockDelimiter,
+    CodeDelimiter,
     DelimitedContainerStart,
     DelimitedContainerEnd,
-    Raw(&'a str),
 }
 
 impl Display for Token<'_> {
@@ -157,10 +157,10 @@ impl Display for Token<'_> {
             LinkClosingDelimiter => write!(f, "link closing delimiter"),
             LinkToReferenceJoiner => write!(f, "link to reference joiner '@'"),
             ListBullet(indent) => write!(f, "list bullet (indent {indent})"),
-            DelimitedBlockDelimiter => write!(f, "delimited block delimiter"),
+            CodeDelimiter => write!(f, "delimited block delimiter"),
             DelimitedContainerStart => write!(f, "delimited container start"),
             DelimitedContainerEnd => write!(f, "delimited container end"),
-            Raw(text) => write!(f, "raw text '{text}'"),
+            Code(code) => write!(f, "code '{code}'"),
         }
     }
 }
@@ -183,7 +183,7 @@ enum State {
     ParagraphRaw,
     List,
     ListRaw,
-    Code,
+    CodeBlock,
     CodeDelimited,
     Finished,
 }
@@ -368,7 +368,7 @@ impl<'a> Tokeniser<'a> {
                     self.state = List;
                 }
                 "code" => {
-                    self.state = Code;
+                    self.state = CodeBlock;
                 }
                 _ => {}
             };
@@ -527,24 +527,17 @@ impl<'a> Tokeniser<'a> {
                 let c = scanner.eat_char();
                 Unknown(c)
             }
-        } else if matches!(self.state, Code | CodeDelimited) {
-            if column == 0 && scanner.is_on_str(DELIMITED_BLOCK_DELIMITER) {
-                if self.state == Code {
-                    self.state = CodeDelimited;
-                } else if self.state == CodeDelimited {
-                    self.state = Code;
-                }
-                scanner.skip_chars(4);
-                DelimitedBlockDelimiter
-            } else if self.state == CodeDelimited {
-                let raw = scanner.eat_until_line_starting_with(DELIMITED_BLOCK_DELIMITER);
-                Raw(raw)
-            } else {
-                let c = scanner.eat_char();
-                Unknown(c)
-            }
-        } else if self.state == Finished {
-            EndOfInput
+        } else if scanner.is_on_str(CODE_DELIMITER) && self.state == CodeBlock {
+            self.state = CodeDelimited;
+            scanner.skip_chars(4);
+            CodeDelimiter
+        } else if scanner.is_on_str(CODE_DELIMITER) && self.state == CodeDelimited {
+            self.state = CodeBlock;
+            scanner.skip_chars(4);
+            CodeDelimiter
+        } else if self.state == CodeDelimited {
+            let code = scanner.eat_until_line_starting_with(CODE_DELIMITER);
+            Code(code)
         } else {
             let c = scanner.eat_char();
             Unknown(c)
