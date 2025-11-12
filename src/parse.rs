@@ -2112,9 +2112,7 @@ mod test {
 
     #[test]
     fn container_missing_start_is_rejected() {
-        // FIXME
-        // let input = "Silly cat\n<<<";
-        let input = "Silly cat\n<<<\n";
+        let input = "Silly cat\n<<<";
 
         let expected = ContainerMissingStart;
 
