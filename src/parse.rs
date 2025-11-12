@@ -374,7 +374,7 @@ fn parse_section(tokeniser: &mut Tokeniser) -> ParseResult<Section> {
 
     let mut elements = Vec::new();
 
-    while tokeniser.current() != EndOfInput && tokeniser.current() != SectionDirective {
+    while !matches!(tokeniser.current(), EndOfInput | SectionDirective) {
         let element = parse_section_element(tokeniser)?;
         elements.push(element);
     }
@@ -394,8 +394,8 @@ fn parse_section_element(tokeniser: &mut Tokeniser) -> ParseResult<SectionElemen
             parse_err!(TitleNotAtStart, tokeniser.position())
         }
         SubSectionDirective => {
-            let sub_heading = parse_subheading(tokeniser)?;
-            Ok(SectionElement::SubHeading(sub_heading))
+            let subsection = parse_subsection(tokeniser)?;
+            Ok(SectionElement::SubSection(subsection))
         }
         ContainerDirective(_) => {
             let container = parse_container(tokeniser)?;
@@ -408,11 +408,47 @@ fn parse_section_element(tokeniser: &mut Tokeniser) -> ParseResult<SectionElemen
     }
 }
 
-fn parse_subheading(tokeniser: &mut Tokeniser) -> ParseResult<String> {
+fn parse_subsection(tokeniser: &mut Tokeniser) -> ParseResult<SubSection> {
     consume!(tokeniser, SubSectionDirective)?;
     let name = parse_header_text(tokeniser)?;
     consume!(tokeniser, BlockBreak)?;
-    Ok(name)
+
+    let mut elements = Vec::new();
+
+    while !matches!(
+        tokeniser.current(),
+        EndOfInput | SectionDirective | SubSectionDirective
+    ) {
+        let element = parse_subsection_element(tokeniser)?;
+        elements.push(element);
+    }
+
+    let subsection = SubSection {
+        content: elements.into_boxed_slice(),
+        heading: name.to_string(),
+    };
+
+    Ok(subsection)
+}
+
+fn parse_subsection_element(tokeniser: &mut Tokeniser) -> ParseResult<SubSectionElement> {
+    match tokeniser.current() {
+        // TODO: Test for this?
+        // TitleDirective => {
+        //     parse_err!(TitleNotAtStart, tokeniser.position())
+        // }
+        SubSectionDirective => {
+            todo!("not allow")
+        }
+        ContainerDirective(_) => {
+            let container = parse_container(tokeniser)?;
+            Ok(SubSectionElement::Container(container))
+        }
+        _ => {
+            let block = parse_block(tokeniser)?;
+            Ok(SubSectionElement::Block(block))
+        }
+    }
 }
 
 fn parse_block(tokeniser: &mut Tokeniser) -> ParseResult<Block> {
@@ -865,7 +901,6 @@ mod test {
 
     }
 
-    //TODO: Clear up repetition between this and section element
     macro_rules! section_element {
         (info $( $block:ident { $($content:tt)* } $(,)? )*) => {
             SectionElement::Container(Container{
@@ -878,12 +913,36 @@ mod test {
             })
         };
 
-        (subheading $name:expr) => {
-            SectionElement::SubHeading($name.to_string())
+        (subsection ($name:expr) $( $element:ident $(($element_name:expr))? { $($content:tt)* } $(,)? )*) => {
+            SectionElement::SubSection(SubSection{
+                content: Box::new([
+                    $(
+                        subsection_element!($element $(($element_name))? $($content)*),
+                    )*
+                ]),
+                heading: String::from($name)
+            })
         };
 
         ($block:ident $($content:tt)*) => {
             SectionElement::Block(block!($block $($content)*))
+        };
+    }
+
+    macro_rules! subsection_element {
+        (info $( $block:ident { $($content:tt)* } $(,)? )*) => {
+            SubSectionElement::Container(Container{
+                content: Box::new([
+                    $(
+                        block!($block $($content)*),
+                    )*
+                ]),
+                kind: ContainerKind::Info,
+            })
+        };
+
+        ($block:ident $($content:tt)*) => {
+            SubSectionElement::Block(block!($block $($content)*))
         };
 
     }
@@ -2498,10 +2557,12 @@ mod test {
                 },
                 section("Planning the perfect lap") {
                     paragraph { text("This requires care.") },
-                    subheading { "Selecting a route" },
-                    paragraph { text("Avoid the toaster.") },
-                    subheading { "Choosing a victory scream"},
-                    paragraph { text("Meeaaahhh?") },
+                    subsection("Selecting a route") {
+                        paragraph { text("Avoid the toaster.") },
+                    }
+                    subsection("Choosing a victory scream") {
+                        paragraph { text("Meeaaahhh?") },
+                    },
                 },
                 section("Conclusion") {
                     paragraph { text("Go go go!") },

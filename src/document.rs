@@ -1,3 +1,8 @@
+// TODO: Is trying to pull out certain elements upfront a bit unwieldy?
+// Easier just to have plain document tree?
+// But would have to do a second pass?
+// Compromise: store index of certain important elements?
+
 #[derive(PartialEq, Eq, Debug, Default)]
 pub struct Document {
     pub title: Option<String>,
@@ -26,6 +31,19 @@ pub enum Element {
     Section(Section),
 }
 
+#[derive(PartialEq, Eq, Debug)]
+pub enum SectionElement {
+    Block(Block),
+    Container(Container),
+    SubSection(SubSection),
+}
+
+#[derive(PartialEq, Eq, Debug)]
+pub enum SubSectionElement {
+    Block(Block),
+    Container(Container),
+}
+
 //TODO: Footnotes
 #[derive(PartialEq, Eq, Debug)]
 pub enum Block {
@@ -46,19 +64,10 @@ pub struct Section {
     pub heading: String,
 }
 
-//TODO: Do subsections like this?
-// #[derive(PartialEq, Eq, Debug)]
-// pub struct SubSection {
-//     pub content: Box<[SubSectionElement]>,
-//     pub heading: String,
-// }
-
 #[derive(PartialEq, Eq, Debug)]
-pub enum SectionElement {
-    Block(Block),
-    Container(Container),
-    //TODO: Might it be more consistent to have subsection nest?
-    SubHeading(String),
+pub struct SubSection {
+    pub content: Box<[SubSectionElement]>,
+    pub heading: String,
 }
 
 #[derive(PartialEq, Eq, Debug)]

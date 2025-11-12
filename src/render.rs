@@ -15,14 +15,14 @@ pub fn render_html(document: &Document, out: &mut impl io::Write) -> io::Result<
     writeln!(out, "    <title>{}</title>", title)?;
     writeln!(out, "  </head>")?;
     writeln!(out, "  <body>")?;
-    writeln!(out, "    <article>")?;
+    writeln!(out, "    <main>")?;
     writeln!(out, "      <h1>{}</h1>", title)?;
 
     for element in document.contents.iter() {
         render_element(element, out)?;
     }
 
-    writeln!(out, "    </article>")?;
+    writeln!(out, "    </main>")?;
     writeln!(out, "  </body>")?;
     write!(out, "</html>")?;
 
@@ -43,7 +43,19 @@ fn render_section_element(element: &SectionElement, out: &mut impl io::Write) ->
     match element {
         SectionElement::Block(block) => render_block(block, out)?,
         SectionElement::Container(container) => render_container(container, out)?,
-        SectionElement::SubHeading(subheading) => render_section_subheading(subheading, out)?,
+        SectionElement::SubSection(subsection) => render_subsection(subsection, out)?,
+    }
+
+    Ok(())
+}
+
+fn render_subsection_element(
+    element: &SubSectionElement,
+    out: &mut impl io::Write,
+) -> io::Result<()> {
+    match element {
+        SubSectionElement::Block(block) => render_block(block, out)?,
+        SubSectionElement::Container(container) => render_container(container, out)?,
     }
 
     Ok(())
@@ -78,8 +90,15 @@ fn render_section(section: &Section, out: &mut impl io::Write) -> io::Result<()>
     Ok(())
 }
 
-fn render_section_subheading(subheading: &String, out: &mut impl io::Write) -> io::Result<()> {
-    writeln!(out, "<h3>{}</h3>", subheading)?;
+fn render_subsection(subsection: &SubSection, out: &mut impl io::Write) -> io::Result<()> {
+    writeln!(out, "<section>")?;
+    writeln!(out, "<h3>{}</h3>", subsection.heading)?;
+
+    for element in &subsection.content {
+        render_subsection_element(element, out)?;
+    }
+
+    writeln!(out, "</section>")?;
     Ok(())
 }
 
