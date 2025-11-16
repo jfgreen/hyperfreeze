@@ -727,6 +727,7 @@ fn parse_code(tokeniser: &mut Tokeniser) -> ParseResult<Block> {
     consume!(tokeniser, BlockDirective("code"))?;
     consume!(tokeniser, LineBreak)?;
     consume!(tokeniser, CodeDelimiter)?;
+    consume!(tokeniser, LineBreak)?;
     let code = consume_value!(tokeniser, Code)?;
     consume!(tokeniser, CodeDelimiter)?;
 

@@ -10,8 +10,7 @@ const NEW_LINE: char = '\n';
 const COLON: char = ':';
 const DELIMITED_CONTAINER_START: &str = ">>>";
 const DELIMITED_CONTAINER_END: &str = "<<<";
-//TODO: Remove trailng \n from code delimiter
-const CODE_DELIMITER: &str = "---\n";
+const CODE_DELIMITER: &str = "---";
 const HASH: char = '#';
 const LEFT_SQUARE_BRACKET: char = '[';
 const RIGHT_SQUARE_BRACKET: char = ']';
@@ -226,16 +225,15 @@ impl<'a> Tokeniser<'a> {
 
         let position = self.scanner.position();
 
-        dbg!(self.state);
-        dbg!(self.on_header_line);
-        dbg!(self.on_start_of_element);
+        // dbg!(self.state);
+        // dbg!(self.on_header_line);
+        // dbg!(self.on_start_of_element);
 
         let next = self.read_next_token();
 
         dbg!(next);
         self.token_count += 1;
         self.position = position;
-        // self.previous = self.current;
         self.current = next;
     }
 
@@ -523,7 +521,7 @@ impl<'a> Tokeniser<'a> {
             }
         } else if scanner.is_on_str(CODE_DELIMITER) && self.state == CodeBlock {
             self.in_raw = !self.in_raw;
-            scanner.skip_chars(4);
+            scanner.skip_chars(3);
             CodeDelimiter
         } else if self.state == CodeBlock && self.in_raw {
             let code = scanner.eat_until_line_starting_with(CODE_DELIMITER);
