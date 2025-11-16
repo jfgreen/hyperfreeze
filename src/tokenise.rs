@@ -10,6 +10,7 @@ const NEW_LINE: char = '\n';
 const COLON: char = ':';
 const DELIMITED_CONTAINER_START: &str = ">>>";
 const DELIMITED_CONTAINER_END: &str = "<<<";
+//TODO: Remove trailng \n from code delimiter
 const CODE_DELIMITER: &str = "---\n";
 const HASH: char = '#';
 const LEFT_SQUARE_BRACKET: char = '[';
@@ -165,6 +166,8 @@ impl Display for Token<'_> {
     }
 }
 
+//TODO: Reword language design to reduce ambiguitiy
+
 // TODO: Gradually move away from block based states to mode based states
 // e.g
 // Properties
@@ -176,15 +179,11 @@ impl Display for Token<'_> {
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum State {
     Start,
-    ContainerHeader,
     HeaderText,
     StructuredData,
     Paragraph,
-    ParagraphRaw,
     List,
-    ListRaw,
     CodeBlock,
-    CodeDelimited,
     Finished,
 }
 
@@ -200,6 +199,8 @@ pub struct Tokeniser<'a> {
     token_count: usize,
     max_tokens: usize,
     on_header_line: bool,
+    on_start_of_element: bool,
+    in_raw: bool,
 }
 
 impl<'a> Tokeniser<'a> {
@@ -215,6 +216,8 @@ impl<'a> Tokeniser<'a> {
             token_count: 0,
             max_tokens: input.len(),
             on_header_line: false,
+            on_start_of_element: true,
+            in_raw: false,
         }
     }
 
@@ -235,13 +238,15 @@ impl<'a> Tokeniser<'a> {
 
         dbg!(self.state);
         dbg!(self.on_header_line);
+        dbg!(self.on_start_of_element);
 
-        let value = self.read_next_token();
+        let next = self.read_next_token();
 
-        dbg!(value);
+        dbg!(next);
         self.token_count += 1;
         self.position = position;
-        self.current = value;
+        // self.previous = self.current;
+        self.current = next;
     }
 
     // TODO: If we do have to have an unknown, maybe take larger chunks?
@@ -251,15 +256,15 @@ impl<'a> Tokeniser<'a> {
         let scanner = &mut self.scanner;
         let position = scanner.position();
         let column = position.column;
-        let on_start_of_block = matches!(self.current, BlockBreak | StartOfInput)
-            || (self.state == ContainerHeader && self.current == LineBreak);
 
-        if on_start_of_block && scanner.is_on_char(DASH) {
-            self.state = List
-        } else if on_start_of_block
+        if self.on_start_of_element && scanner.is_on_char(DASH) {
+            self.state = List;
+            self.on_start_of_element = false;
+        } else if self.on_start_of_element
             && !scanner.is_on_one_of(&[SLASH, HASH, EXCLAMATION_MARK, AT_SIGN])
         {
-            self.state = Paragraph
+            self.state = Paragraph;
+            self.on_start_of_element = false;
         }
 
         if !scanner.has_input() {
@@ -272,6 +277,7 @@ impl<'a> Tokeniser<'a> {
                 scanner.skip_char();
                 if scanner.is_on_empty_line() {
                     scanner.skip_while_on_empty_line();
+                    self.on_start_of_element = true;
                     BlockBreak
                 } else {
                     LineBreak
@@ -284,12 +290,16 @@ impl<'a> Tokeniser<'a> {
             DelimitedContainerStart | DelimitedContainerEnd
         ) && scanner.is_on_char(NEW_LINE)
         {
+            //TODO: Does this still need to be a special case?
             scanner.skip_char();
             LineBreak
         } else if matches!(self.state, Paragraph | List)
+            && !self.in_raw
             && !self.on_header_line
             && scanner.is_on_one_of(&[SPACE, NEW_LINE])
         {
+            // TODO: Could we push this problem up to the parser?
+            // TODO: Could we just eat the MarkupTextSpace instead?
             scanner.skip_while_on(SPACE);
             if scanner.is_on_char(NEW_LINE) {
                 scanner.skip_char();
@@ -297,6 +307,7 @@ impl<'a> Tokeniser<'a> {
                 if scanner.is_on_char(NEW_LINE) {
                     scanner.skip_char();
                     scanner.skip_while_on_empty_line();
+                    self.on_start_of_element = true;
                     BlockBreak
                 } else if scanner.is_on_char(DASH) && space_count > 0 && self.state == List {
                     scanner.skip_char();
@@ -322,12 +333,17 @@ impl<'a> Tokeniser<'a> {
             self.on_header_line = false;
             if scanner.is_on_empty_line() {
                 scanner.skip_while_on_empty_line();
+                self.on_start_of_element = true;
                 BlockBreak
             } else {
+                if matches!(self.current, ContainerDirective(_)) {
+                    self.on_start_of_element = true;
+                }
                 LineBreak
             }
-        } else if on_start_of_block && scanner.is_on_char(SLASH) {
+        } else if self.on_start_of_element & scanner.is_on_char(SLASH) {
             self.on_header_line = true;
+            self.on_start_of_element = false;
             scanner.skip_char();
             self.state = HeaderText;
             if scanner.is_on_char(SLASH) {
@@ -344,21 +360,23 @@ impl<'a> Tokeniser<'a> {
                 scanner.skip_while_on(SPACE);
                 TitleDirective
             }
-        } else if on_start_of_block && scanner.is_on_char(AT_SIGN) {
+        } else if self.on_start_of_element && scanner.is_on_char(AT_SIGN) {
             scanner.skip_char();
             self.on_header_line = true;
+            self.on_start_of_element = false;
             let name = scanner.eat_while(char_usable_in_block_name);
             self.state = StructuredData;
             StructuredDataDirective(name)
-        } else if on_start_of_block && scanner.is_on_char(EXCLAMATION_MARK) {
+        } else if self.on_start_of_element && scanner.is_on_char(EXCLAMATION_MARK) {
             scanner.skip_char();
             self.on_header_line = true;
+            self.on_start_of_element = false;
             let name = scanner.eat_while(char_usable_in_block_name);
-            self.state = ContainerHeader;
             ContainerDirective(name)
-        } else if on_start_of_block && scanner.is_on_char(HASH) {
+        } else if self.on_start_of_element && scanner.is_on_char(HASH) {
             scanner.skip_char();
             self.on_header_line = true;
+            self.on_start_of_element = false;
             let name = scanner.eat_while(char_usable_in_block_name);
             match name {
                 "paragraph" => {
@@ -376,6 +394,7 @@ impl<'a> Tokeniser<'a> {
         } else if scanner.is_on_str(DELIMITED_CONTAINER_START) {
             scanner.skip_chars(3);
             scanner.skip_while_on(SPACE);
+            self.on_start_of_element = true;
             DelimitedContainerStart
         } else if scanner.is_on_str(DELIMITED_CONTAINER_END) {
             scanner.skip_chars(3);
@@ -428,6 +447,16 @@ impl<'a> Tokeniser<'a> {
                 let c = scanner.eat_char();
                 Unknown(c)
             }
+        } else if scanner.is_on_char(BACKTICK) {
+            self.in_raw = !self.in_raw;
+            scanner.skip_char();
+            RawDelimiter
+        } else if matches!(self.state, List | Paragraph)
+            && self.in_raw
+            && scanner.is_on(char_usable_in_raw_frag)
+        {
+            let fragment = scanner.eat_while(char_usable_in_raw_frag);
+            RawFragment(fragment)
         } else if self.state == Paragraph {
             if scanner.is_on_char(LEFT_SQUARE_BRACKET) {
                 scanner.skip_char();
@@ -455,10 +484,6 @@ impl<'a> Tokeniser<'a> {
             } else if scanner.is_on(char_usable_in_text_frag) {
                 let text = scanner.eat_while(char_usable_in_text_frag);
                 MarkupText(text)
-            } else if scanner.is_on_char(BACKTICK) {
-                scanner.skip_char();
-                self.state = ParagraphRaw;
-                RawDelimiter
             } else if scanner.is_on_char(BACKSLASH) {
                 scanner.skip_char();
                 let text = scanner.eat_char();
@@ -499,10 +524,6 @@ impl<'a> Tokeniser<'a> {
             } else if scanner.is_on(char_usable_in_text_frag) {
                 let text = scanner.eat_while(char_usable_in_text_frag);
                 MarkupText(text)
-            } else if scanner.is_on_char(BACKTICK) {
-                scanner.skip_char();
-                self.state = ListRaw;
-                RawDelimiter
             } else if scanner.is_on_char(BACKSLASH) {
                 scanner.skip_char();
                 let text = scanner.eat_char();
@@ -511,31 +532,11 @@ impl<'a> Tokeniser<'a> {
                 let c = scanner.eat_char();
                 Unknown(c)
             }
-        } else if matches!(self.state, ListRaw | ParagraphRaw) {
-            if scanner.is_on_char(BACKTICK) {
-                scanner.skip_char();
-                if self.state == ListRaw {
-                    self.state = List
-                } else {
-                    self.state = Paragraph
-                }
-                RawDelimiter
-            } else if scanner.is_on(char_usable_in_raw_frag) {
-                let fragment = scanner.eat_while(char_usable_in_raw_frag);
-                RawFragment(fragment)
-            } else {
-                let c = scanner.eat_char();
-                Unknown(c)
-            }
         } else if scanner.is_on_str(CODE_DELIMITER) && self.state == CodeBlock {
-            self.state = CodeDelimited;
+            self.in_raw = !self.in_raw;
             scanner.skip_chars(4);
             CodeDelimiter
-        } else if scanner.is_on_str(CODE_DELIMITER) && self.state == CodeDelimited {
-            self.state = CodeBlock;
-            scanner.skip_chars(4);
-            CodeDelimiter
-        } else if self.state == CodeDelimited {
+        } else if self.state == CodeBlock && self.in_raw {
             let code = scanner.eat_until_line_starting_with(CODE_DELIMITER);
             Code(code)
         } else {
