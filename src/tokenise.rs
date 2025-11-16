@@ -166,18 +166,10 @@ impl Display for Token<'_> {
     }
 }
 
-//TODO: Reword language design to reduce ambiguitiy
+//TODO: Consider reworking language design to reduce ambiguitiy
 
-// TODO: Gradually move away from block based states to mode based states
-// e.g
-// Properties
-// Markup
-// MarkupList
-// ???
-//
-// Or maybe just flags
 #[derive(Clone, Copy, Debug, PartialEq)]
-enum State {
+enum ContentMode {
     HeaderText,
     StructuredData,
     Paragraph,
@@ -187,11 +179,11 @@ enum State {
 
 use Token::*;
 
-use State::*;
+use ContentMode::*;
 
 pub struct Tokeniser<'a> {
     scanner: Scanner<'a>,
-    state: State,
+    state: ContentMode,
     position: Position,
     current: Token<'a>,
     token_count: usize,
@@ -208,7 +200,7 @@ impl<'a> Tokeniser<'a> {
 
         Tokeniser {
             scanner,
-            state: State::Paragraph,
+            state: ContentMode::Paragraph,
             position: Position { column: 0, row: 0 },
             current: StartOfInput,
             token_count: 0,
