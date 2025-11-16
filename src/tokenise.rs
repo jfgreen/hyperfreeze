@@ -116,8 +116,8 @@ pub enum Token<'a> {
     LinkClosingDelimiter,
     LinkToReferenceJoiner,
     ListBullet(Indent),
-    //TODO: More rubbish naming
     CodeDelimiter,
+    //TODO: More rubbish naming
     DelimitedContainerStart,
     DelimitedContainerEnd,
 }
@@ -178,13 +178,11 @@ impl Display for Token<'_> {
 // Or maybe just flags
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum State {
-    Start,
     HeaderText,
     StructuredData,
     Paragraph,
     List,
     CodeBlock,
-    Finished,
 }
 
 use Token::*;
@@ -210,7 +208,7 @@ impl<'a> Tokeniser<'a> {
 
         Tokeniser {
             scanner,
-            state: State::Start,
+            state: State::Paragraph,
             position: Position { column: 0, row: 0 },
             current: StartOfInput,
             token_count: 0,
@@ -268,7 +266,6 @@ impl<'a> Tokeniser<'a> {
         }
 
         if !scanner.has_input() {
-            self.state = State::Finished;
             EndOfInput
         } else if matches!(self.current, TitleText(_)) && scanner.is_on_char(SPACE) {
             scanner.skip_while_on(SPACE);
