@@ -1,4 +1,4 @@
-use std::str::CharIndices;
+use std::{iter::Peekable, str::CharIndices};
 
 const NEW_LINE: char = '\n';
 const SPACE: char = ' ';
@@ -12,6 +12,10 @@ pub struct Position {
 #[derive(Debug, Clone)]
 pub struct Scanner<'a> {
     input: &'a str,
+    // TODO: peekable iter  would mean we dont have to maintain index also
+    // It would also make it easier to jump to matching expressions later on
+    // as we could clone the char indicies and use a consistent index rather
+    // than having it start from zero each time
     chars: CharIndices<'a>,
     index: usize,
     column: u32,
@@ -87,6 +91,19 @@ impl<'a> Scanner<'a> {
         i
     }
 
+    pub fn skip_while_on_whitespace(&mut self) -> usize {
+        let mut i = 0;
+        while self.input[self.index..]
+            .chars()
+            .next()
+            .is_some_and(|c| c == SPACE || c == NEW_LINE)
+        {
+            self.read_next_char();
+            i += 1;
+        }
+        i
+    }
+
     pub fn skip_while_on_empty_line(&mut self) {
         // TODO: This is not that efficient...
         // once we have put in the work to look ahead,
@@ -140,5 +157,85 @@ impl<'a> Scanner<'a> {
         } else {
             self.index = self.input.len();
         }
+    }
+
+    // TODO: Rather than returning a tuple of two, try and instead
+    // return a single enum?
+    // TODO: This (and advance_to) indicate scanning should just be moved
+    // into the lexer
+    // TODO: Evolve from this into propper matching
+    // that returns a new position at the end of match
+    // We could do this by something like
+    // [Space, Text(t), _, _] if t.is_alphanumeric => {
+    // scanner.advance_to(t.end())
+    pub fn peek(&self) -> (PeekItem<'a>, PeekItem<'a>) {
+        //TODO: This is not at all efficent,
+        // If this approach works out then we should compute a rolling window
+        // up front
+
+        let remaining = &self.input[self.index..];
+        let mut iter = remaining.char_indices().peekable();
+
+        let p1 = peek(&mut iter, remaining);
+        let p2 = peek(&mut iter, remaining);
+
+        (p1, p2)
+    }
+
+    // fn advance_to(&mut self) {}
+}
+
+#[derive(Debug)]
+pub enum PeekItem<'a> {
+    Whitespace(SpaceInfo),
+    // TODO: Maybe instead of the full str we just give a few chars
+    // easier to match on prefix?
+    // try matching the start of text with something like:
+    // [b'a', b'b', ..]
+    Text(&'a str),
+    End,
+}
+
+//TODO: Maybe grouping Space and Singlebreak into a single enum
+// and having multibreak be seperate is the way forward?
+#[derive(Debug, PartialEq)]
+pub enum SpaceInfo {
+    Space,
+    Singlebreak,
+    Multibreak,
+}
+
+fn peek<'a>(iter: &mut Peekable<CharIndices>, input: &'a str) -> PeekItem<'a> {
+    match iter.peek() {
+        Some((_, SPACE | NEW_LINE)) => {
+            let mut new_line_count = 0;
+            loop {
+                match iter.peek() {
+                    Some((_, SPACE)) => {}
+                    Some((_, NEW_LINE)) => {
+                        new_line_count += 1;
+                    }
+                    _ => break,
+                }
+                iter.next();
+            }
+
+            let space_type = match new_line_count {
+                0 => SpaceInfo::Space,
+                1 => SpaceInfo::Singlebreak,
+                _ => SpaceInfo::Multibreak,
+            };
+
+            PeekItem::Whitespace(space_type)
+        }
+        Some(&(i1, _)) => {
+            while iter
+                .next_if(|&(_, c)| c != SPACE && c != NEW_LINE)
+                .is_some()
+            {}
+            let i2 = iter.peek().map_or(input.len(), |&(i, _)| i);
+            PeekItem::Text(&input[i1..i2])
+        }
+        None => PeekItem::End,
     }
 }

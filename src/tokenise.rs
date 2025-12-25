@@ -2,6 +2,9 @@ use std::fmt::Display;
 
 use crate::scan::*;
 
+use PeekItem::*;
+use SpaceInfo::*;
+
 //TODO: Some kind of annotated example that describes the terminology
 //TODO: Make terminology less confusing
 
@@ -77,7 +80,6 @@ type Indent = usize;
 
 // TODO: Maybe we are tring to be too abstracted / high level in these tokens?
 // TODO: Would having _every_ token have a value (aka literial) be simpler?
-// Revisit once parsing in a byte oriented way
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Token<'a> {
     StartOfInput,
@@ -165,11 +167,15 @@ impl Display for Token<'_> {
     }
 }
 
-//TODO: Consider reworking language design to reduce ambiguitiy
-
+// TODO: Sub modes might be easier to reason about
+// Markup(List)
+// Markup(ListRaw)
+// Markup(Paragraph)
+// Markup(ParagraphRaw)
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum ContentMode {
-    HeaderText,
+    Title,
+    Header,
     StructuredData,
     Paragraph,
     List,
@@ -187,8 +193,8 @@ pub struct Tokeniser<'a> {
     token_count: usize,
     max_tokens: usize,
     mode: ContentMode,
-    on_header_line: bool,
-    on_start_of_element: bool,
+    upcoming_mode: Option<ContentMode>,
+    mode_inference_needed: bool,
     in_raw: bool,
 }
 
@@ -204,8 +210,8 @@ impl<'a> Tokeniser<'a> {
             token_count: 0,
             max_tokens: input.len(),
             mode: ContentMode::Paragraph,
-            on_header_line: false,
-            on_start_of_element: true,
+            upcoming_mode: None,
+            mode_inference_needed: true,
             in_raw: false,
         }
     }
@@ -225,309 +231,376 @@ impl<'a> Tokeniser<'a> {
 
         let position = self.scanner.position();
 
-        // dbg!(self.state);
-        // dbg!(self.on_header_line);
-        // dbg!(self.on_start_of_element);
+        if self.mode_inference_needed {
+            self.mode = self.infer_mode();
+            self.mode_inference_needed = false;
+        }
 
-        let next = self.read_next_token();
+        let next_token = self.read_next_token();
 
-        dbg!(next);
+        self.set_forward_flags(next_token);
+
         self.token_count += 1;
         self.position = position;
-        self.current = next;
+        self.current = next_token;
     }
 
-    // TODO: If we do have to have an unknown, maybe take larger chunks?
-    // (e.g until next space)
+    fn infer_mode(&self) -> ContentMode {
+        //TODO: Just use peek API? (maybe peek api needs to be more ergonomic?)
+        let scanner = &self.scanner;
+        if scanner.is_on_char(SLASH) {
+            Title
+        } else if scanner.is_on_one_of(&[HASH, EXCLAMATION_MARK, AT_SIGN]) {
+            Header
+        } else if scanner.is_on_char(DASH) {
+            List
+        } else {
+            Paragraph
+        }
+    }
+
     fn read_next_token(&mut self) -> Token<'a> {
-        //TODO: Try and gradually simplify this mess
+        //TODO: Find a more elegant way to do this?
+        if let Some(token) = self.read_block_delimiter_token() {
+            token
+        } else if self.mode == Title
+            && let Some(token) = self.read_title_token()
+        {
+            token
+        } else if self.mode == Header
+            && let Some(token) = self.read_header_token()
+        {
+            token
+        } else if self.mode == StructuredData
+            && let Some(token) = self.read_structured_data_token()
+        {
+            token
+        } else if matches!(self.mode, Paragraph | List)
+            && let Some(token) = self.read_markup_token()
+        {
+            token
+        } else if self.mode == CodeBlock
+            && let Some(token) = self.read_code_delimiter_token()
+        {
+            token
+        } else {
+            self.read_generic_token()
+        }
+    }
+
+    fn set_forward_flags(&mut self, next_token: Token<'a>) {
+        match next_token {
+            LineBreak => {
+                if matches!(self.current, ContainerDirective(_)) {
+                    self.mode_inference_needed = true;
+                }
+                if let Some(next_mode) = self.upcoming_mode {
+                    self.mode = next_mode;
+                    self.upcoming_mode = None;
+                }
+            }
+            BlockBreak => {
+                self.mode_inference_needed = true;
+            }
+            BlockDirective(name) => {
+                match name {
+                    "paragraph" => {
+                        self.upcoming_mode = Some(Paragraph);
+                    }
+                    "list" => {
+                        self.upcoming_mode = Some(List);
+                    }
+                    "code" => {
+                        self.upcoming_mode = Some(CodeBlock);
+                    }
+                    _ => {}
+                };
+            }
+            StructuredDataDirective(_) => {
+                self.upcoming_mode = Some(StructuredData);
+            }
+            _ => {}
+        };
+    }
+
+    fn read_block_delimiter_token(&mut self) -> Option<Token<'a>> {
+        let scanner = &mut self.scanner;
+
+        match scanner.peek() {
+            (Text(t), _) if t.starts_with(DELIMITED_CONTAINER_START) => {
+                scanner.skip_chars(3);
+                scanner.skip_while_on(SPACE);
+                Some(DelimitedContainerStart)
+            }
+            (Text(t), _) if t.starts_with(DELIMITED_CONTAINER_END) => {
+                scanner.skip_chars(3);
+                scanner.skip_while_on(SPACE);
+                Some(DelimitedContainerEnd)
+            }
+            _ => None,
+        }
+    }
+
+    fn read_title_token(&mut self) -> Option<Token<'a>> {
+        let scanner = &mut self.scanner;
+
+        match scanner.peek() {
+            (Text(t), _) if t.starts_with(SLASH) => {
+                scanner.skip_char();
+                if scanner.is_on_char(SLASH) {
+                    scanner.skip_char();
+                    if scanner.is_on_char(SLASH) {
+                        scanner.skip_char();
+                        scanner.skip_while_on(SPACE);
+                        Some(SubSectionDirective)
+                    } else {
+                        scanner.skip_while_on(SPACE);
+                        Some(SectionDirective)
+                    }
+                } else {
+                    scanner.skip_while_on(SPACE);
+                    Some(TitleDirective)
+                }
+            }
+
+            (Whitespace(Space), Text(_)) => {
+                scanner.skip_while_on(SPACE);
+                Some(TitleTextSpace)
+            }
+
+            (Text(t), _) if t.starts_with(char_usable_in_title_text) => {
+                let text = scanner.eat_while(char_usable_in_title_text);
+                Some(TitleText(text))
+            }
+            _ => None,
+        }
+    }
+
+    fn read_header_token(&mut self) -> Option<Token<'a>> {
+        let scanner = &mut self.scanner;
+
+        match scanner.peek() {
+            // text!(AT_SIGN) =>
+            (Text(t), _) if t.starts_with(AT_SIGN) => {
+                scanner.skip_char();
+                let name = scanner.eat_while(char_usable_in_block_name);
+                Some(StructuredDataDirective(name))
+            }
+            (Text(t), _) if t.starts_with(EXCLAMATION_MARK) => {
+                scanner.skip_char();
+                let name = scanner.eat_while(char_usable_in_block_name);
+                Some(ContainerDirective(name))
+            }
+            (Text(t), _) if t.starts_with(HASH) => {
+                scanner.skip_char();
+                let name = scanner.eat_while(char_usable_in_block_name);
+                Some(BlockDirective(name))
+            }
+
+            (Text(t), _) if t.starts_with(LEFT_BRACKET) => {
+                scanner.skip_char();
+                Some(BlockParametersStart)
+            }
+            (Text(t), _) if t.starts_with(RIGHT_BRACKET) => {
+                scanner.skip_char();
+                Some(BlockParametersEnd)
+            }
+            (Text(t), _) if t.starts_with(EQUALS) => {
+                scanner.skip_char();
+                Some(BlockParameterNameValueSeperator)
+            }
+            (Text(t), _)
+                if t.starts_with(char_usable_in_parameter_value)
+                    && self.current == BlockParameterNameValueSeperator =>
+            {
+                let value = scanner.eat_while(char_usable_in_parameter_value);
+                Some(BlockParameterValue(value))
+            }
+            (Text(t), _) if t.starts_with(char_usable_in_parameter_name) => {
+                let name = scanner.eat_while(char_usable_in_parameter_name);
+                Some(BlockParameterName(name))
+            }
+            _ => None,
+        }
+    }
+
+    fn read_structured_data_token(&mut self) -> Option<Token<'a>> {
         let scanner = &mut self.scanner;
         let position = scanner.position();
         let column = position.column;
 
-        if self.on_start_of_element && scanner.is_on_char(DASH) {
-            self.mode = List;
-            self.on_start_of_element = false;
-        } else if self.on_start_of_element
-            && !scanner.is_on_one_of(&[SLASH, HASH, EXCLAMATION_MARK, AT_SIGN])
-        {
-            self.mode = Paragraph;
-            self.on_start_of_element = false;
-        }
-
-        if !scanner.has_input() {
-            EndOfInput
-        } else if matches!(self.current, TitleText(_)) && scanner.is_on_char(SPACE) {
-            scanner.skip_while_on(SPACE);
-            if scanner.is_on_char(NEW_LINE) {
-                self.on_header_line = false;
-                scanner.skip_char();
-                if scanner.is_on_empty_line() {
-                    scanner.skip_while_on_empty_line();
-                    self.on_start_of_element = true;
-                    BlockBreak
-                } else {
-                    LineBreak
-                }
-            } else {
-                TitleTextSpace
-            }
-        } else if matches!(
-            self.current,
-            DelimitedContainerStart | DelimitedContainerEnd
-        ) && scanner.is_on_char(NEW_LINE)
-        {
-            //TODO: Does this still need to be a special case?
-            scanner.skip_char();
-            LineBreak
-        } else if matches!(self.mode, Paragraph | List)
-            && !self.in_raw
-            && !self.on_header_line
-            && scanner.is_on_one_of(&[SPACE, NEW_LINE])
-        {
-            // TODO: Could we push this problem up to the parser?
-            scanner.skip_while_on(SPACE);
-            if scanner.is_on_char(NEW_LINE) {
-                scanner.skip_char();
-                let space_count = scanner.skip_while_on(SPACE);
-                if scanner.is_on_char(NEW_LINE) {
-                    scanner.skip_char();
-                    scanner.skip_while_on_empty_line();
-                    self.on_start_of_element = true;
-                    BlockBreak
-                } else if scanner.is_on_char(DASH) && space_count > 0 && self.mode == List {
-                    scanner.skip_char();
-                    scanner.skip_while_on(SPACE);
-                    ListBullet(space_count)
-                } else if scanner.has_input()
-                    && !(scanner.is_on_char(DASH) && self.mode == List)
-                    && !scanner.is_on_str(DELIMITED_CONTAINER_END)
-                {
-                    MarkupTextSpace
-                } else if !scanner.has_input() {
-                    EndOfInput
-                } else {
-                    LineBreak
-                }
-            } else if !scanner.has_input() {
-                EndOfInput
-            } else {
-                MarkupTextSpace
-            }
-        } else if scanner.is_on_char(NEW_LINE) {
-            scanner.skip_char();
-            self.on_header_line = false;
-            if scanner.is_on_empty_line() {
-                scanner.skip_while_on_empty_line();
-                self.on_start_of_element = true;
-                BlockBreak
-            } else {
-                if matches!(self.current, ContainerDirective(_)) {
-                    self.on_start_of_element = true;
-                }
-                LineBreak
-            }
-        } else if self.on_start_of_element & scanner.is_on_char(SLASH) {
-            self.on_header_line = true;
-            self.on_start_of_element = false;
-            scanner.skip_char();
-            self.mode = HeaderText;
-            if scanner.is_on_char(SLASH) {
-                scanner.skip_char();
-                if scanner.is_on_char(SLASH) {
-                    scanner.skip_char();
-                    scanner.skip_while_on(SPACE);
-                    SubSectionDirective
-                } else {
-                    scanner.skip_while_on(SPACE);
-                    SectionDirective
-                }
-            } else {
-                scanner.skip_while_on(SPACE);
-                TitleDirective
-            }
-        } else if self.on_start_of_element && scanner.is_on_char(AT_SIGN) {
-            scanner.skip_char();
-            self.on_header_line = true;
-            self.on_start_of_element = false;
-            let name = scanner.eat_while(char_usable_in_block_name);
-            self.mode = StructuredData;
-            StructuredDataDirective(name)
-        } else if self.on_start_of_element && scanner.is_on_char(EXCLAMATION_MARK) {
-            scanner.skip_char();
-            self.on_header_line = true;
-            self.on_start_of_element = false;
-            let name = scanner.eat_while(char_usable_in_block_name);
-            ContainerDirective(name)
-        } else if self.on_start_of_element && scanner.is_on_char(HASH) {
-            scanner.skip_char();
-            self.on_header_line = true;
-            self.on_start_of_element = false;
-            let name = scanner.eat_while(char_usable_in_block_name);
-            match name {
-                "paragraph" => {
-                    self.mode = Paragraph;
-                }
-                "list" => {
-                    self.mode = List;
-                }
-                "code" => {
-                    self.mode = CodeBlock;
-                }
-                _ => {}
-            };
-            BlockDirective(name)
-        } else if scanner.is_on_str(DELIMITED_CONTAINER_START) {
-            scanner.skip_chars(3);
-            scanner.skip_while_on(SPACE);
-            self.on_start_of_element = true;
-            DelimitedContainerStart
-        } else if scanner.is_on_str(DELIMITED_CONTAINER_END) {
-            scanner.skip_chars(3);
-            scanner.skip_while_on(SPACE);
-            DelimitedContainerEnd
-        } else if self.mode == HeaderText {
-            let text = scanner.eat_while(char_usable_in_title_text);
-            TitleText(text)
-        } else if self.mode == StructuredData {
-            if scanner.is_on(char_usable_in_identifier) && column == 0 {
+        match scanner.peek() {
+            (Text(t), _) if t.starts_with(char_usable_in_identifier) && column == 0 => {
                 let key = scanner.eat_while(char_usable_in_identifier);
                 scanner.skip_while_on(SPACE);
-                DataIdentifier(key)
-            } else if scanner.is_on_char(COLON) {
+                Some(DataIdentifier(key))
+            }
+            (Text(t), _) if t.starts_with(COLON) => {
                 scanner.skip_char();
                 scanner.skip_while_on(SPACE);
-                DataKeyValueSeperator
-            } else if scanner.is_on_char(VERTICAL_BAR) {
+                Some(DataKeyValueSeperator)
+            }
+            (Text(t), _) if t.starts_with(VERTICAL_BAR) => {
                 scanner.skip_char();
                 scanner.skip_while_on(SPACE);
-                DataListSeperator
-            } else if scanner.is_on(char_usable_in_data_value) {
+                Some(DataListSeperator)
+            }
+            (Text(t), _) if t.starts_with(char_usable_in_data_value) => {
                 let value = scanner.eat_while(char_usable_in_data_value);
                 scanner.skip_while_on(SPACE);
-                DataValue(value)
-            } else {
-                let c = scanner.eat_char();
-                Unknown(c)
+                Some(DataValue(value))
             }
-        } else if self.on_header_line {
-            let scanner = &mut self.scanner;
-            if scanner.is_on_char(LEFT_BRACKET) {
+
+            _ => None,
+        }
+    }
+
+    fn read_markup_token(&mut self) -> Option<Token<'a>> {
+        let scanner = &mut self.scanner;
+        let position = scanner.position();
+        let column = position.column;
+
+        let markup_space_allowed = !self.in_raw
+            && !matches!(
+                self.current,
+                DelimitedContainerStart | DelimitedContainerEnd
+            );
+
+        let list_indent_allowed = self.mode == List && !self.in_raw && column == 0;
+
+        match scanner.peek() {
+            (Text(t), _) if t.starts_with(BACKTICK) => {
+                self.in_raw = !self.in_raw;
                 scanner.skip_char();
-                BlockParametersStart
-            } else if scanner.is_on_char(RIGHT_BRACKET) {
-                scanner.skip_char();
-                BlockParametersEnd
-            } else if scanner.is_on_char(EQUALS) {
-                scanner.skip_char();
-                BlockParameterNameValueSeperator
-            } else if scanner.is_on(char_usable_in_parameter_value)
-                && self.current == BlockParameterNameValueSeperator
+                Some(RawDelimiter)
+            }
+
+            // TODO: nasty - find a way to match either space or text
+            // both are valid for raw
+            (Text(t), _) | (Whitespace(Space), Text(t))
+                if t.starts_with(DASH) && list_indent_allowed =>
             {
-                let value = scanner.eat_while(char_usable_in_parameter_value);
-                BlockParameterValue(value)
-            } else if scanner.is_on(char_usable_in_parameter_name) {
-                let name = scanner.eat_while(char_usable_in_parameter_name);
-                BlockParameterName(name)
-            } else {
-                let c = scanner.eat_char();
-                Unknown(c)
-            }
-        } else if scanner.is_on_char(BACKTICK) {
-            self.in_raw = !self.in_raw;
-            scanner.skip_char();
-            RawDelimiter
-        } else if matches!(self.mode, List | Paragraph)
-            && self.in_raw
-            && scanner.is_on(char_usable_in_raw_frag)
-        {
-            let fragment = scanner.eat_while(char_usable_in_raw_frag);
-            RawFragment(fragment)
-        } else if self.mode == Paragraph {
-            if scanner.is_on_char(LEFT_SQUARE_BRACKET) {
-                scanner.skip_char();
-                LinkOpeningDelimiter
-            } else if scanner.is_on_char(RIGHT_SQUARE_BRACKET) {
-                scanner.skip_char();
-                LinkClosingDelimiter
-            } else if self.current == LinkClosingDelimiter && scanner.is_on_char(AT_SIGN) {
-                scanner.skip_char();
-                LinkToReferenceJoiner
-            } else if self.current == LinkToReferenceJoiner
-                && scanner.is_on(char_usable_in_identifier)
-            {
-                let identifier = scanner.eat_while(char_usable_in_identifier);
-                DataIdentifier(identifier)
-            } else if scanner.is_on_char(ASTERISK) {
-                scanner.skip_char();
-                StrongDelimiter
-            } else if scanner.is_on_char(UNDERSCORE) {
-                scanner.skip_char();
-                EmphasisDelimiter
-            } else if scanner.is_on_char(TILDE) {
-                scanner.skip_char();
-                StrikethroughDelimiter
-            } else if scanner.is_on_char(BACKSLASH) {
-                scanner.skip_char();
-                let text = scanner.eat_char();
-                MarkupText(text)
-            } else if scanner.is_on(char_usable_in_text_frag) {
-                let text = scanner.eat_while(char_usable_in_text_frag);
-                MarkupText(text)
-            } else {
-                let c = scanner.eat_char();
-                Unknown(c)
-            }
-        } else if self.mode == List {
-            //TODO: Instead of column set a flag earlier?
-            if column == 0 && scanner.is_on_char(DASH) {
+                let space_count = scanner.skip_while_on(SPACE);
                 scanner.skip_char();
                 scanner.skip_while_on(SPACE);
-                ListBullet(0)
-            } else if scanner.is_on_char(LEFT_SQUARE_BRACKET) {
+                Some(ListBullet(space_count))
+            }
+            (Whitespace(s), Text(t))
+                if markup_space_allowed
+                    && (s == Space
+                        || (s == Singlebreak
+                            && !t.starts_with(DELIMITED_CONTAINER_END)
+                            && !(self.mode == List && t.starts_with(DASH)))) =>
+            {
+                scanner.skip_while_on(SPACE);
+                if scanner.is_on_char(NEW_LINE) {
+                    scanner.skip_char();
+                }
+                scanner.skip_while_on(SPACE);
+                Some(MarkupTextSpace)
+            }
+            (_, _) if self.in_raw && scanner.is_on(char_usable_in_raw_frag) => {
+                let fragment = scanner.eat_while(char_usable_in_raw_frag);
+                Some(RawFragment(fragment))
+            }
+
+            (Text(t), _) if t.starts_with(LEFT_SQUARE_BRACKET) => {
                 scanner.skip_char();
-                LinkOpeningDelimiter
-            } else if scanner.is_on_char(RIGHT_SQUARE_BRACKET) {
+                Some(LinkOpeningDelimiter)
+            }
+
+            (Text(t), _) if t.starts_with(RIGHT_SQUARE_BRACKET) => {
                 scanner.skip_char();
-                LinkClosingDelimiter
-            } else if self.current == LinkClosingDelimiter && scanner.is_on_char(AT_SIGN) {
+                Some(LinkClosingDelimiter)
+            }
+
+            (Text(t), _) if self.current == LinkClosingDelimiter && t.starts_with(AT_SIGN) => {
                 scanner.skip_char();
-                LinkToReferenceJoiner
-            } else if self.current == LinkToReferenceJoiner
-                && scanner.is_on(char_usable_in_identifier)
+                Some(LinkToReferenceJoiner)
+            }
+
+            (Text(t), _)
+                if self.current == LinkToReferenceJoiner
+                    && t.starts_with(char_usable_in_identifier) =>
             {
                 let identifier = scanner.eat_while(char_usable_in_identifier);
-                DataIdentifier(identifier)
-            } else if scanner.is_on_char(ASTERISK) {
+                Some(DataIdentifier(identifier))
+            }
+
+            (Text(t), _) if t.starts_with(ASTERISK) => {
                 scanner.skip_char();
-                StrongDelimiter
-            } else if scanner.is_on_char(UNDERSCORE) {
+                Some(StrongDelimiter)
+            }
+
+            (Text(t), _) if t.starts_with(UNDERSCORE) => {
                 scanner.skip_char();
-                EmphasisDelimiter
-            } else if scanner.is_on_char(TILDE) {
+                Some(EmphasisDelimiter)
+            }
+
+            (Text(t), _) if t.starts_with(TILDE) => {
                 scanner.skip_char();
-                StrikethroughDelimiter
-            } else if scanner.is_on(char_usable_in_text_frag) {
-                let text = scanner.eat_while(char_usable_in_text_frag);
-                MarkupText(text)
-            } else if scanner.is_on_char(BACKSLASH) {
+                Some(StrikethroughDelimiter)
+            }
+
+            (Text(t), _) if t.starts_with(BACKSLASH) => {
                 scanner.skip_char();
                 let text = scanner.eat_char();
-                MarkupText(text)
-            } else {
+                Some(MarkupText(text))
+            }
+
+            (Text(t), _) if t.starts_with(char_usable_in_text_frag) => {
+                let text = scanner.eat_while(char_usable_in_text_frag);
+                Some(MarkupText(text))
+            }
+
+            _ => None,
+        }
+    }
+
+    fn read_code_delimiter_token(&mut self) -> Option<Token<'a>> {
+        let scanner = &mut self.scanner;
+
+        match scanner.peek() {
+            (Text(t), _) if t.starts_with(CODE_DELIMITER) => {
+                self.in_raw = !self.in_raw;
+                scanner.skip_chars(3);
+                Some(CodeDelimiter)
+            }
+
+            (_, _) if self.in_raw && self.current != CodeDelimiter => {
+                let code = scanner.eat_until_line_starting_with(CODE_DELIMITER);
+                Some(Code(code))
+            }
+            _ => None,
+        }
+    }
+
+    fn read_generic_token(&mut self) -> Token<'a> {
+        let scanner = &mut self.scanner;
+        match scanner.peek() {
+            (Whitespace(Multibreak), _) => {
+                scanner.skip_char();
+                scanner.skip_while_on_empty_line();
+                BlockBreak
+            }
+            (Whitespace(Singlebreak), _) => {
+                scanner.skip_while_on(SPACE);
+                scanner.skip_char();
+                LineBreak
+            }
+            (Whitespace(_), End) => {
+                scanner.skip_while_on_whitespace();
+                EndOfInput
+            }
+
+            (End, _) => EndOfInput,
+
+            // TODO: If we do have to have an unknown, maybe take larger chunks?
+            // (e.g until next space)
+            _ => {
                 let c = scanner.eat_char();
                 Unknown(c)
             }
-        } else if scanner.is_on_str(CODE_DELIMITER) && self.mode == CodeBlock {
-            self.in_raw = !self.in_raw;
-            scanner.skip_chars(3);
-            CodeDelimiter
-        } else if self.mode == CodeBlock && self.in_raw {
-            let code = scanner.eat_until_line_starting_with(CODE_DELIMITER);
-            Code(code)
-        } else {
-            let c = scanner.eat_char();
-            Unknown(c)
         }
     }
 }

@@ -508,7 +508,6 @@ fn parse_list_level(
 ) -> ParseResult<Box<[ListItem]>> {
     let mut items = Vec::new();
 
-    //TODO: while let?
     while let ListBullet(indent_count) = tokeniser.current() {
         if indent_count % 2 != 0 {
             return parse_err!(UnevenListIndent(indent_count), tokeniser.position());
@@ -2399,8 +2398,7 @@ mod test {
 
         //TODO: Could we have more helpful, more specific error messages
         // e.g. UnterminatedEmphasis
-        let expected =
-            UnexpectedToken("expected: emphasis delimiter, got: list bullet (indent 2)".into());
+        let expected = UnexpectedToken("expected: emphasis delimiter, got: linebreak".into());
 
         assert_parse_fails(input, expected);
     }
