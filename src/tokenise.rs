@@ -260,31 +260,18 @@ impl<'a> Tokeniser<'a> {
     }
 
     fn read_next_token(&mut self) -> Token<'a> {
-        //TODO: Find a more elegant way to do this?
-        if let Some(token) = self.read_block_delimiter_token() {
-            token
-        } else if self.mode == Title
-            && let Some(token) = self.read_title_token()
-        {
-            token
-        } else if self.mode == Header
-            && let Some(token) = self.read_header_token()
-        {
-            token
-        } else if self.mode == StructuredData
-            && let Some(token) = self.read_structured_data_token()
-        {
-            token
-        } else if matches!(self.mode, Paragraph | List)
-            && let Some(token) = self.read_markup_token()
-        {
-            token
-        } else if self.mode == CodeBlock
-            && let Some(token) = self.read_code_delimiter_token()
-        {
-            token
-        } else {
-            self.read_generic_token()
+        self.read_container_delimiter_token()
+            .or_else(|| self.read_modal_token())
+            .unwrap_or_else(|| self.read_generic_token())
+    }
+
+    fn read_modal_token(&mut self) -> Option<Token<'a>> {
+        match self.mode {
+            Title => self.read_title_token(),
+            Header => self.read_header_token(),
+            StructuredData => self.read_structured_data_token(),
+            Paragraph | List => self.read_markup_token(),
+            CodeBlock => self.read_code_block_token(),
         }
     }
 
@@ -323,7 +310,7 @@ impl<'a> Tokeniser<'a> {
         };
     }
 
-    fn read_block_delimiter_token(&mut self) -> Option<Token<'a>> {
+    fn read_container_delimiter_token(&mut self) -> Option<Token<'a>> {
         let scanner = &mut self.scanner;
 
         match scanner.peek() {
@@ -557,7 +544,7 @@ impl<'a> Tokeniser<'a> {
         }
     }
 
-    fn read_code_delimiter_token(&mut self) -> Option<Token<'a>> {
+    fn read_code_block_token(&mut self) -> Option<Token<'a>> {
         let scanner = &mut self.scanner;
 
         match scanner.peek() {
