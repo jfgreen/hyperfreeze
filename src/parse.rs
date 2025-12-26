@@ -1409,7 +1409,7 @@ mod test {
         // TODO: This is a bit meh
         // Would be better to have a missing blockbreak error or simmilar
         // Tokeniser should also not treat the # as completely unknown
-        let expected = UnexpectedToken("unknown '#' was not expected here".into());
+        let expected = UnexpectedToken("unknown '#paragraph' was not expected here".into());
 
         assert_parse_fails(input, expected);
     }

@@ -582,11 +582,13 @@ impl<'a> Tokeniser<'a> {
 
             (End, _) => EndOfInput,
 
-            // TODO: If we do have to have an unknown, maybe take larger chunks?
-            // (e.g until next space)
-            _ => {
-                let c = scanner.eat_char();
-                Unknown(c)
+            (Text(_), _) => {
+                let unknown = scanner.eat_while(|c| c != SPACE && c != NEW_LINE);
+                Unknown(unknown)
+            }
+            (Whitespace(_), _) => {
+                let space = scanner.eat_while(|c| c == SPACE || c == NEW_LINE);
+                Unknown(space)
             }
         }
     }
