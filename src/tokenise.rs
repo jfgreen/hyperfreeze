@@ -3,7 +3,6 @@ use std::fmt::Display;
 use crate::scan::*;
 
 use PeekItem::*;
-use SpaceInfo::*;
 
 //TODO: Some kind of annotated example that describes the terminology
 //TODO: Make terminology less confusing
@@ -350,7 +349,7 @@ impl<'a> Tokeniser<'a> {
                 }
             }
 
-            (Whitespace(Space), Text(_)) => {
+            (Space, Text(_)) => {
                 scanner.skip_while_on(SPACE);
                 Some(TitleTextSpace)
             }
@@ -464,15 +463,13 @@ impl<'a> Tokeniser<'a> {
 
             // TODO: nasty - find a way to match either space or text
             // both are valid for raw
-            (Text(t), _) | (Whitespace(Space), Text(t))
-                if t.starts_with(DASH) && list_indent_allowed =>
-            {
+            (Text(t), _) | (Space, Text(t)) if t.starts_with(DASH) && list_indent_allowed => {
                 let space_count = scanner.skip_while_on(SPACE);
                 scanner.skip_char();
                 scanner.skip_while_on(SPACE);
                 Some(ListBullet(space_count))
             }
-            (Whitespace(s), Text(t))
+            (s @ Space | s @ Singlebreak, Text(t))
                 if markup_space_allowed
                     && (s == Space
                         || (s == Singlebreak
@@ -564,18 +561,20 @@ impl<'a> Tokeniser<'a> {
 
     fn read_generic_token(&mut self) -> Token<'a> {
         let scanner = &mut self.scanner;
+
         match scanner.peek() {
-            (Whitespace(Multibreak), _) => {
+            (Multibreak, _) => {
                 scanner.skip_char();
                 scanner.skip_while_on_empty_line();
                 BlockBreak
             }
-            (Whitespace(Singlebreak), _) => {
+            (Singlebreak, _) => {
                 scanner.skip_while_on(SPACE);
                 scanner.skip_char();
                 LineBreak
             }
-            (Whitespace(_), End) => {
+
+            (Space, End) => {
                 scanner.skip_while_on_whitespace();
                 EndOfInput
             }
@@ -586,8 +585,8 @@ impl<'a> Tokeniser<'a> {
                 let unknown = scanner.eat_while(|c| c != SPACE && c != NEW_LINE);
                 Unknown(unknown)
             }
-            (Whitespace(_), _) => {
-                let space = scanner.eat_while(|c| c == SPACE || c == NEW_LINE);
+            (Space, _) => {
+                let space = scanner.eat_while(|c| c == SPACE);
                 Unknown(space)
             }
         }

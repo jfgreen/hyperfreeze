@@ -15,6 +15,7 @@ pub struct ParseError {
 }
 
 macro_rules! parse_err {
+    //TODO: Try track_caller stuff
     ($error:expr, $position:expr) => {{
         Err(ParseError {
             kind: $error,

@@ -185,25 +185,28 @@ impl<'a> Scanner<'a> {
     // fn advance_to(&mut self) {}
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum PeekItem<'a> {
-    Whitespace(SpaceInfo),
+    // Whitespace(SpaceInfo),
     // TODO: Maybe instead of the full str we just give a few chars
     // easier to match on prefix?
     // try matching the start of text with something like:
     // [b'a', b'b', ..]
+    Space,
+    Singlebreak,
+    Multibreak,
     Text(&'a str),
     End,
 }
 
 //TODO: Maybe grouping Space and Singlebreak into a single enum
 // and having multibreak be seperate is the way forward?
-#[derive(Debug, PartialEq)]
-pub enum SpaceInfo {
-    Space,
-    Singlebreak,
-    Multibreak,
-}
+// #[derive(Debug, PartialEq)]
+// pub enum SpaceInfo {
+//     Space,
+//     Singlebreak,
+//     Multibreak,
+// }
 
 fn peek<'a>(iter: &mut Peekable<CharIndices>, input: &'a str) -> PeekItem<'a> {
     match iter.peek() {
@@ -220,13 +223,11 @@ fn peek<'a>(iter: &mut Peekable<CharIndices>, input: &'a str) -> PeekItem<'a> {
                 iter.next();
             }
 
-            let space_type = match new_line_count {
-                0 => SpaceInfo::Space,
-                1 => SpaceInfo::Singlebreak,
-                _ => SpaceInfo::Multibreak,
-            };
-
-            PeekItem::Whitespace(space_type)
+            match new_line_count {
+                0 => PeekItem::Space,
+                1 => PeekItem::Singlebreak,
+                _ => PeekItem::Multibreak,
+            }
         }
         Some(&(i1, _)) => {
             while iter
