@@ -236,6 +236,7 @@ impl<'a> Tokeniser<'a> {
         }
 
         let next_token = self.read_next_token();
+        dbg!(next_token);
 
         self.set_forward_flags(next_token);
 
@@ -544,6 +545,20 @@ impl<'a> Tokeniser<'a> {
     fn read_code_block_token(&mut self) -> Option<Token<'a>> {
         let scanner = &mut self.scanner;
 
+        /*
+        if let Some(delimiter) = scanner.match(CODE_DELIMITER) {
+            self.in_raw = !self.in_raw;
+            //TODO: could the 'advance' past actually be done by the match?
+            scanner.advance_past(delimiter)
+            Some(CodeDelimiter)
+        } else if let Some(code) = scanner.match_until_line_starting_with(CODE_DELIMITER) {
+            // TODO: Consider line by line instead
+            // Think: how to give a helpful error like 'unterminated code block'
+            scanner.advance_past(code)
+            Some(Code(code))
+        }
+        */
+
         match scanner.peek() {
             (Text(t), _) if t.starts_with(CODE_DELIMITER) => {
                 self.in_raw = !self.in_raw;
@@ -562,6 +577,40 @@ impl<'a> Tokeniser<'a> {
     fn read_generic_token(&mut self) -> Token<'a> {
         let scanner = &mut self.scanner;
 
+        // if let Some(multibreak) = scanner.on_multibreak() {
+        //     scanner.advance_past(multibreak);
+        //     return BlockBreak;
+        // }
+        /*
+        if let Some(multibreak) = scanner.is_on_multibreak() {
+            scanner.advance_past(multibreak);
+            BlockBreak
+        } else if let Some(singlebreak) = scanner.is_on_singlebreak() {
+            scanner.advance_past(singlebreak);
+            LineBreak
+        } else if let Some(end_of_input) = scanner.is_on_end_of_input() {
+            scanner.advance_to(end_of_input);
+            EndOfInput
+        } else if let Some(text) = scanner.is_on_text() {
+            scanner.advance_past(text);
+            Unknown(text.value)
+        } else if let Some(space) = scanner.is_on_space() {
+            scanner.advance_past(space);
+            Unknown(space.value)
+        } else {
+            //TODO: This is a bit ugly
+            Unknown("")
+        }
+        */
+
+        /*
+            (Multibreak(m), _) => {
+                scanner.advance_to(multibreak.end)
+                scanner.skip_char();
+                scanner.skip_while_on_empty_line();
+                BlockBreak
+            }
+        */
         match scanner.peek() {
             (Multibreak, _) => {
                 scanner.skip_char();

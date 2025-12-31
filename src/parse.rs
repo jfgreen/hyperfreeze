@@ -2592,6 +2592,7 @@ mod test {
     // TODO: test missing reference
     // TODO: Allow un-delimited code blocks
     // TODO: Test we cant have sections or sub sections in containers
+    // TODO: Test code block missing ending delimiter has an informative error
 
     #[test]
     fn code_block() {
