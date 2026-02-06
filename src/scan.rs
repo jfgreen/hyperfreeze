@@ -1,7 +1,30 @@
 use std::str::CharIndices;
 
-const NEW_LINE: char = '\n';
 const SPACE: char = ' ';
+const NEW_LINE: char = '\n';
+const COLON: char = ':';
+const FULL_STOP: char = '.';
+const DELIMITED_CONTAINER_START: &str = ">>>";
+const DELIMITED_CONTAINER_END: &str = "<<<";
+const GREATER_THAN: char = '>';
+const LESS_THAN: char = '<';
+const CODE_DELIMITER: &str = "---";
+const HASH: char = '#';
+const LEFT_SQUARE_BRACKET: char = '[';
+const RIGHT_SQUARE_BRACKET: char = ']';
+const LEFT_BRACKET: char = '(';
+const RIGHT_BRACKET: char = ')';
+const EQUALS: char = '=';
+const BACKTICK: char = '`';
+const ASTERISK: char = '*';
+const TILDE: char = '~';
+const UNDERSCORE: char = '_';
+const SLASH: char = '/';
+const BACKSLASH: char = '\\';
+const DASH: char = '-';
+const AT_SIGN: char = '@';
+const EXCLAMATION_MARK: char = '!';
+const VERTICAL_BAR: char = '|';
 
 #[derive(Clone, Copy, Debug)]
 pub struct Position {
@@ -9,13 +32,20 @@ pub struct Position {
     pub row: u32,
 }
 
+const MARKUP_CHARS: &[char; 10] = &[
+    UNDERSCORE,
+    BACKTICK,
+    ASTERISK,
+    TILDE,
+    SPACE,
+    NEW_LINE,
+    HASH,
+    BACKSLASH,
+    LEFT_SQUARE_BRACKET,
+    RIGHT_SQUARE_BRACKET,
+];
+
 //TODO: Ideally we wouldn't need a copyable read head
-// as the we instead:
-// - Use peek() to lookahead
-// - Use the result of peek to jump forward
-// - Repeat
-//
-// Try and remove this once on peek based API
 #[derive(Debug, Clone)]
 struct ReadHead<'a> {
     //TODO: all a bit much?
@@ -91,10 +121,6 @@ impl<'a> Scanner<'a> {
         self.read_head.index
     }
 
-    pub fn is_on(&self, predicate: impl Fn(char) -> bool) -> bool {
-        self.input[self.index()..].starts_with(predicate)
-    }
-
     pub fn is_on_char(&self, c: char) -> bool {
         self.input[self.index()..].starts_with(c)
     }
@@ -112,32 +138,9 @@ impl<'a> Scanner<'a> {
             .starts_with(NEW_LINE)
     }
 
-    pub fn skip_char(&mut self) {
-        self.read_head.read_next_char();
-    }
-
-    pub fn skip_chars(&mut self, count: usize) {
-        for _ in 0..count {
-            self.read_head.read_next_char();
-        }
-    }
-
     pub fn skip_while_on(&mut self, c: char) -> usize {
         let mut i = 0;
         while self.input[self.index()..].starts_with(c) {
-            self.read_head.read_next_char();
-            i += 1;
-        }
-        i
-    }
-
-    pub fn skip_while_on_whitespace(&mut self) -> usize {
-        let mut i = 0;
-        while self.input[self.index()..]
-            .chars()
-            .next()
-            .is_some_and(|c| c == SPACE || c == NEW_LINE)
-        {
             self.read_head.read_next_char();
             i += 1;
         }
@@ -155,118 +158,650 @@ impl<'a> Scanner<'a> {
         }
     }
 
-    pub fn eat_char(&mut self) -> &'a str {
-        let i1 = self.index();
-        self.read_head.read_next_char();
-        let i2 = self.index();
-        &self.input[i1..i2]
-    }
+    // TODO: Get this working using any old technique,
+    // then rework to front load most of the effort
+    // in a way that can be used in all match functions
+    //
+    // What if we had a forward buffer that holds char info
+    // the instead of passing around read heads we just pass
+    // around an index
+    //
+    // Life would probably be eaiser if this buffer stored
+    // compressed whitespace
+    //
+    // TODO: We could even end up with a small DSL for matching?
 
-    pub fn eat_while(&mut self, predicate: impl Fn(char) -> bool) -> &'a str {
-        let i1 = self.index();
+    pub fn match_list_bullet(&self) -> Option<(ScanMatch<'a>, usize)> {
+        let mut head = self.read_head.clone();
+        let i1 = head.index;
 
-        while self.input[self.index()..].starts_with(&predicate) {
-            self.read_head.read_next_char();
+        let mut space_count = 0;
+
+        while head.current == Some(SPACE) {
+            space_count += 1;
+            head.read_next_char();
         }
 
-        let i2 = self.index();
-        &self.input[i1..i2]
-    }
-
-    pub fn eat_until_line_starting_with(&mut self, prefix: &str) -> &'a str {
-        let i1 = self.index();
-
-        while !(self.read_head.column == 0 && self.input[self.index()..].starts_with(prefix)) {
-            self.read_head.read_next_char();
+        if head.current == Some(DASH) {
+            head.read_next_char();
+        } else {
+            return None;
         }
 
-        let i2 = self.index();
-        &self.input[i1..i2]
+        while head.current == Some(SPACE) {
+            head.read_next_char();
+        }
+
+        let i2 = head.index;
+
+        Some((
+            ScanMatch {
+                text: &self.input[i1..i2],
+                end: head,
+            },
+            space_count,
+        ))
     }
 
-    // TODO: Rather than returning a tuple of two, try and instead
-    // return a single enum?
-    // TODO: This (and advance_to) indicate scanning should just be moved
-    // into the lexer
-    // TODO: Evolve from this into propper matching
-    // that returns a new position at the end of match
-    // We could do this by something like
-    // [Space, Text(t), _, _] if t.is_alphanumeric => {
-    // scanner.advance_to(t.end())
-    pub fn peek(&self) -> (PeekItem<'a>, PeekItem<'a>) {
-        //TODO: This is not at all efficent,
-        // If this approach works out then we should compute a rolling window
-        // up front
+    //TODO: Bool flag is kinda smelly
+    // Maybe if we get the parser telling us what tokens to expect it will
+    // be somewhat easier
+    //
+    // Could just have to matching funcs, one for list and one for markup
+    //
+    // Could add an intermediate layer that just handles the mode switching?
+    pub fn match_markup_text_space(&self, in_list: bool) -> Option<ScanMatch<'a>> {
+        // Whatever refactor we do here, needs to be about as simple as:
+        // (s @ Space | s @ Singlebreak, Text(t))
+        //     if markup_space_allowed
+        //         && (s == Space
+        //             || (s == Singlebreak
+        //                 && !t.starts_with(DELIMITED_CONTAINER_END)
+        //                 && !(self.mode == List && t.starts_with(DASH)))) =>
+        // {
+        //     scanner.skip_while_on(SPACE);
+        //     if scanner.is_on_char(NEW_LINE) {
+        //         scanner.skip_char();
+        //     }
+        //     scanner.skip_while_on(SPACE);
+        //     Some(MarkupTextSpace)
+        // }
+        let mut head = self.read_head.clone();
+        let i1 = head.index;
 
-        // let remaining = &self.input[self.index()..];
-        // let mut iter = remaining.char_indices().peekable();
+        while head.current == Some(SPACE) {
+            head.read_next_char();
+        }
 
-        // let p1 = peek(&mut iter, remaining);
-        // let p2 = peek(&mut iter, remaining);
+        let mut has_new_line = false;
+        if head.current == Some(NEW_LINE) {
+            head.read_next_char();
+            has_new_line = true;
+        }
 
-        let mut peek_head = self.read_head.clone();
+        if has_new_line && self.input[head.index..].starts_with(DELIMITED_CONTAINER_END) {
+            return None;
+        }
 
-        let p1 = peek(&mut peek_head, self.input);
-        let p2 = peek(&mut peek_head, self.input);
-        (p1, p2)
+        while head.current == Some(SPACE) {
+            head.read_next_char();
+        }
+
+        if head.current == Some(NEW_LINE) {
+            return None;
+        }
+
+        let i2 = head.index;
+
+        if i1 == i2 {
+            return None;
+        }
+
+        if has_new_line && in_list && head.current == Some(DASH) {
+            return None;
+        }
+
+        if head.current == None {
+            return None;
+        }
+
+        Some(ScanMatch {
+            text: &self.input[i1..i2],
+            end: head,
+        })
     }
 
-    // fn advance_to(&mut self) {}
-}
+    pub fn match_title_text_space(&self) -> Option<ScanMatch<'a>> {
+        let mut head = self.read_head.clone();
+        let i1 = head.index;
 
-#[derive(Debug, PartialEq)]
-pub enum PeekItem<'a> {
-    // Whitespace(SpaceInfo),
-    // TODO: Maybe instead of the full str we just give a few chars
-    // easier to match on prefix?
-    // try matching the start of text with something like:
-    // [b'a', b'b', ..]
-    Space,
-    Singlebreak,
-    Multibreak,
-    Text(&'a str),
-    End,
-}
+        if head.current == Some(SPACE) {
+            head.read_next_char();
+        } else {
+            return None;
+        }
 
-//TODO: Maybe grouping Space and Singlebreak into a single enum
-// and having multibreak be seperate is the way forward?
-// #[derive(Debug, PartialEq)]
-// pub enum SpaceInfo {
-//     Space,
-//     Singlebreak,
-//     Multibreak,
-// }
+        while head.current == Some(SPACE) {
+            head.read_next_char();
+        }
 
-fn peek<'a>(head: &mut ReadHead, input: &'a str) -> PeekItem<'a> {
-    match head.current {
-        Some(SPACE | NEW_LINE) => {
-            let mut new_line_count = 0;
-            loop {
-                match head.current {
-                    Some(SPACE) => {}
-                    Some(NEW_LINE) => {
-                        new_line_count += 1;
-                    }
-                    _ => break,
+        let i2 = head.index;
+
+        let has_text_next = head.current.is_some_and(|c| c != SPACE && c != NEW_LINE);
+
+        if !has_text_next {
+            return None;
+        }
+
+        Some(ScanMatch {
+            text: &self.input[i1..i2],
+            end: head,
+        })
+    }
+
+    pub fn match_char(&self, c: char) -> Option<ScanMatch<'a>> {
+        let mut head = self.read_head.clone();
+        let i1 = head.index;
+
+        if head.current == Some(c) {
+            head.read_next_char();
+        } else {
+            return None;
+        }
+
+        let i2 = head.index;
+
+        Some(ScanMatch {
+            text: &self.input[i1..i2],
+            end: head,
+        })
+    }
+
+    pub fn match_str(&self, string: &str) -> Option<ScanMatch<'a>> {
+        let mut head = self.read_head.clone();
+        let i1 = head.index;
+
+        for char in string.chars() {
+            if head.current == Some(char) {
+                head.read_next_char();
+                continue;
+            } else {
+                return None;
+            }
+        }
+
+        let i2 = head.index;
+        Some(ScanMatch {
+            text: &self.input[i1..i2],
+            end: head,
+        })
+    }
+
+    //TODO: Kind of dont like this...
+    pub fn match_until_line_starting_with(&self, prefix: &str) -> Option<ScanMatch<'a>> {
+        let mut head = self.read_head.clone();
+
+        let i1 = self.index();
+
+        loop {
+            let on_start_of_line = head.column == 0;
+            let prefix_matches = self.input[head.index..].starts_with(prefix);
+            if on_start_of_line && prefix_matches {
+                let i2 = head.index;
+                return Some(ScanMatch {
+                    text: &self.input[i1..i2],
+                    end: head,
+                });
+            } else if head.current == None {
+                return None;
+            } else {
+                head.read_next_char();
+            }
+        }
+    }
+
+    pub fn match_blockbreak(&self) -> Option<ScanMatch<'a>> {
+        //TODO: Maintain peek/lookahead on advance
+        let mut head = self.read_head.clone();
+
+        let i1 = head.index;
+        let mut new_line_count = 0;
+        loop {
+            match head.current {
+                Some(SPACE) => {}
+                Some(NEW_LINE) => {
+                    new_line_count += 1;
                 }
-                head.read_next_char();
+                _ => break,
             }
-
-            match new_line_count {
-                0 => PeekItem::Space,
-                1 => PeekItem::Singlebreak,
-                _ => PeekItem::Multibreak,
-            }
+            head.read_next_char();
         }
-        Some(_) => {
-            let i1 = head.index;
-            while !matches!(head.current, Some(SPACE | NEW_LINE) | None) {
-                head.read_next_char();
-            }
 
+        if new_line_count > 1 {
             let i2 = head.index;
-            PeekItem::Text(&input[i1..i2])
+            Some(ScanMatch {
+                text: &self.input[i1..i2],
+                end: head,
+            })
+        } else {
+            None
         }
-        None => PeekItem::End,
     }
+
+    pub fn match_linebreak(&self) -> Option<ScanMatch<'a>> {
+        let mut head = self.read_head.clone();
+
+        let i1 = head.index;
+
+        while let Some(SPACE) = head.current {
+            head.read_next_char();
+        }
+
+        if head.current == Some(NEW_LINE) {
+            head.read_next_char();
+            let i2 = head.index;
+            Some(ScanMatch {
+                text: &self.input[i1..i2],
+                end: head,
+            })
+        } else {
+            None
+        }
+    }
+
+    pub fn match_end_of_input(&self) -> Option<ScanMatch<'a>> {
+        let mut head = self.read_head.clone();
+
+        let i1 = head.index;
+
+        while let Some(SPACE) = head.current {
+            head.read_next_char();
+        }
+
+        if head.current == None {
+            let i2 = head.index;
+            Some(ScanMatch {
+                text: &self.input[i1..i2],
+                end: head,
+            })
+        } else {
+            None
+        }
+    }
+
+    pub fn match_escaped(&self) -> Option<ScanMatch<'a>> {
+        let mut head = self.read_head.clone();
+
+        if head.current == Some(BACKSLASH) {
+            head.read_next_char();
+        } else {
+            return None;
+        }
+
+        let i1 = head.index;
+
+        if head.current.is_some() {
+            head.read_next_char();
+        } else {
+            return None;
+        }
+
+        let i2 = head.index;
+
+        Some(ScanMatch {
+            text: &self.input[i1..i2],
+            end: head,
+        })
+    }
+
+    pub fn match_raw_fragment(&self) -> Option<ScanMatch<'a>> {
+        let mut head = self.read_head.clone();
+
+        let i1 = head.index;
+
+        while head
+            .current
+            .is_some_and(|c| !(c == BACKTICK || c == NEW_LINE))
+        {
+            head.read_next_char();
+        }
+
+        let i2 = head.index;
+
+        if i1 == i2 {
+            None
+        } else {
+            Some(ScanMatch {
+                text: &self.input[i1..i2],
+                end: head,
+            })
+        }
+    }
+
+    pub fn match_data_value(&self) -> Option<ScanMatch<'a>> {
+        let mut head = self.read_head.clone();
+
+        let i1 = head.index;
+
+        // TODO: There are probably other things we want to reject from
+        // data value right?
+        while head
+            .current
+            .is_some_and(|c| !(c == SPACE || c == NEW_LINE || c == VERTICAL_BAR))
+        {
+            head.read_next_char();
+        }
+
+        let i2 = head.index;
+
+        if i1 == i2 {
+            None
+        } else {
+            Some(ScanMatch {
+                text: &self.input[i1..i2],
+                end: head,
+            })
+        }
+    }
+
+    pub fn match_markup_text(&self) -> Option<ScanMatch<'a>> {
+        let mut head = self.read_head.clone();
+
+        let i1 = head.index;
+
+        while head.current.is_some_and(|c| !MARKUP_CHARS.contains(&c)) {
+            head.read_next_char();
+        }
+
+        let i2 = head.index;
+
+        if i1 == i2 {
+            None
+        } else {
+            Some(ScanMatch {
+                text: &self.input[i1..i2],
+                end: head,
+            })
+        }
+    }
+
+    pub fn match_identifier(&self) -> Option<ScanMatch<'a>> {
+        let mut head = self.read_head.clone();
+
+        let i1 = head.index;
+
+        while head
+            .current
+            .is_some_and(|c| c.is_alphanumeric() || c == UNDERSCORE || c == DASH || c == FULL_STOP)
+        {
+            head.read_next_char();
+        }
+
+        let i2 = head.index;
+
+        if i1 == i2 {
+            None
+        } else {
+            Some(ScanMatch {
+                text: &self.input[i1..i2],
+                end: head,
+            })
+        }
+    }
+
+    pub fn match_structured_data_directive(&self) -> Option<ScanMatch<'a>> {
+        let mut head = self.read_head.clone();
+
+        if head.current == Some(AT_SIGN) {
+            head.read_next_char()
+        } else {
+            return None;
+        }
+
+        let i1 = head.index;
+        while head.current.is_some_and(|c| c.is_alphanumeric()) {
+            head.read_next_char();
+        }
+
+        let i2 = head.index;
+
+        // TODO: Strictly speaking we should not allow a match with an
+        // empty name, e.g just an '@'
+        Some(ScanMatch {
+            text: &self.input[i1..i2],
+            end: head,
+        })
+    }
+
+    pub fn match_container_directive(&self) -> Option<ScanMatch<'a>> {
+        let mut head = self.read_head.clone();
+
+        if head.current == Some(EXCLAMATION_MARK) {
+            head.read_next_char()
+        } else {
+            return None;
+        }
+
+        let i1 = head.index;
+        while head.current.is_some_and(|c| c.is_alphanumeric()) {
+            head.read_next_char();
+        }
+
+        let i2 = head.index;
+
+        Some(ScanMatch {
+            text: &self.input[i1..i2],
+            end: head,
+        })
+    }
+
+    pub fn match_block_directive(&self) -> Option<ScanMatch<'a>> {
+        let mut head = self.read_head.clone();
+
+        if head.current == Some(HASH) {
+            head.read_next_char()
+        } else {
+            return None;
+        }
+
+        let i1 = head.index;
+        while head.current.is_some_and(|c| c.is_alphanumeric()) {
+            head.read_next_char();
+        }
+
+        let i2 = head.index;
+
+        Some(ScanMatch {
+            text: &self.input[i1..i2],
+            end: head,
+        })
+    }
+
+    pub fn match_subsection_directive(&self) -> Option<ScanMatch<'a>> {
+        let mut head = self.read_head.clone();
+
+        let i1 = head.index;
+        if head.current == Some(SLASH) {
+            head.read_next_char()
+        } else {
+            return None;
+        }
+
+        if head.current == Some(SLASH) {
+            head.read_next_char()
+        } else {
+            return None;
+        }
+
+        if head.current == Some(SLASH) {
+            head.read_next_char()
+        } else {
+            return None;
+        }
+
+        let i2 = head.index;
+
+        while head.current.is_some_and(|c| c == SPACE) {
+            head.read_next_char();
+        }
+
+        Some(ScanMatch {
+            text: &self.input[i1..i2],
+            end: head,
+        })
+    }
+
+    pub fn match_section_directive(&self) -> Option<ScanMatch<'a>> {
+        let mut head = self.read_head.clone();
+
+        let i1 = head.index;
+
+        if head.current == Some(SLASH) {
+            head.read_next_char()
+        } else {
+            return None;
+        }
+
+        if head.current == Some(SLASH) {
+            head.read_next_char()
+        } else {
+            return None;
+        }
+
+        let i2 = head.index;
+
+        while head.current.is_some_and(|c| c == SPACE) {
+            head.read_next_char();
+        }
+
+        Some(ScanMatch {
+            text: &self.input[i1..i2],
+            end: head,
+        })
+    }
+
+    pub fn match_title_directive(&self) -> Option<ScanMatch<'a>> {
+        let mut head = self.read_head.clone();
+
+        let i1 = head.index;
+
+        if head.current == Some(SLASH) {
+            head.read_next_char()
+        } else {
+            return None;
+        }
+
+        let i2 = head.index;
+
+        while head.current.is_some_and(|c| c == SPACE) {
+            head.read_next_char();
+        }
+
+        Some(ScanMatch {
+            text: &self.input[i1..i2],
+            end: head,
+        })
+    }
+
+    pub fn match_delimited_container_start(&self) -> Option<ScanMatch<'a>> {
+        let mut head = self.read_head.clone();
+
+        let i1 = head.index;
+
+        if head.current == Some(GREATER_THAN) {
+            head.read_next_char()
+        } else {
+            return None;
+        }
+
+        if head.current == Some(GREATER_THAN) {
+            head.read_next_char()
+        } else {
+            return None;
+        }
+
+        if head.current == Some(GREATER_THAN) {
+            head.read_next_char()
+        } else {
+            return None;
+        }
+
+        let i2 = head.index;
+
+        while head.current.is_some_and(|c| c == SPACE) {
+            head.read_next_char();
+        }
+
+        Some(ScanMatch {
+            text: &self.input[i1..i2],
+            end: head,
+        })
+    }
+
+    pub fn match_delimited_container_end(&self) -> Option<ScanMatch<'a>> {
+        let mut head = self.read_head.clone();
+
+        let i1 = head.index;
+
+        if head.current == Some(LESS_THAN) {
+            head.read_next_char()
+        } else {
+            return None;
+        }
+
+        if head.current == Some(LESS_THAN) {
+            head.read_next_char()
+        } else {
+            return None;
+        }
+
+        if head.current == Some(LESS_THAN) {
+            head.read_next_char()
+        } else {
+            return None;
+        }
+
+        let i2 = head.index;
+
+        while head.current.is_some_and(|c| c == SPACE) {
+            head.read_next_char();
+        }
+
+        Some(ScanMatch {
+            text: &self.input[i1..i2],
+            end: head,
+        })
+    }
+
+    pub fn match_unknown(&self) -> ScanMatch<'a> {
+        let mut head = self.read_head.clone();
+
+        let i1 = head.index;
+
+        while head.current.is_some_and(|c| !(c == SPACE || c == NEW_LINE)) {
+            head.read_next_char();
+        }
+
+        let i2 = head.index;
+
+        ScanMatch {
+            text: &self.input[i1..i2],
+            end: head,
+        }
+    }
+
+    pub fn advance_past(&mut self, scan_match: &ScanMatch<'a>) {
+        //TODO: read head is a bit chunky to clone about the place no?
+        self.read_head = scan_match.end.clone();
+    }
+}
+
+// TODO: Could hold different positions for full extent of
+// matching text vs the sub text we are interested in
+// e.g escaped chars
+#[derive(Debug)]
+pub struct ScanMatch<'a> {
+    pub text: &'a str,
+    //TODO: Store a position instead of a head
+    end: ReadHead<'a>,
 }

@@ -1,8 +1,5 @@
-use std::fmt::Display;
-
 use crate::scan::*;
-
-use PeekItem::*;
+use std::fmt::Display;
 
 //TODO: Some kind of annotated example that describes the terminology
 //TODO: Make terminology less confusing
@@ -42,38 +39,6 @@ const MARKUP_CHARS: &[char; 10] = &[
     LEFT_SQUARE_BRACKET,
     RIGHT_SQUARE_BRACKET,
 ];
-
-fn char_usable_in_block_name(c: char) -> bool {
-    c.is_alphanumeric()
-}
-
-fn char_usable_in_identifier(c: char) -> bool {
-    c.is_alphanumeric() || c == '_' || c == '-' || c == '.'
-}
-
-fn char_usable_in_data_value(c: char) -> bool {
-    !(c.is_whitespace() || c == '|')
-}
-
-fn char_usable_in_parameter_name(c: char) -> bool {
-    c.is_alphanumeric()
-}
-
-fn char_usable_in_parameter_value(c: char) -> bool {
-    c.is_alphanumeric()
-}
-
-fn char_usable_in_title_text(c: char) -> bool {
-    c != SPACE && c != NEW_LINE
-}
-
-fn char_usable_in_text_frag(c: char) -> bool {
-    !MARKUP_CHARS.contains(&c)
-}
-
-fn char_usable_in_raw_frag(c: char) -> bool {
-    ![BACKTICK, NEW_LINE].contains(&c)
-}
 
 type Indent = usize;
 
@@ -228,6 +193,7 @@ impl<'a> Tokeniser<'a> {
             panic!("Posible infinite loop detected")
         }
 
+        //TODO: could we get position from the matches instead?
         let position = self.scanner.position();
 
         if self.mode_inference_needed {
@@ -245,8 +211,9 @@ impl<'a> Tokeniser<'a> {
         self.current = next_token;
     }
 
+    // TODO: Maybe now we are in a place to consider if we want to try and have
+    // the parser determine the lex mode again?
     fn infer_mode(&self) -> ContentMode {
-        //TODO: Just use peek API? (maybe peek api needs to be more ergonomic?)
         let scanner = &self.scanner;
         if scanner.is_on_char(SLASH) {
             Title
@@ -285,6 +252,9 @@ impl<'a> Tokeniser<'a> {
                     self.mode = next_mode;
                     self.upcoming_mode = None;
                 }
+                if matches!(self.current, CodeDelimiter) {
+                    self.in_raw = true;
+                }
             }
             BlockBreak => {
                 self.mode_inference_needed = true;
@@ -306,6 +276,12 @@ impl<'a> Tokeniser<'a> {
             StructuredDataDirective(_) => {
                 self.upcoming_mode = Some(StructuredData);
             }
+            CodeDelimiter if self.in_raw => {
+                self.in_raw = false;
+            }
+            RawDelimiter => {
+                self.in_raw = !self.in_raw;
+            }
             _ => {}
         };
     }
@@ -313,101 +289,71 @@ impl<'a> Tokeniser<'a> {
     fn read_container_delimiter_token(&mut self) -> Option<Token<'a>> {
         let scanner = &mut self.scanner;
 
-        match scanner.peek() {
-            (Text(t), _) if t.starts_with(DELIMITED_CONTAINER_START) => {
-                scanner.skip_chars(3);
-                scanner.skip_while_on(SPACE);
-                Some(DelimitedContainerStart)
-            }
-            (Text(t), _) if t.starts_with(DELIMITED_CONTAINER_END) => {
-                scanner.skip_chars(3);
-                scanner.skip_while_on(SPACE);
-                Some(DelimitedContainerEnd)
-            }
-            _ => None,
+        if let Some(delimiter) = scanner.match_delimited_container_start() {
+            scanner.advance_past(&delimiter);
+            Some(DelimitedContainerStart)
+        } else if let Some(delimiter) = scanner.match_delimited_container_end() {
+            scanner.advance_past(&delimiter);
+            Some(DelimitedContainerEnd)
+        } else {
+            None
         }
     }
 
     fn read_title_token(&mut self) -> Option<Token<'a>> {
         let scanner = &mut self.scanner;
 
-        match scanner.peek() {
-            (Text(t), _) if t.starts_with(SLASH) => {
-                scanner.skip_char();
-                if scanner.is_on_char(SLASH) {
-                    scanner.skip_char();
-                    if scanner.is_on_char(SLASH) {
-                        scanner.skip_char();
-                        scanner.skip_while_on(SPACE);
-                        Some(SubSectionDirective)
-                    } else {
-                        scanner.skip_while_on(SPACE);
-                        Some(SectionDirective)
-                    }
-                } else {
-                    scanner.skip_while_on(SPACE);
-                    Some(TitleDirective)
-                }
-            }
-
-            (Space, Text(_)) => {
-                scanner.skip_while_on(SPACE);
-                Some(TitleTextSpace)
-            }
-
-            (Text(t), _) if t.starts_with(char_usable_in_title_text) => {
-                let text = scanner.eat_while(char_usable_in_title_text);
-                Some(TitleText(text))
-            }
-            _ => None,
+        if let Some(directive) = scanner.match_subsection_directive() {
+            scanner.advance_past(&directive);
+            Some(SubSectionDirective)
+        } else if let Some(directive) = scanner.match_section_directive() {
+            scanner.advance_past(&directive);
+            Some(SectionDirective)
+        } else if let Some(directive) = scanner.match_title_directive() {
+            scanner.advance_past(&directive);
+            Some(TitleDirective)
+        } else if let Some(space) = scanner.match_title_text_space() {
+            scanner.advance_past(&space);
+            Some(TitleTextSpace)
+        } else if let Some(text) = scanner.match_markup_text() {
+            scanner.advance_past(&text);
+            Some(TitleText(text.text))
+        } else {
+            None
         }
     }
 
     fn read_header_token(&mut self) -> Option<Token<'a>> {
         let scanner = &mut self.scanner;
 
-        match scanner.peek() {
-            // text!(AT_SIGN) =>
-            (Text(t), _) if t.starts_with(AT_SIGN) => {
-                scanner.skip_char();
-                let name = scanner.eat_while(char_usable_in_block_name);
-                Some(StructuredDataDirective(name))
-            }
-            (Text(t), _) if t.starts_with(EXCLAMATION_MARK) => {
-                scanner.skip_char();
-                let name = scanner.eat_while(char_usable_in_block_name);
-                Some(ContainerDirective(name))
-            }
-            (Text(t), _) if t.starts_with(HASH) => {
-                scanner.skip_char();
-                let name = scanner.eat_while(char_usable_in_block_name);
-                Some(BlockDirective(name))
-            }
-
-            (Text(t), _) if t.starts_with(LEFT_BRACKET) => {
-                scanner.skip_char();
-                Some(BlockParametersStart)
-            }
-            (Text(t), _) if t.starts_with(RIGHT_BRACKET) => {
-                scanner.skip_char();
-                Some(BlockParametersEnd)
-            }
-            (Text(t), _) if t.starts_with(EQUALS) => {
-                scanner.skip_char();
-                Some(BlockParameterNameValueSeperator)
-            }
-            (Text(t), _)
-                if t.starts_with(char_usable_in_parameter_value)
-                    && self.current == BlockParameterNameValueSeperator =>
-            {
-                let value = scanner.eat_while(char_usable_in_parameter_value);
-                Some(BlockParameterValue(value))
-            }
-            (Text(t), _) if t.starts_with(char_usable_in_parameter_name) => {
-                let name = scanner.eat_while(char_usable_in_parameter_name);
-                Some(BlockParameterName(name))
-            }
-            _ => None,
+        if let Some(data_name) = scanner.match_structured_data_directive() {
+            scanner.advance_past(&data_name);
+            Some(StructuredDataDirective(data_name.text))
+        } else if let Some(container_name) = scanner.match_container_directive() {
+            scanner.advance_past(&container_name);
+            Some(ContainerDirective(container_name.text))
+        } else if let Some(block_name) = scanner.match_block_directive() {
+            scanner.advance_past(&block_name);
+            Some(BlockDirective(block_name.text))
+        } else if let Some(bracket) = scanner.match_char(LEFT_BRACKET) {
+            scanner.advance_past(&bracket);
+            Some(BlockParametersStart)
+        } else if let Some(bracket) = scanner.match_char(RIGHT_BRACKET) {
+            scanner.advance_past(&bracket);
+            Some(BlockParametersEnd)
+        } else if let Some(equals) = scanner.match_char(EQUALS) {
+            scanner.advance_past(&equals);
+            Some(BlockParameterNameValueSeperator)
+        } else if let Some(value) = scanner.match_identifier()
+            && self.current == BlockParameterNameValueSeperator
+        {
+            scanner.advance_past(&value);
+            Some(BlockParameterValue(value.text))
+        } else if let Some(value) = scanner.match_identifier() {
+            scanner.advance_past(&value);
+            Some(BlockParameterName(value.text))
+        } else {
+            None
         }
     }
 
@@ -416,29 +362,26 @@ impl<'a> Tokeniser<'a> {
         let position = scanner.position();
         let column = position.column;
 
-        match scanner.peek() {
-            (Text(t), _) if t.starts_with(char_usable_in_identifier) && column == 0 => {
-                let key = scanner.eat_while(char_usable_in_identifier);
-                scanner.skip_while_on(SPACE);
-                Some(DataIdentifier(key))
-            }
-            (Text(t), _) if t.starts_with(COLON) => {
-                scanner.skip_char();
-                scanner.skip_while_on(SPACE);
-                Some(DataKeyValueSeperator)
-            }
-            (Text(t), _) if t.starts_with(VERTICAL_BAR) => {
-                scanner.skip_char();
-                scanner.skip_while_on(SPACE);
-                Some(DataListSeperator)
-            }
-            (Text(t), _) if t.starts_with(char_usable_in_data_value) => {
-                let value = scanner.eat_while(char_usable_in_data_value);
-                scanner.skip_while_on(SPACE);
-                Some(DataValue(value))
-            }
-
-            _ => None,
+        if let Some(identifier) = scanner.match_identifier()
+            && column == 0
+        {
+            scanner.advance_past(&identifier);
+            // scanner.skip_while_on(SPACE);
+            Some(DataIdentifier(identifier.text))
+        } else if let Some(colon) = scanner.match_char(COLON) {
+            scanner.advance_past(&colon);
+            scanner.skip_while_on(SPACE);
+            Some(DataKeyValueSeperator)
+        } else if let Some(bar) = scanner.match_char(VERTICAL_BAR) {
+            scanner.advance_past(&bar);
+            scanner.skip_while_on(SPACE);
+            Some(DataListSeperator)
+        } else if let Some(value) = scanner.match_data_value() {
+            scanner.advance_past(&value);
+            scanner.skip_while_on(SPACE);
+            Some(DataValue(value.text))
+        } else {
+            None
         }
     }
 
@@ -453,191 +396,108 @@ impl<'a> Tokeniser<'a> {
                 DelimitedContainerStart | DelimitedContainerEnd
             );
 
-        let list_indent_allowed = self.mode == List && !self.in_raw && column == 0;
+        let in_list = self.mode == List;
+        let list_indent_allowed = in_list && !self.in_raw && column == 0;
 
-        match scanner.peek() {
-            (Text(t), _) if t.starts_with(BACKTICK) => {
-                self.in_raw = !self.in_raw;
-                scanner.skip_char();
-                Some(RawDelimiter)
-            }
-
-            // TODO: nasty - find a way to match either space or text
-            // both are valid for raw
-            (Text(t), _) | (Space, Text(t)) if t.starts_with(DASH) && list_indent_allowed => {
-                let space_count = scanner.skip_while_on(SPACE);
-                scanner.skip_char();
-                scanner.skip_while_on(SPACE);
-                Some(ListBullet(space_count))
-            }
-            (s @ Space | s @ Singlebreak, Text(t))
-                if markup_space_allowed
-                    && (s == Space
-                        || (s == Singlebreak
-                            && !t.starts_with(DELIMITED_CONTAINER_END)
-                            && !(self.mode == List && t.starts_with(DASH)))) =>
-            {
-                scanner.skip_while_on(SPACE);
-                if scanner.is_on_char(NEW_LINE) {
-                    scanner.skip_char();
-                }
-                scanner.skip_while_on(SPACE);
-                Some(MarkupTextSpace)
-            }
-            (_, _) if self.in_raw && scanner.is_on(char_usable_in_raw_frag) => {
-                let fragment = scanner.eat_while(char_usable_in_raw_frag);
-                Some(RawFragment(fragment))
-            }
-
-            (Text(t), _) if t.starts_with(LEFT_SQUARE_BRACKET) => {
-                scanner.skip_char();
-                Some(LinkOpeningDelimiter)
-            }
-
-            (Text(t), _) if t.starts_with(RIGHT_SQUARE_BRACKET) => {
-                scanner.skip_char();
-                Some(LinkClosingDelimiter)
-            }
-
-            (Text(t), _) if self.current == LinkClosingDelimiter && t.starts_with(AT_SIGN) => {
-                scanner.skip_char();
-                Some(LinkToReferenceJoiner)
-            }
-
-            (Text(t), _)
-                if self.current == LinkToReferenceJoiner
-                    && t.starts_with(char_usable_in_identifier) =>
-            {
-                let identifier = scanner.eat_while(char_usable_in_identifier);
-                Some(DataIdentifier(identifier))
-            }
-
-            (Text(t), _) if t.starts_with(ASTERISK) => {
-                scanner.skip_char();
-                Some(StrongDelimiter)
-            }
-
-            (Text(t), _) if t.starts_with(UNDERSCORE) => {
-                scanner.skip_char();
-                Some(EmphasisDelimiter)
-            }
-
-            (Text(t), _) if t.starts_with(TILDE) => {
-                scanner.skip_char();
-                Some(StrikethroughDelimiter)
-            }
-
-            (Text(t), _) if t.starts_with(BACKSLASH) => {
-                scanner.skip_char();
-                let text = scanner.eat_char();
-                Some(MarkupText(text))
-            }
-
-            (Text(t), _) if t.starts_with(char_usable_in_text_frag) => {
-                let text = scanner.eat_while(char_usable_in_text_frag);
-                Some(MarkupText(text))
-            }
-
-            _ => None,
+        if let Some(raw_delimiter) = scanner.match_char(BACKTICK) {
+            scanner.advance_past(&raw_delimiter);
+            Some(RawDelimiter)
+        } else if let Some((list_bullet, space_count)) = scanner.match_list_bullet()
+            && list_indent_allowed
+        {
+            scanner.advance_past(&list_bullet);
+            Some(ListBullet(space_count))
+        } else if let Some(markup_space) = scanner.match_markup_text_space(in_list)
+            && markup_space_allowed
+        {
+            scanner.advance_past(&markup_space);
+            Some(MarkupTextSpace)
+        } else if let Some(fragment) = scanner.match_raw_fragment()
+            && self.in_raw
+        {
+            scanner.advance_past(&fragment);
+            Some(RawFragment(fragment.text))
+        } else if let Some(delimiter) = scanner.match_char(LEFT_SQUARE_BRACKET) {
+            scanner.advance_past(&delimiter);
+            Some(LinkOpeningDelimiter)
+        } else if let Some(delimiter) = scanner.match_char(RIGHT_SQUARE_BRACKET) {
+            scanner.advance_past(&delimiter);
+            Some(LinkClosingDelimiter)
+        } else if let Some(at_sign) = scanner.match_char(AT_SIGN)
+            && self.current == LinkClosingDelimiter
+        {
+            scanner.advance_past(&at_sign);
+            Some(LinkToReferenceJoiner)
+        } else if let Some(identifier) = scanner.match_identifier()
+            && self.current == LinkToReferenceJoiner
+        {
+            scanner.advance_past(&identifier);
+            Some(DataIdentifier(identifier.text))
+        } else if let Some(strong_delimiter) = scanner.match_char(ASTERISK) {
+            scanner.advance_past(&strong_delimiter);
+            Some(StrongDelimiter)
+        } else if let Some(emphasis_delimiter) = scanner.match_char(UNDERSCORE) {
+            scanner.advance_past(&emphasis_delimiter);
+            Some(EmphasisDelimiter)
+        } else if let Some(strikethrough_delimiter) = scanner.match_char(TILDE) {
+            scanner.advance_past(&strikethrough_delimiter);
+            Some(StrikethroughDelimiter)
+        } else if let Some(escaped) = scanner.match_escaped() {
+            scanner.advance_past(&escaped);
+            Some(MarkupText(escaped.text))
+        } else if let Some(markup) = scanner.match_markup_text() {
+            scanner.advance_past(&markup);
+            Some(MarkupText(markup.text))
+        } else {
+            None
         }
     }
 
     fn read_code_block_token(&mut self) -> Option<Token<'a>> {
         let scanner = &mut self.scanner;
 
-        /*
-        if let Some(delimiter) = scanner.match(CODE_DELIMITER) {
-            self.in_raw = !self.in_raw;
+        if let Some(delimiter) = scanner.match_str(CODE_DELIMITER) {
             //TODO: could the 'advance' past actually be done by the match?
-            scanner.advance_past(delimiter)
+            scanner.advance_past(&delimiter);
             Some(CodeDelimiter)
-        } else if let Some(code) = scanner.match_until_line_starting_with(CODE_DELIMITER) {
+        } else if self.in_raw
+            && let Some(code) = scanner.match_until_line_starting_with(CODE_DELIMITER)
+        {
             // TODO: Consider line by line instead
             // Think: how to give a helpful error like 'unterminated code block'
-            scanner.advance_past(code)
-            Some(Code(code))
-        }
-        */
-
-        match scanner.peek() {
-            (Text(t), _) if t.starts_with(CODE_DELIMITER) => {
-                self.in_raw = !self.in_raw;
-                scanner.skip_chars(3);
-                Some(CodeDelimiter)
-            }
-
-            (_, _) if self.in_raw && self.current != CodeDelimiter => {
-                let code = scanner.eat_until_line_starting_with(CODE_DELIMITER);
-                Some(Code(code))
-            }
-            _ => None,
+            scanner.advance_past(&code);
+            Some(Code(code.text))
+        } else {
+            None
         }
     }
 
     fn read_generic_token(&mut self) -> Token<'a> {
         let scanner = &mut self.scanner;
 
-        // if let Some(multibreak) = scanner.on_multibreak() {
-        //     scanner.advance_past(multibreak);
-        //     return BlockBreak;
-        // }
-        /*
-        if let Some(multibreak) = scanner.is_on_multibreak() {
-            scanner.advance_past(multibreak);
+        // TODO: this if/let strucutre is probable not the final form..
+        // If we return the match and the new position, let code
+        // higher up apply the advance?
+        //
+        // Would it be nice if this could be inlinable
+        // i.e probably dont want a seperate scanner?
+        //
+        // Once we do have the final form, maybe start playing
+        // with some macros?
+
+        if let Some(blockbreak) = scanner.match_blockbreak() {
+            scanner.advance_past(&blockbreak);
             BlockBreak
-        } else if let Some(singlebreak) = scanner.is_on_singlebreak() {
-            scanner.advance_past(singlebreak);
+        } else if let Some(linebreak) = scanner.match_linebreak() {
+            scanner.advance_past(&linebreak);
             LineBreak
-        } else if let Some(end_of_input) = scanner.is_on_end_of_input() {
-            scanner.advance_to(end_of_input);
+        } else if let Some(end_of_input) = scanner.match_end_of_input() {
+            scanner.advance_past(&end_of_input);
             EndOfInput
-        } else if let Some(text) = scanner.is_on_text() {
-            scanner.advance_past(text);
-            Unknown(text.value)
-        } else if let Some(space) = scanner.is_on_space() {
-            scanner.advance_past(space);
-            Unknown(space.value)
         } else {
-            //TODO: This is a bit ugly
-            Unknown("")
-        }
-        */
-
-        /*
-            (Multibreak(m), _) => {
-                scanner.advance_to(multibreak.end)
-                scanner.skip_char();
-                scanner.skip_while_on_empty_line();
-                BlockBreak
-            }
-        */
-        match scanner.peek() {
-            (Multibreak, _) => {
-                scanner.skip_char();
-                scanner.skip_while_on_empty_line();
-                BlockBreak
-            }
-            (Singlebreak, _) => {
-                scanner.skip_while_on(SPACE);
-                scanner.skip_char();
-                LineBreak
-            }
-
-            (Space, End) => {
-                scanner.skip_while_on_whitespace();
-                EndOfInput
-            }
-
-            (End, _) => EndOfInput,
-
-            (Text(_), _) => {
-                let unknown = scanner.eat_while(|c| c != SPACE && c != NEW_LINE);
-                Unknown(unknown)
-            }
-            (Space, _) => {
-                let space = scanner.eat_while(|c| c == SPACE);
-                Unknown(space)
-            }
+            let unknown = scanner.match_unknown();
+            scanner.advance_past(&unknown);
+            Unknown(unknown.text)
         }
     }
 }

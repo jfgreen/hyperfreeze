@@ -1410,6 +1410,7 @@ mod test {
         // TODO: This is a bit meh
         // Would be better to have a missing blockbreak error or simmilar
         // Tokeniser should also not treat the # as completely unknown
+        // Or... we allow this and have it treated as text?
         let expected = UnexpectedToken("unknown '#paragraph' was not expected here".into());
 
         assert_parse_fails(input, expected);
@@ -2487,6 +2488,17 @@ mod test {
     }
 
     #[test]
+    fn at_sign_can_be_used_normally() {
+        let input = "C@ts are great @ that";
+
+        let expected = paragraph! {
+            text("C@ts are great @ that")
+        };
+
+        assert_parse_succeeds(input, expected);
+    }
+
+    #[test]
     fn whitespace_around_linked_text_is_rejected() {
         let input = concat!(
             "@references\n",
@@ -2614,6 +2626,31 @@ mod test {
         "Me...           ...ow.\n",
         "Meow!\n",
         };
+
+        assert_parse_succeeds(input, expected);
+    }
+
+    #[test]
+    fn code_block_then_paragraph() {
+        let input = concat!(
+            "#code\n",
+            "---\n",
+            "Meow?\n",
+            "---\n",
+            "\n",
+            "Hey, whats up?"
+        );
+
+        let expected = document! (
+            contents: {
+                code {
+                    "Meow?\n",
+                },
+                paragraph {
+                    text("Hey, whats up?")
+                }
+            }
+        );
 
         assert_parse_succeeds(input, expected);
     }

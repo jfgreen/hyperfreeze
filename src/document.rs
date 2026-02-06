@@ -52,6 +52,7 @@ pub enum Block {
     Code(String),
 }
 
+//TODO: Should a container have a title?
 #[derive(PartialEq, Eq, Debug)]
 pub struct Container {
     pub content: Box<[Block]>,
