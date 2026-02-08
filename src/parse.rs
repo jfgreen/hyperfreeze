@@ -2488,6 +2488,30 @@ mod test {
     }
 
     #[test]
+    fn references_with_odd_spacing() {
+        let input = concat!(
+            "@references\n",
+            "ripley_2020: https://example.com/a\n",
+            "ripley_2021:https://example.com/b\n",
+            "ripley_2022 :https://example.com/c\n",
+            "ripley_2023 : https://example.com/d\n",
+            "ripley_2024: https://example.com/e  \n",
+        );
+
+        let expected = document!(
+            references: {
+                ("ripley_2020", "https://example.com/a"),
+                ("ripley_2021", "https://example.com/b"),
+                ("ripley_2022", "https://example.com/c"),
+                ("ripley_2023", "https://example.com/d"),
+                ("ripley_2024", "https://example.com/e"),
+            }
+        );
+
+        assert_parse_succeeds(input, expected);
+    }
+
+    #[test]
     fn at_sign_can_be_used_normally() {
         let input = "C@ts are great @ that";
 

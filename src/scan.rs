@@ -138,15 +138,6 @@ impl<'a> Scanner<'a> {
             .starts_with(NEW_LINE)
     }
 
-    pub fn skip_while_on(&mut self, c: char) -> usize {
-        let mut i = 0;
-        while self.input[self.index()..].starts_with(c) {
-            self.read_head.read_next_char();
-            i += 1;
-        }
-        i
-    }
-
     pub fn skip_while_on_empty_line(&mut self) {
         // TODO: This is not that efficient...
         // once we have put in the work to look ahead,
@@ -494,6 +485,10 @@ impl<'a> Scanner<'a> {
 
         let i2 = head.index;
 
+        while head.current.is_some_and(|c| c == SPACE) {
+            head.read_next_char();
+        }
+
         if i1 == i2 {
             None
         } else {
@@ -540,13 +535,63 @@ impl<'a> Scanner<'a> {
         let i2 = head.index;
 
         if i1 == i2 {
-            None
-        } else {
-            Some(ScanMatch {
-                text: &self.input[i1..i2],
-                end: head,
-            })
+            return None;
         }
+
+        while head.current.is_some_and(|c| c == SPACE) {
+            head.read_next_char();
+        }
+
+        Some(ScanMatch {
+            text: &self.input[i1..i2],
+            end: head,
+        })
+    }
+
+    pub fn match_data_key_value_seperator(&self) -> Option<ScanMatch<'a>> {
+        let mut head = self.read_head.clone();
+
+        let i1 = head.index;
+
+        if head.current == Some(COLON) {
+            head.read_next_char()
+        } else {
+            return None;
+        }
+
+        let i2 = head.index;
+
+        while head.current.is_some_and(|c| c == SPACE) {
+            head.read_next_char();
+        }
+
+        Some(ScanMatch {
+            text: &self.input[i1..i2],
+            end: head,
+        })
+    }
+
+    pub fn match_data_list_seperator(&self) -> Option<ScanMatch<'a>> {
+        let mut head = self.read_head.clone();
+
+        let i1 = head.index;
+
+        if head.current == Some(VERTICAL_BAR) {
+            head.read_next_char()
+        } else {
+            return None;
+        }
+
+        let i2 = head.index;
+
+        while head.current.is_some_and(|c| c == SPACE) {
+            head.read_next_char();
+        }
+
+        Some(ScanMatch {
+            text: &self.input[i1..i2],
+            end: head,
+        })
     }
 
     pub fn match_structured_data_directive(&self) -> Option<ScanMatch<'a>> {

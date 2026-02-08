@@ -357,6 +357,7 @@ impl<'a> Tokeniser<'a> {
         }
     }
 
+    //TODO: remove &mut, do mutation in calling function
     fn read_structured_data_token(&mut self) -> Option<Token<'a>> {
         let scanner = &mut self.scanner;
         let position = scanner.position();
@@ -366,19 +367,15 @@ impl<'a> Tokeniser<'a> {
             && column == 0
         {
             scanner.advance_past(&identifier);
-            // scanner.skip_while_on(SPACE);
             Some(DataIdentifier(identifier.text))
-        } else if let Some(colon) = scanner.match_char(COLON) {
+        } else if let Some(colon) = scanner.match_data_key_value_seperator() {
             scanner.advance_past(&colon);
-            scanner.skip_while_on(SPACE);
             Some(DataKeyValueSeperator)
-        } else if let Some(bar) = scanner.match_char(VERTICAL_BAR) {
+        } else if let Some(bar) = scanner.match_data_list_seperator() {
             scanner.advance_past(&bar);
-            scanner.skip_while_on(SPACE);
             Some(DataListSeperator)
         } else if let Some(value) = scanner.match_data_value() {
             scanner.advance_past(&value);
-            scanner.skip_while_on(SPACE);
             Some(DataValue(value.text))
         } else {
             None
