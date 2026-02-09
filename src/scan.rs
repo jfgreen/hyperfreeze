@@ -161,6 +161,14 @@ impl<'a> Scanner<'a> {
     // compressed whitespace
     //
     // TODO: We could even end up with a small DSL for matching?
+    //
+    // From there it would be a small hop to replacing each function with a macro
+    // so wouldn't even need to worry about inlining
+    //
+    //
+    // e.g
+    //
+    // if let Some(blockbreak) = match_blockbreak!(scanner) { ... }
 
     pub fn match_list_bullet(&self) -> Option<(ScanMatch<'a>, usize)> {
         let mut head = self.read_head.clone();
@@ -308,11 +316,11 @@ impl<'a> Scanner<'a> {
         })
     }
 
-    pub fn match_str(&self, string: &str) -> Option<ScanMatch<'a>> {
+    pub fn match_code_delimiter(&self) -> Option<ScanMatch<'a>> {
         let mut head = self.read_head.clone();
         let i1 = head.index;
 
-        for char in string.chars() {
+        for char in CODE_DELIMITER.chars() {
             if head.current == Some(char) {
                 head.read_next_char();
                 continue;

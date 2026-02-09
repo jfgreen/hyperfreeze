@@ -453,7 +453,7 @@ impl<'a> Tokeniser<'a> {
     fn read_code_block_token(&mut self) -> Option<Token<'a>> {
         let scanner = &mut self.scanner;
 
-        if let Some(delimiter) = scanner.match_str(CODE_DELIMITER) {
+        if let Some(delimiter) = scanner.match_code_delimiter() {
             //TODO: could the 'advance' past actually be done by the match?
             scanner.advance_past(&delimiter);
             Some(CodeDelimiter)
