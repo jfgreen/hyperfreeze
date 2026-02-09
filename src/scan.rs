@@ -298,7 +298,49 @@ impl<'a> Scanner<'a> {
         })
     }
 
-    pub fn match_char(&self, c: char) -> Option<ScanMatch<'a>> {
+    //TODO: Rename these to be closer to semantic token names
+
+    pub fn match_left_bracket(&self) -> Option<ScanMatch<'a>> {
+        self.match_char(LEFT_BRACKET)
+    }
+
+    pub fn match_right_bracket(&self) -> Option<ScanMatch<'a>> {
+        self.match_char(RIGHT_BRACKET)
+    }
+
+    pub fn match_equals(&self) -> Option<ScanMatch<'a>> {
+        self.match_char(EQUALS)
+    }
+
+    pub fn match_raw_delimiter(&self) -> Option<ScanMatch<'a>> {
+        self.match_char(BACKTICK)
+    }
+
+    pub fn match_left_square_bracket(&self) -> Option<ScanMatch<'a>> {
+        self.match_char(LEFT_SQUARE_BRACKET)
+    }
+
+    pub fn match_right_square_bracket(&self) -> Option<ScanMatch<'a>> {
+        self.match_char(RIGHT_SQUARE_BRACKET)
+    }
+
+    pub fn match_at_sign(&self) -> Option<ScanMatch<'a>> {
+        self.match_char(AT_SIGN)
+    }
+
+    pub fn match_strong_delimiter(&self) -> Option<ScanMatch<'a>> {
+        self.match_char(ASTERISK)
+    }
+
+    pub fn match_emphasis_delimiter(&self) -> Option<ScanMatch<'a>> {
+        self.match_char(UNDERSCORE)
+    }
+
+    pub fn match_strikethrough_delimiter(&self) -> Option<ScanMatch<'a>> {
+        self.match_char(TILDE)
+    }
+
+    fn match_char(&self, c: char) -> Option<ScanMatch<'a>> {
         let mut head = self.read_head.clone();
         let i1 = head.index;
 

@@ -335,13 +335,13 @@ impl<'a> Tokeniser<'a> {
         } else if let Some(block_name) = scanner.match_block_directive() {
             scanner.advance_past(&block_name);
             Some(BlockDirective(block_name.text))
-        } else if let Some(bracket) = scanner.match_char(LEFT_BRACKET) {
+        } else if let Some(bracket) = scanner.match_left_bracket() {
             scanner.advance_past(&bracket);
             Some(BlockParametersStart)
-        } else if let Some(bracket) = scanner.match_char(RIGHT_BRACKET) {
+        } else if let Some(bracket) = scanner.match_right_bracket() {
             scanner.advance_past(&bracket);
             Some(BlockParametersEnd)
-        } else if let Some(equals) = scanner.match_char(EQUALS) {
+        } else if let Some(equals) = scanner.match_equals() {
             scanner.advance_past(&equals);
             Some(BlockParameterNameValueSeperator)
         } else if let Some(value) = scanner.match_identifier()
@@ -396,7 +396,7 @@ impl<'a> Tokeniser<'a> {
         let in_list = self.mode == List;
         let list_indent_allowed = in_list && !self.in_raw && column == 0;
 
-        if let Some(raw_delimiter) = scanner.match_char(BACKTICK) {
+        if let Some(raw_delimiter) = scanner.match_raw_delimiter() {
             scanner.advance_past(&raw_delimiter);
             Some(RawDelimiter)
         } else if let Some((list_bullet, space_count)) = scanner.match_list_bullet()
@@ -414,13 +414,13 @@ impl<'a> Tokeniser<'a> {
         {
             scanner.advance_past(&fragment);
             Some(RawFragment(fragment.text))
-        } else if let Some(delimiter) = scanner.match_char(LEFT_SQUARE_BRACKET) {
+        } else if let Some(delimiter) = scanner.match_left_square_bracket() {
             scanner.advance_past(&delimiter);
             Some(LinkOpeningDelimiter)
-        } else if let Some(delimiter) = scanner.match_char(RIGHT_SQUARE_BRACKET) {
+        } else if let Some(delimiter) = scanner.match_right_square_bracket() {
             scanner.advance_past(&delimiter);
             Some(LinkClosingDelimiter)
-        } else if let Some(at_sign) = scanner.match_char(AT_SIGN)
+        } else if let Some(at_sign) = scanner.match_at_sign()
             && self.current == LinkClosingDelimiter
         {
             scanner.advance_past(&at_sign);
@@ -430,13 +430,13 @@ impl<'a> Tokeniser<'a> {
         {
             scanner.advance_past(&identifier);
             Some(DataIdentifier(identifier.text))
-        } else if let Some(strong_delimiter) = scanner.match_char(ASTERISK) {
+        } else if let Some(strong_delimiter) = scanner.match_strong_delimiter() {
             scanner.advance_past(&strong_delimiter);
             Some(StrongDelimiter)
-        } else if let Some(emphasis_delimiter) = scanner.match_char(UNDERSCORE) {
+        } else if let Some(emphasis_delimiter) = scanner.match_emphasis_delimiter() {
             scanner.advance_past(&emphasis_delimiter);
             Some(EmphasisDelimiter)
-        } else if let Some(strikethrough_delimiter) = scanner.match_char(TILDE) {
+        } else if let Some(strikethrough_delimiter) = scanner.match_strikethrough_delimiter() {
             scanner.advance_past(&strikethrough_delimiter);
             Some(StrikethroughDelimiter)
         } else if let Some(escaped) = scanner.match_escaped() {
