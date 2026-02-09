@@ -6,7 +6,6 @@ const COLON: char = ':';
 const FULL_STOP: char = '.';
 const DELIMITED_CONTAINER_START: &str = ">>>";
 const DELIMITED_CONTAINER_END: &str = "<<<";
-const GREATER_THAN: char = '>';
 const LESS_THAN: char = '<';
 const CODE_DELIMITER: &str = "---";
 const HASH: char = '#';
@@ -822,22 +821,13 @@ impl<'a> Scanner<'a> {
 
         let i1 = head.index;
 
-        if head.current == Some(GREATER_THAN) {
-            head.read_next_char()
-        } else {
-            return None;
-        }
-
-        if head.current == Some(GREATER_THAN) {
-            head.read_next_char()
-        } else {
-            return None;
-        }
-
-        if head.current == Some(GREATER_THAN) {
-            head.read_next_char()
-        } else {
-            return None;
+        for char in DELIMITED_CONTAINER_START.chars() {
+            if head.current == Some(char) {
+                head.read_next_char();
+                continue;
+            } else {
+                return None;
+            }
         }
 
         let i2 = head.index;
