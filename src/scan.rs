@@ -328,15 +328,14 @@ impl<'a> Scanner<'a> {
         })
     }
 
-    //TODO: Kind of dont like this...
-    pub fn match_until_line_starting_with(&self, prefix: &str) -> Option<ScanMatch<'a>> {
+    pub fn match_code_block(&self) -> Option<ScanMatch<'a>> {
         let mut head = self.read_head.clone();
 
         let i1 = self.index();
 
         loop {
             let on_start_of_line = head.column == 0;
-            let prefix_matches = self.input[head.index..].starts_with(prefix);
+            let prefix_matches = self.input[head.index..].starts_with(CODE_DELIMITER);
             if on_start_of_line && prefix_matches {
                 let i2 = head.index;
                 return Some(ScanMatch {

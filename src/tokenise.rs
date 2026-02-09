@@ -458,7 +458,7 @@ impl<'a> Tokeniser<'a> {
             scanner.advance_past(&delimiter);
             Some(CodeDelimiter)
         } else if self.in_raw
-            && let Some(code) = scanner.match_until_line_starting_with(CODE_DELIMITER)
+            && let Some(code) = scanner.match_code_block()
         {
             // TODO: Consider line by line instead
             // Think: how to give a helpful error like 'unterminated code block'
