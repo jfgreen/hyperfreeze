@@ -404,7 +404,14 @@ impl<'a> Tokeniser<'a> {
         {
             scanner.advance_past(&list_bullet);
             Some(ListBullet(space_count))
-        } else if let Some(markup_space) = scanner.match_markup_text_space(in_list)
+        } else if let Some(markup_space) = scanner.match_markup_text_space()
+            && !in_list
+            && markup_space_allowed
+        {
+            scanner.advance_past(&markup_space);
+            Some(MarkupTextSpace)
+        } else if let Some(markup_space) = scanner.match_list_markup_text_space()
+            && in_list
             && markup_space_allowed
         {
             scanner.advance_past(&markup_space);

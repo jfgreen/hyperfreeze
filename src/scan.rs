@@ -202,29 +202,7 @@ impl<'a> Scanner<'a> {
         ))
     }
 
-    //TODO: Bool flag is kinda smelly
-    // Maybe if we get the parser telling us what tokens to expect it will
-    // be somewhat easier
-    //
-    // Could just have to matching funcs, one for list and one for markup
-    //
-    // Could add an intermediate layer that just handles the mode switching?
-    pub fn match_markup_text_space(&self, in_list: bool) -> Option<ScanMatch<'a>> {
-        // Whatever refactor we do here, needs to be about as simple as:
-        // (s @ Space | s @ Singlebreak, Text(t))
-        //     if markup_space_allowed
-        //         && (s == Space
-        //             || (s == Singlebreak
-        //                 && !t.starts_with(DELIMITED_CONTAINER_END)
-        //                 && !(self.mode == List && t.starts_with(DASH)))) =>
-        // {
-        //     scanner.skip_while_on(SPACE);
-        //     if scanner.is_on_char(NEW_LINE) {
-        //         scanner.skip_char();
-        //     }
-        //     scanner.skip_while_on(SPACE);
-        //     Some(MarkupTextSpace)
-        // }
+    pub fn match_markup_text_space(&self) -> Option<ScanMatch<'a>> {
         let mut head = self.read_head.clone();
         let i1 = head.index;
 
@@ -256,7 +234,49 @@ impl<'a> Scanner<'a> {
             return None;
         }
 
-        if has_new_line && in_list && head.current == Some(DASH) {
+        if head.current == None {
+            return None;
+        }
+
+        Some(ScanMatch {
+            text: &self.input[i1..i2],
+            end: head,
+        })
+    }
+
+    pub fn match_list_markup_text_space(&self) -> Option<ScanMatch<'a>> {
+        let mut head = self.read_head.clone();
+        let i1 = head.index;
+
+        while head.current == Some(SPACE) {
+            head.read_next_char();
+        }
+
+        let mut has_new_line = false;
+        if head.current == Some(NEW_LINE) {
+            head.read_next_char();
+            has_new_line = true;
+        }
+
+        if has_new_line && self.input[head.index..].starts_with(DELIMITED_CONTAINER_END) {
+            return None;
+        }
+
+        while head.current == Some(SPACE) {
+            head.read_next_char();
+        }
+
+        if head.current == Some(NEW_LINE) {
+            return None;
+        }
+
+        let i2 = head.index;
+
+        if i1 == i2 {
+            return None;
+        }
+
+        if has_new_line && head.current == Some(DASH) {
             return None;
         }
 
