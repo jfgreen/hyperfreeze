@@ -2,13 +2,12 @@ use std::fmt::Display;
 use std::fs::File;
 use std::io::prelude::*;
 
-use crate::parse::{parse_str, ParseError};
+use crate::parse::{ParseError, parse_str};
 use crate::render::render_html;
 
 mod document;
 mod parse;
 mod render;
-mod scan;
 mod tokenise;
 
 // Implementation ideas we could look into:
