@@ -567,20 +567,20 @@ impl<'a> ReadHead<'a> {
 }
 
 #[derive(Debug)]
-pub struct Scanner<'a> {
+struct Scanner<'a> {
     input: &'a str,
     read_head: ReadHead<'a>,
 }
 
 impl<'a> Scanner<'a> {
-    pub fn new(input: &'a str) -> Self {
+    fn new(input: &'a str) -> Self {
         Self {
             input,
             read_head: ReadHead::new(input),
         }
     }
 
-    pub fn position(&self) -> Position {
+    fn position(&self) -> Position {
         self.read_head.position()
     }
 
@@ -589,15 +589,15 @@ impl<'a> Scanner<'a> {
         self.read_head.index
     }
 
-    pub fn is_on_char(&self, c: char) -> bool {
+    fn is_on_char(&self, c: char) -> bool {
         self.input[self.index()..].starts_with(c)
     }
 
-    pub fn is_on_one_of(&self, chars: &[char]) -> bool {
+    fn is_on_one_of(&self, chars: &[char]) -> bool {
         self.input[self.index()..].starts_with(chars)
     }
 
-    pub fn is_on_empty_line(&self) -> bool {
+    fn is_on_empty_line(&self) -> bool {
         // TODO: if we could have an internal version of
         // this that returns the index of the new line
         // then we could be a lot more optimised
@@ -606,7 +606,7 @@ impl<'a> Scanner<'a> {
             .starts_with(NEW_LINE)
     }
 
-    pub fn skip_while_on_empty_line(&mut self) {
+    fn skip_while_on_empty_line(&mut self) {
         // TODO: This is not that efficient...
         // once we have put in the work to look ahead,
         // can we use this to skip to new line
@@ -638,7 +638,7 @@ impl<'a> Scanner<'a> {
     //
     // if let Some(blockbreak) = match_blockbreak!(scanner) { ... }
 
-    pub fn match_list_bullet(&self) -> Option<(ScanMatch<'a>, usize)> {
+    fn match_list_bullet(&self) -> Option<(ScanMatch<'a>, usize)> {
         let mut head = self.read_head.clone();
         let i1 = head.index;
 
@@ -670,7 +670,7 @@ impl<'a> Scanner<'a> {
         ))
     }
 
-    pub fn match_markup_text_space(&self) -> Option<ScanMatch<'a>> {
+    fn match_markup_text_space(&self) -> Option<ScanMatch<'a>> {
         let mut head = self.read_head.clone();
         let i1 = head.index;
 
@@ -712,7 +712,7 @@ impl<'a> Scanner<'a> {
         })
     }
 
-    pub fn match_list_markup_text_space(&self) -> Option<ScanMatch<'a>> {
+    fn match_list_markup_text_space(&self) -> Option<ScanMatch<'a>> {
         let mut head = self.read_head.clone();
         let i1 = head.index;
 
@@ -758,7 +758,7 @@ impl<'a> Scanner<'a> {
         })
     }
 
-    pub fn match_title_text_space(&self) -> Option<ScanMatch<'a>> {
+    fn match_title_text_space(&self) -> Option<ScanMatch<'a>> {
         let mut head = self.read_head.clone();
         let i1 = head.index;
 
@@ -788,43 +788,43 @@ impl<'a> Scanner<'a> {
 
     //TODO: Rename these to be closer to semantic token names
 
-    pub fn match_left_bracket(&self) -> Option<ScanMatch<'a>> {
+    fn match_left_bracket(&self) -> Option<ScanMatch<'a>> {
         self.match_char(LEFT_BRACKET)
     }
 
-    pub fn match_right_bracket(&self) -> Option<ScanMatch<'a>> {
+    fn match_right_bracket(&self) -> Option<ScanMatch<'a>> {
         self.match_char(RIGHT_BRACKET)
     }
 
-    pub fn match_equals(&self) -> Option<ScanMatch<'a>> {
+    fn match_equals(&self) -> Option<ScanMatch<'a>> {
         self.match_char(EQUALS)
     }
 
-    pub fn match_raw_delimiter(&self) -> Option<ScanMatch<'a>> {
+    fn match_raw_delimiter(&self) -> Option<ScanMatch<'a>> {
         self.match_char(BACKTICK)
     }
 
-    pub fn match_left_square_bracket(&self) -> Option<ScanMatch<'a>> {
+    fn match_left_square_bracket(&self) -> Option<ScanMatch<'a>> {
         self.match_char(LEFT_SQUARE_BRACKET)
     }
 
-    pub fn match_right_square_bracket(&self) -> Option<ScanMatch<'a>> {
+    fn match_right_square_bracket(&self) -> Option<ScanMatch<'a>> {
         self.match_char(RIGHT_SQUARE_BRACKET)
     }
 
-    pub fn match_at_sign(&self) -> Option<ScanMatch<'a>> {
+    fn match_at_sign(&self) -> Option<ScanMatch<'a>> {
         self.match_char(AT_SIGN)
     }
 
-    pub fn match_strong_delimiter(&self) -> Option<ScanMatch<'a>> {
+    fn match_strong_delimiter(&self) -> Option<ScanMatch<'a>> {
         self.match_char(ASTERISK)
     }
 
-    pub fn match_emphasis_delimiter(&self) -> Option<ScanMatch<'a>> {
+    fn match_emphasis_delimiter(&self) -> Option<ScanMatch<'a>> {
         self.match_char(UNDERSCORE)
     }
 
-    pub fn match_strikethrough_delimiter(&self) -> Option<ScanMatch<'a>> {
+    fn match_strikethrough_delimiter(&self) -> Option<ScanMatch<'a>> {
         self.match_char(TILDE)
     }
 
@@ -846,7 +846,7 @@ impl<'a> Scanner<'a> {
         })
     }
 
-    pub fn match_code_delimiter(&self) -> Option<ScanMatch<'a>> {
+    fn match_code_delimiter(&self) -> Option<ScanMatch<'a>> {
         let mut head = self.read_head.clone();
         let i1 = head.index;
 
@@ -866,7 +866,7 @@ impl<'a> Scanner<'a> {
         })
     }
 
-    pub fn match_code_block(&self) -> Option<ScanMatch<'a>> {
+    fn match_code_block(&self) -> Option<ScanMatch<'a>> {
         let mut head = self.read_head.clone();
 
         let i1 = self.index();
@@ -888,7 +888,7 @@ impl<'a> Scanner<'a> {
         }
     }
 
-    pub fn match_blockbreak(&self) -> Option<ScanMatch<'a>> {
+    fn match_blockbreak(&self) -> Option<ScanMatch<'a>> {
         //TODO: Maintain peek/lookahead on advance
         let mut head = self.read_head.clone();
 
@@ -916,7 +916,7 @@ impl<'a> Scanner<'a> {
         }
     }
 
-    pub fn match_linebreak(&self) -> Option<ScanMatch<'a>> {
+    fn match_linebreak(&self) -> Option<ScanMatch<'a>> {
         let mut head = self.read_head.clone();
 
         let i1 = head.index;
@@ -937,7 +937,7 @@ impl<'a> Scanner<'a> {
         }
     }
 
-    pub fn match_end_of_input(&self) -> Option<ScanMatch<'a>> {
+    fn match_end_of_input(&self) -> Option<ScanMatch<'a>> {
         let mut head = self.read_head.clone();
 
         let i1 = head.index;
@@ -957,7 +957,7 @@ impl<'a> Scanner<'a> {
         }
     }
 
-    pub fn match_escaped(&self) -> Option<ScanMatch<'a>> {
+    fn match_escaped(&self) -> Option<ScanMatch<'a>> {
         let mut head = self.read_head.clone();
 
         if head.current == Some(BACKSLASH) {
@@ -982,7 +982,7 @@ impl<'a> Scanner<'a> {
         })
     }
 
-    pub fn match_raw_fragment(&self) -> Option<ScanMatch<'a>> {
+    fn match_raw_fragment(&self) -> Option<ScanMatch<'a>> {
         let mut head = self.read_head.clone();
 
         let i1 = head.index;
@@ -1006,7 +1006,7 @@ impl<'a> Scanner<'a> {
         }
     }
 
-    pub fn match_data_value(&self) -> Option<ScanMatch<'a>> {
+    fn match_data_value(&self) -> Option<ScanMatch<'a>> {
         let mut head = self.read_head.clone();
 
         let i1 = head.index;
@@ -1036,7 +1036,7 @@ impl<'a> Scanner<'a> {
         }
     }
 
-    pub fn match_markup_text(&self) -> Option<ScanMatch<'a>> {
+    fn match_markup_text(&self) -> Option<ScanMatch<'a>> {
         let mut head = self.read_head.clone();
 
         let i1 = head.index;
@@ -1057,7 +1057,7 @@ impl<'a> Scanner<'a> {
         }
     }
 
-    pub fn match_identifier(&self) -> Option<ScanMatch<'a>> {
+    fn match_identifier(&self) -> Option<ScanMatch<'a>> {
         let mut head = self.read_head.clone();
 
         let i1 = head.index;
@@ -1085,7 +1085,7 @@ impl<'a> Scanner<'a> {
         })
     }
 
-    pub fn match_data_key_value_seperator(&self) -> Option<ScanMatch<'a>> {
+    fn match_data_key_value_seperator(&self) -> Option<ScanMatch<'a>> {
         let mut head = self.read_head.clone();
 
         let i1 = head.index;
@@ -1108,7 +1108,7 @@ impl<'a> Scanner<'a> {
         })
     }
 
-    pub fn match_data_list_seperator(&self) -> Option<ScanMatch<'a>> {
+    fn match_data_list_seperator(&self) -> Option<ScanMatch<'a>> {
         let mut head = self.read_head.clone();
 
         let i1 = head.index;
@@ -1131,7 +1131,7 @@ impl<'a> Scanner<'a> {
         })
     }
 
-    pub fn match_structured_data_directive(&self) -> Option<ScanMatch<'a>> {
+    fn match_structured_data_directive(&self) -> Option<ScanMatch<'a>> {
         let mut head = self.read_head.clone();
 
         if head.current == Some(AT_SIGN) {
@@ -1155,7 +1155,7 @@ impl<'a> Scanner<'a> {
         })
     }
 
-    pub fn match_container_directive(&self) -> Option<ScanMatch<'a>> {
+    fn match_container_directive(&self) -> Option<ScanMatch<'a>> {
         let mut head = self.read_head.clone();
 
         if head.current == Some(EXCLAMATION_MARK) {
@@ -1177,7 +1177,7 @@ impl<'a> Scanner<'a> {
         })
     }
 
-    pub fn match_block_directive(&self) -> Option<ScanMatch<'a>> {
+    fn match_block_directive(&self) -> Option<ScanMatch<'a>> {
         let mut head = self.read_head.clone();
 
         if head.current == Some(HASH) {
@@ -1199,7 +1199,7 @@ impl<'a> Scanner<'a> {
         })
     }
 
-    pub fn match_subsection_directive(&self) -> Option<ScanMatch<'a>> {
+    fn match_subsection_directive(&self) -> Option<ScanMatch<'a>> {
         let mut head = self.read_head.clone();
 
         let i1 = head.index;
@@ -1233,7 +1233,7 @@ impl<'a> Scanner<'a> {
         })
     }
 
-    pub fn match_section_directive(&self) -> Option<ScanMatch<'a>> {
+    fn match_section_directive(&self) -> Option<ScanMatch<'a>> {
         let mut head = self.read_head.clone();
 
         let i1 = head.index;
@@ -1262,7 +1262,7 @@ impl<'a> Scanner<'a> {
         })
     }
 
-    pub fn match_title_directive(&self) -> Option<ScanMatch<'a>> {
+    fn match_title_directive(&self) -> Option<ScanMatch<'a>> {
         let mut head = self.read_head.clone();
 
         let i1 = head.index;
@@ -1285,7 +1285,7 @@ impl<'a> Scanner<'a> {
         })
     }
 
-    pub fn match_delimited_container_start(&self) -> Option<ScanMatch<'a>> {
+    fn match_delimited_container_start(&self) -> Option<ScanMatch<'a>> {
         let mut head = self.read_head.clone();
 
         let i1 = head.index;
@@ -1311,7 +1311,7 @@ impl<'a> Scanner<'a> {
         })
     }
 
-    pub fn match_delimited_container_end(&self) -> Option<ScanMatch<'a>> {
+    fn match_delimited_container_end(&self) -> Option<ScanMatch<'a>> {
         let mut head = self.read_head.clone();
 
         let i1 = head.index;
@@ -1346,7 +1346,7 @@ impl<'a> Scanner<'a> {
         })
     }
 
-    pub fn match_unknown(&self) -> ScanMatch<'a> {
+    fn match_unknown(&self) -> ScanMatch<'a> {
         let mut head = self.read_head.clone();
 
         let i1 = head.index;
@@ -1363,7 +1363,7 @@ impl<'a> Scanner<'a> {
         }
     }
 
-    pub fn advance_past(&mut self, scan_match: &ScanMatch<'a>) {
+    fn advance_past(&mut self, scan_match: &ScanMatch<'a>) {
         //TODO: read head is a bit chunky to clone about the place no?
         self.read_head = scan_match.end.clone();
     }
@@ -1373,8 +1373,8 @@ impl<'a> Scanner<'a> {
 // matching text vs the sub text we are interested in
 // e.g escaped chars
 #[derive(Debug)]
-pub struct ScanMatch<'a> {
-    pub text: &'a str,
+struct ScanMatch<'a> {
+    text: &'a str,
     //TODO: Store a position instead of a head
     end: ReadHead<'a>,
 }
