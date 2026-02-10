@@ -346,12 +346,12 @@ impl<'a> Tokeniser<'a> {
         } else if let Some(equals) = scanner.match_equals() {
             scanner.advance_past(&equals);
             Some(BlockParameterNameValueSeperator)
-        } else if let Some(value) = scanner.match_identifier()
+        } else if let Some(value) = scanner.match_block_parameter_name_value_seperator()
             && self.current == BlockParameterNameValueSeperator
         {
             scanner.advance_past(&value);
             Some(BlockParameterValue(value.text))
-        } else if let Some(value) = scanner.match_identifier() {
+        } else if let Some(value) = scanner.match_block_parameter_name() {
             scanner.advance_past(&value);
             Some(BlockParameterName(value.text))
         } else {
@@ -365,7 +365,7 @@ impl<'a> Tokeniser<'a> {
         let position = scanner.position();
         let column = position.column;
 
-        if let Some(identifier) = scanner.match_identifier()
+        if let Some(identifier) = scanner.match_data_identifier()
             && column == 0
         {
             scanner.advance_past(&identifier);
@@ -434,7 +434,7 @@ impl<'a> Tokeniser<'a> {
         {
             scanner.advance_past(&at_sign);
             Some(LinkToReferenceJoiner)
-        } else if let Some(identifier) = scanner.match_identifier()
+        } else if let Some(identifier) = scanner.match_data_identifier()
             && self.current == LinkToReferenceJoiner
         {
             scanner.advance_past(&identifier);
@@ -1057,6 +1057,20 @@ impl<'a> Scanner<'a> {
         }
     }
 
+    fn match_block_parameter_name_value_seperator(&self) -> Option<ScanMatch<'a>> {
+        self.match_identifier()
+    }
+
+    fn match_block_parameter_name(&self) -> Option<ScanMatch<'a>> {
+        self.match_identifier()
+    }
+
+    fn match_data_identifier(&self) -> Option<ScanMatch<'a>> {
+        self.match_identifier()
+    }
+
+    //TODO: Do we need all three versions of identifier?
+    // Can we collapse the tokens into one?
     fn match_identifier(&self) -> Option<ScanMatch<'a>> {
         let mut head = self.read_head.clone();
 
