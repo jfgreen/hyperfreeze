@@ -202,10 +202,13 @@ impl<'a> Tokeniser<'a> {
             self.mode_inference_needed = false;
         }
 
-        let next_token = self.read_next_token();
+        let scan_match = self.read_next_token();
+        let next_token = scan_match.token;
         dbg!(next_token);
 
         self.set_forward_flags(next_token);
+
+        self.scanner.advance_past(&scan_match);
 
         self.token_count += 1;
         self.position = position;
@@ -227,13 +230,13 @@ impl<'a> Tokeniser<'a> {
         }
     }
 
-    fn read_next_token(&mut self) -> Token<'a> {
+    fn read_next_token(&self) -> ScanMatch<'a> {
         self.read_container_delimiter_token()
             .or_else(|| self.read_modal_token())
             .unwrap_or_else(|| self.read_generic_token())
     }
 
-    fn read_modal_token(&mut self) -> Option<Token<'a>> {
+    fn read_modal_token(&self) -> Option<ScanMatch<'a>> {
         match self.mode {
             Title => self.read_title_token(),
             Header => self.read_header_token(),
@@ -287,104 +290,85 @@ impl<'a> Tokeniser<'a> {
         };
     }
 
-    fn read_container_delimiter_token(&mut self) -> Option<Token<'a>> {
-        let scanner = &mut self.scanner;
+    fn read_container_delimiter_token(&self) -> Option<ScanMatch<'a>> {
+        let scanner = &self.scanner;
 
         if let Some(delimiter) = scanner.match_delimited_container_start() {
-            scanner.advance_past(&delimiter);
-            Some(DelimitedContainerStart)
+            Some(delimiter)
         } else if let Some(delimiter) = scanner.match_delimited_container_end() {
-            scanner.advance_past(&delimiter);
-            Some(DelimitedContainerEnd)
+            Some(delimiter)
         } else {
             None
         }
     }
 
-    fn read_title_token(&mut self) -> Option<Token<'a>> {
-        let scanner = &mut self.scanner;
+    fn read_title_token(&self) -> Option<ScanMatch<'a>> {
+        let scanner = &self.scanner;
 
         if let Some(directive) = scanner.match_subsection_directive() {
-            scanner.advance_past(&directive);
-            Some(SubSectionDirective)
+            Some(directive)
         } else if let Some(directive) = scanner.match_section_directive() {
-            scanner.advance_past(&directive);
-            Some(SectionDirective)
+            Some(directive)
         } else if let Some(directive) = scanner.match_title_directive() {
-            scanner.advance_past(&directive);
-            Some(TitleDirective)
+            Some(directive)
         } else if let Some(space) = scanner.match_title_text_space() {
-            scanner.advance_past(&space);
-            Some(TitleTextSpace)
+            Some(space)
         } else if let Some(text) = scanner.match_title_text() {
-            scanner.advance_past(&text);
-            Some(text.token)
+            Some(text)
         } else {
             None
         }
     }
 
-    fn read_header_token(&mut self) -> Option<Token<'a>> {
-        let scanner = &mut self.scanner;
+    fn read_header_token(&self) -> Option<ScanMatch<'a>> {
+        let scanner = &self.scanner;
 
         if let Some(data_name) = scanner.match_structured_data_directive() {
-            scanner.advance_past(&data_name);
-            Some(data_name.token)
+            Some(data_name)
         } else if let Some(container_name) = scanner.match_container_directive() {
-            scanner.advance_past(&container_name);
-            Some(container_name.token)
+            Some(container_name)
         } else if let Some(block_name) = scanner.match_block_directive() {
-            scanner.advance_past(&block_name);
-            Some(block_name.token)
-        } else if let Some(bracket) = scanner.match_block_parameters_start() {
-            scanner.advance_past(&bracket);
-            Some(BlockParametersStart)
-        } else if let Some(bracket) = scanner.match_block_parameters_end() {
-            scanner.advance_past(&bracket);
-            Some(BlockParametersEnd)
-        } else if let Some(equals) = scanner.match_block_parameter_name_value_seperator() {
-            scanner.advance_past(&equals);
-            Some(BlockParameterNameValueSeperator)
+            Some(block_name)
+        } else if let Some(start) = scanner.match_block_parameters_start() {
+            Some(start)
+        } else if let Some(end) = scanner.match_block_parameters_end() {
+            Some(end)
+        } else if let Some(seperator) = scanner.match_block_parameter_name_value_seperator() {
+            Some(seperator)
         } else if let Some(value) = scanner.match_block_parameter_value()
             && self.current == BlockParameterNameValueSeperator
         {
-            scanner.advance_past(&value);
-            Some(value.token)
+            Some(value)
         } else if let Some(value) = scanner.match_block_parameter_name() {
-            scanner.advance_past(&value);
-            Some(value.token)
+            Some(value)
         } else {
             None
         }
     }
 
     //TODO: remove &mut, do mutation in calling function
-    fn read_structured_data_token(&mut self) -> Option<Token<'a>> {
-        let scanner = &mut self.scanner;
+    fn read_structured_data_token(&self) -> Option<ScanMatch<'a>> {
+        let scanner = &self.scanner;
         let position = scanner.position();
         let column = position.column;
 
         if let Some(identifier) = scanner.match_data_identifier()
             && column == 0
         {
-            scanner.advance_past(&identifier);
-            Some(identifier.token)
-        } else if let Some(colon) = scanner.match_data_key_value_seperator() {
-            scanner.advance_past(&colon);
-            Some(DataKeyValueSeperator)
-        } else if let Some(bar) = scanner.match_data_list_seperator() {
-            scanner.advance_past(&bar);
-            Some(DataListSeperator)
+            Some(identifier)
+        } else if let Some(seperator) = scanner.match_data_key_value_seperator() {
+            Some(seperator)
+        } else if let Some(seperator) = scanner.match_data_list_seperator() {
+            Some(seperator)
         } else if let Some(value) = scanner.match_data_value() {
-            scanner.advance_past(&value);
-            Some(value.token)
+            Some(value)
         } else {
             None
         }
     }
 
-    fn read_markup_token(&mut self) -> Option<Token<'a>> {
-        let scanner = &mut self.scanner;
+    fn read_markup_token(&self) -> Option<ScanMatch<'a>> {
+        let scanner = &self.scanner;
         let position = scanner.position();
         let column = position.column;
 
@@ -398,87 +382,70 @@ impl<'a> Tokeniser<'a> {
         let list_indent_allowed = in_list && !self.in_raw && column == 0;
 
         if let Some(raw_delimiter) = scanner.match_raw_delimiter() {
-            scanner.advance_past(&raw_delimiter);
-            Some(RawDelimiter)
+            Some(raw_delimiter)
         } else if let Some(list_bullet) = scanner.match_list_bullet()
             && list_indent_allowed
         {
-            scanner.advance_past(&list_bullet);
-            Some(list_bullet.token)
+            Some(list_bullet)
         } else if let Some(markup_space) = scanner.match_markup_text_space()
             && !in_list
             && markup_space_allowed
         {
-            scanner.advance_past(&markup_space);
-            Some(MarkupTextSpace)
+            Some(markup_space)
         } else if let Some(markup_space) = scanner.match_list_markup_text_space()
             && in_list
             && markup_space_allowed
         {
-            scanner.advance_past(&markup_space);
-            Some(MarkupTextSpace)
+            Some(markup_space)
         } else if let Some(fragment) = scanner.match_raw_fragment()
             && self.in_raw
         {
-            scanner.advance_past(&fragment);
-            Some(fragment.token)
+            Some(fragment)
         } else if let Some(delimiter) = scanner.match_link_opening_delimiter() {
-            scanner.advance_past(&delimiter);
-            Some(LinkOpeningDelimiter)
+            Some(delimiter)
         } else if let Some(delimiter) = scanner.match_link_closing_delimiter() {
-            scanner.advance_past(&delimiter);
-            Some(LinkClosingDelimiter)
-        } else if let Some(at_sign) = scanner.match_link_to_reference_joiner()
+            Some(delimiter)
+        } else if let Some(joiner) = scanner.match_link_to_reference_joiner()
             && self.current == LinkClosingDelimiter
         {
-            scanner.advance_past(&at_sign);
-            Some(LinkToReferenceJoiner)
+            Some(joiner)
         } else if let Some(identifier) = scanner.match_data_identifier()
             && self.current == LinkToReferenceJoiner
         {
-            scanner.advance_past(&identifier);
-            Some(identifier.token)
+            Some(identifier)
         } else if let Some(strong_delimiter) = scanner.match_strong_delimiter() {
-            scanner.advance_past(&strong_delimiter);
-            Some(StrongDelimiter)
+            Some(strong_delimiter)
         } else if let Some(emphasis_delimiter) = scanner.match_emphasis_delimiter() {
-            scanner.advance_past(&emphasis_delimiter);
-            Some(EmphasisDelimiter)
+            Some(emphasis_delimiter)
         } else if let Some(strikethrough_delimiter) = scanner.match_strikethrough_delimiter() {
-            scanner.advance_past(&strikethrough_delimiter);
-            Some(StrikethroughDelimiter)
+            Some(strikethrough_delimiter)
         } else if let Some(escaped) = scanner.match_escaped_markup_text() {
-            scanner.advance_past(&escaped);
-            Some(escaped.token)
+            Some(escaped)
         } else if let Some(markup) = scanner.match_markup_text() {
-            scanner.advance_past(&markup);
-            Some(markup.token)
+            Some(markup)
         } else {
             None
         }
     }
 
-    fn read_code_block_token(&mut self) -> Option<Token<'a>> {
-        let scanner = &mut self.scanner;
+    fn read_code_block_token(&self) -> Option<ScanMatch<'a>> {
+        let scanner = &self.scanner;
 
         if let Some(delimiter) = scanner.match_code_delimiter() {
-            //TODO: could the 'advance' past actually be done by the match?
-            scanner.advance_past(&delimiter);
-            Some(CodeDelimiter)
+            Some(delimiter)
         } else if self.in_raw
             && let Some(code) = scanner.match_code_block()
         {
             // TODO: Consider line by line instead
             // Think: how to give a helpful error like 'unterminated code block'
-            scanner.advance_past(&code);
-            Some(code.token)
+            Some(code)
         } else {
             None
         }
     }
 
-    fn read_generic_token(&mut self) -> Token<'a> {
-        let scanner = &mut self.scanner;
+    fn read_generic_token(&self) -> ScanMatch<'a> {
+        let scanner = &self.scanner;
 
         // TODO: this if/let strucutre is probable not the final form..
         // If we return the match and the new position, let code
@@ -491,18 +458,14 @@ impl<'a> Tokeniser<'a> {
         // with some macros?
 
         if let Some(blockbreak) = scanner.match_blockbreak() {
-            scanner.advance_past(&blockbreak);
-            BlockBreak
+            blockbreak
         } else if let Some(linebreak) = scanner.match_linebreak() {
-            scanner.advance_past(&linebreak);
-            LineBreak
+            linebreak
         } else if let Some(end_of_input) = scanner.match_end_of_input() {
-            scanner.advance_past(&end_of_input);
-            EndOfInput
+            end_of_input
         } else {
             let unknown = scanner.match_unknown();
-            scanner.advance_past(&unknown);
-            unknown.token
+            unknown
         }
     }
 }
