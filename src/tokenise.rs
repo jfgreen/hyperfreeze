@@ -27,7 +27,6 @@ const AT_SIGN: char = '@';
 const EXCLAMATION_MARK: char = '!';
 const VERTICAL_BAR: char = '|';
 const FULL_STOP: char = '.';
-const LESS_THAN: char = '<';
 
 const MARKUP_CHARS: &[char; 10] = &[
     UNDERSCORE,
@@ -317,9 +316,9 @@ impl<'a> Tokeniser<'a> {
         } else if let Some(space) = scanner.match_title_text_space() {
             scanner.advance_past(&space);
             Some(TitleTextSpace)
-        } else if let Some(text) = scanner.match_markup_text() {
+        } else if let Some(text) = scanner.match_title_text() {
             scanner.advance_past(&text);
-            Some(TitleText(text.text))
+            Some(text.token)
         } else {
             None
         }
@@ -330,30 +329,30 @@ impl<'a> Tokeniser<'a> {
 
         if let Some(data_name) = scanner.match_structured_data_directive() {
             scanner.advance_past(&data_name);
-            Some(StructuredDataDirective(data_name.text))
+            Some(data_name.token)
         } else if let Some(container_name) = scanner.match_container_directive() {
             scanner.advance_past(&container_name);
-            Some(ContainerDirective(container_name.text))
+            Some(container_name.token)
         } else if let Some(block_name) = scanner.match_block_directive() {
             scanner.advance_past(&block_name);
-            Some(BlockDirective(block_name.text))
-        } else if let Some(bracket) = scanner.match_left_bracket() {
+            Some(block_name.token)
+        } else if let Some(bracket) = scanner.match_block_parameters_start() {
             scanner.advance_past(&bracket);
             Some(BlockParametersStart)
-        } else if let Some(bracket) = scanner.match_right_bracket() {
+        } else if let Some(bracket) = scanner.match_block_parameters_end() {
             scanner.advance_past(&bracket);
             Some(BlockParametersEnd)
-        } else if let Some(equals) = scanner.match_equals() {
+        } else if let Some(equals) = scanner.match_block_parameter_name_value_seperator() {
             scanner.advance_past(&equals);
             Some(BlockParameterNameValueSeperator)
-        } else if let Some(value) = scanner.match_block_parameter_name_value_seperator()
+        } else if let Some(value) = scanner.match_block_parameter_value()
             && self.current == BlockParameterNameValueSeperator
         {
             scanner.advance_past(&value);
-            Some(BlockParameterValue(value.text))
+            Some(value.token)
         } else if let Some(value) = scanner.match_block_parameter_name() {
             scanner.advance_past(&value);
-            Some(BlockParameterName(value.text))
+            Some(value.token)
         } else {
             None
         }
@@ -369,7 +368,7 @@ impl<'a> Tokeniser<'a> {
             && column == 0
         {
             scanner.advance_past(&identifier);
-            Some(DataIdentifier(identifier.text))
+            Some(identifier.token)
         } else if let Some(colon) = scanner.match_data_key_value_seperator() {
             scanner.advance_past(&colon);
             Some(DataKeyValueSeperator)
@@ -378,7 +377,7 @@ impl<'a> Tokeniser<'a> {
             Some(DataListSeperator)
         } else if let Some(value) = scanner.match_data_value() {
             scanner.advance_past(&value);
-            Some(DataValue(value.text))
+            Some(value.token)
         } else {
             None
         }
@@ -401,11 +400,11 @@ impl<'a> Tokeniser<'a> {
         if let Some(raw_delimiter) = scanner.match_raw_delimiter() {
             scanner.advance_past(&raw_delimiter);
             Some(RawDelimiter)
-        } else if let Some((list_bullet, space_count)) = scanner.match_list_bullet()
+        } else if let Some(list_bullet) = scanner.match_list_bullet()
             && list_indent_allowed
         {
             scanner.advance_past(&list_bullet);
-            Some(ListBullet(space_count))
+            Some(list_bullet.token)
         } else if let Some(markup_space) = scanner.match_markup_text_space()
             && !in_list
             && markup_space_allowed
@@ -422,14 +421,14 @@ impl<'a> Tokeniser<'a> {
             && self.in_raw
         {
             scanner.advance_past(&fragment);
-            Some(RawFragment(fragment.text))
-        } else if let Some(delimiter) = scanner.match_left_square_bracket() {
+            Some(fragment.token)
+        } else if let Some(delimiter) = scanner.match_link_opening_delimiter() {
             scanner.advance_past(&delimiter);
             Some(LinkOpeningDelimiter)
-        } else if let Some(delimiter) = scanner.match_right_square_bracket() {
+        } else if let Some(delimiter) = scanner.match_link_closing_delimiter() {
             scanner.advance_past(&delimiter);
             Some(LinkClosingDelimiter)
-        } else if let Some(at_sign) = scanner.match_at_sign()
+        } else if let Some(at_sign) = scanner.match_link_to_reference_joiner()
             && self.current == LinkClosingDelimiter
         {
             scanner.advance_past(&at_sign);
@@ -438,7 +437,7 @@ impl<'a> Tokeniser<'a> {
             && self.current == LinkToReferenceJoiner
         {
             scanner.advance_past(&identifier);
-            Some(DataIdentifier(identifier.text))
+            Some(identifier.token)
         } else if let Some(strong_delimiter) = scanner.match_strong_delimiter() {
             scanner.advance_past(&strong_delimiter);
             Some(StrongDelimiter)
@@ -448,12 +447,12 @@ impl<'a> Tokeniser<'a> {
         } else if let Some(strikethrough_delimiter) = scanner.match_strikethrough_delimiter() {
             scanner.advance_past(&strikethrough_delimiter);
             Some(StrikethroughDelimiter)
-        } else if let Some(escaped) = scanner.match_escaped() {
+        } else if let Some(escaped) = scanner.match_escaped_markup_text() {
             scanner.advance_past(&escaped);
-            Some(MarkupText(escaped.text))
+            Some(escaped.token)
         } else if let Some(markup) = scanner.match_markup_text() {
             scanner.advance_past(&markup);
-            Some(MarkupText(markup.text))
+            Some(markup.token)
         } else {
             None
         }
@@ -472,7 +471,7 @@ impl<'a> Tokeniser<'a> {
             // TODO: Consider line by line instead
             // Think: how to give a helpful error like 'unterminated code block'
             scanner.advance_past(&code);
-            Some(Code(code.text))
+            Some(code.token)
         } else {
             None
         }
@@ -503,7 +502,7 @@ impl<'a> Tokeniser<'a> {
         } else {
             let unknown = scanner.match_unknown();
             scanner.advance_past(&unknown);
-            Unknown(unknown.text)
+            unknown.token
         }
     }
 }
@@ -638,9 +637,8 @@ impl<'a> Scanner<'a> {
     //
     // if let Some(blockbreak) = match_blockbreak!(scanner) { ... }
 
-    fn match_list_bullet(&self) -> Option<(ScanMatch<'a>, usize)> {
+    fn match_list_bullet(&self) -> Option<ScanMatch<'a>> {
         let mut head = self.read_head.clone();
-        let i1 = head.index;
 
         let mut space_count = 0;
 
@@ -659,15 +657,10 @@ impl<'a> Scanner<'a> {
             head.read_next_char();
         }
 
-        let i2 = head.index;
-
-        Some((
-            ScanMatch {
-                text: &self.input[i1..i2],
-                end: head,
-            },
-            space_count,
-        ))
+        Some(ScanMatch {
+            token: ListBullet(space_count),
+            end: head,
+        })
     }
 
     fn match_markup_text_space(&self) -> Option<ScanMatch<'a>> {
@@ -707,7 +700,7 @@ impl<'a> Scanner<'a> {
         }
 
         Some(ScanMatch {
-            text: &self.input[i1..i2],
+            token: MarkupTextSpace,
             end: head,
         })
     }
@@ -753,14 +746,13 @@ impl<'a> Scanner<'a> {
         }
 
         Some(ScanMatch {
-            text: &self.input[i1..i2],
+            token: MarkupTextSpace,
             end: head,
         })
     }
 
     fn match_title_text_space(&self) -> Option<ScanMatch<'a>> {
         let mut head = self.read_head.clone();
-        let i1 = head.index;
 
         if head.current == Some(SPACE) {
             head.read_next_char();
@@ -772,8 +764,6 @@ impl<'a> Scanner<'a> {
             head.read_next_char();
         }
 
-        let i2 = head.index;
-
         let has_text_next = head.current.is_some_and(|c| c != SPACE && c != NEW_LINE);
 
         if !has_text_next {
@@ -781,74 +771,193 @@ impl<'a> Scanner<'a> {
         }
 
         Some(ScanMatch {
-            text: &self.input[i1..i2],
+            token: TitleTextSpace,
             end: head,
         })
     }
 
-    //TODO: Rename these to be closer to semantic token names
+    fn match_block_parameters_start(&self) -> Option<ScanMatch<'a>> {
+        {
+            let this = &self;
+            let mut head = this.read_head.clone();
 
-    fn match_left_bracket(&self) -> Option<ScanMatch<'a>> {
-        self.match_char(LEFT_BRACKET)
+            if head.current == Some(LEFT_BRACKET) {
+                head.read_next_char();
+            } else {
+                return None;
+            }
+
+            Some(ScanMatch {
+                token: BlockParametersStart,
+                end: head,
+            })
+        }
     }
 
-    fn match_right_bracket(&self) -> Option<ScanMatch<'a>> {
-        self.match_char(RIGHT_BRACKET)
+    fn match_block_parameters_end(&self) -> Option<ScanMatch<'a>> {
+        {
+            let this = &self;
+            let mut head = this.read_head.clone();
+
+            if head.current == Some(RIGHT_BRACKET) {
+                head.read_next_char();
+            } else {
+                return None;
+            }
+
+            Some(ScanMatch {
+                token: BlockParametersEnd,
+                end: head,
+            })
+        }
     }
 
-    fn match_equals(&self) -> Option<ScanMatch<'a>> {
-        self.match_char(EQUALS)
+    fn match_block_parameter_name_value_seperator(&self) -> Option<ScanMatch<'a>> {
+        {
+            let this = &self;
+            let mut head = this.read_head.clone();
+
+            if head.current == Some(EQUALS) {
+                head.read_next_char();
+            } else {
+                return None;
+            }
+
+            Some(ScanMatch {
+                token: BlockParameterNameValueSeperator,
+                end: head,
+            })
+        }
     }
 
     fn match_raw_delimiter(&self) -> Option<ScanMatch<'a>> {
-        self.match_char(BACKTICK)
+        {
+            let this = &self;
+            let mut head = this.read_head.clone();
+
+            if head.current == Some(BACKTICK) {
+                head.read_next_char();
+            } else {
+                return None;
+            }
+
+            Some(ScanMatch {
+                token: RawDelimiter,
+                end: head,
+            })
+        }
     }
 
-    fn match_left_square_bracket(&self) -> Option<ScanMatch<'a>> {
-        self.match_char(LEFT_SQUARE_BRACKET)
+    fn match_link_opening_delimiter(&self) -> Option<ScanMatch<'a>> {
+        {
+            let this = &self;
+            let mut head = this.read_head.clone();
+
+            if head.current == Some(LEFT_SQUARE_BRACKET) {
+                head.read_next_char();
+            } else {
+                return None;
+            }
+
+            Some(ScanMatch {
+                token: LinkOpeningDelimiter,
+                end: head,
+            })
+        }
     }
 
-    fn match_right_square_bracket(&self) -> Option<ScanMatch<'a>> {
-        self.match_char(RIGHT_SQUARE_BRACKET)
+    fn match_link_closing_delimiter(&self) -> Option<ScanMatch<'a>> {
+        {
+            let this = &self;
+            let mut head = this.read_head.clone();
+
+            if head.current == Some(RIGHT_SQUARE_BRACKET) {
+                head.read_next_char();
+            } else {
+                return None;
+            }
+
+            Some(ScanMatch {
+                token: LinkClosingDelimiter,
+                end: head,
+            })
+        }
     }
 
-    fn match_at_sign(&self) -> Option<ScanMatch<'a>> {
-        self.match_char(AT_SIGN)
+    fn match_link_to_reference_joiner(&self) -> Option<ScanMatch<'a>> {
+        {
+            let this = &self;
+            let mut head = this.read_head.clone();
+
+            if head.current == Some(AT_SIGN) {
+                head.read_next_char();
+            } else {
+                return None;
+            }
+
+            Some(ScanMatch {
+                token: LinkToReferenceJoiner,
+                end: head,
+            })
+        }
     }
 
     fn match_strong_delimiter(&self) -> Option<ScanMatch<'a>> {
-        self.match_char(ASTERISK)
+        {
+            let this = &self;
+            let mut head = this.read_head.clone();
+
+            if head.current == Some(ASTERISK) {
+                head.read_next_char();
+            } else {
+                return None;
+            }
+
+            Some(ScanMatch {
+                token: StrongDelimiter,
+                end: head,
+            })
+        }
     }
 
     fn match_emphasis_delimiter(&self) -> Option<ScanMatch<'a>> {
-        self.match_char(UNDERSCORE)
+        {
+            let this = &self;
+            let mut head = this.read_head.clone();
+
+            if head.current == Some(UNDERSCORE) {
+                head.read_next_char();
+            } else {
+                return None;
+            }
+
+            Some(ScanMatch {
+                token: EmphasisDelimiter,
+                end: head,
+            })
+        }
     }
 
     fn match_strikethrough_delimiter(&self) -> Option<ScanMatch<'a>> {
-        self.match_char(TILDE)
-    }
+        {
+            let this = &self;
+            let mut head = this.read_head.clone();
 
-    fn match_char(&self, c: char) -> Option<ScanMatch<'a>> {
-        let mut head = self.read_head.clone();
-        let i1 = head.index;
+            if head.current == Some(TILDE) {
+                head.read_next_char();
+            } else {
+                return None;
+            }
 
-        if head.current == Some(c) {
-            head.read_next_char();
-        } else {
-            return None;
+            Some(ScanMatch {
+                token: StrikethroughDelimiter,
+                end: head,
+            })
         }
-
-        let i2 = head.index;
-
-        Some(ScanMatch {
-            text: &self.input[i1..i2],
-            end: head,
-        })
     }
 
     fn match_code_delimiter(&self) -> Option<ScanMatch<'a>> {
         let mut head = self.read_head.clone();
-        let i1 = head.index;
 
         for char in CODE_DELIMITER.chars() {
             if head.current == Some(char) {
@@ -859,9 +968,8 @@ impl<'a> Scanner<'a> {
             }
         }
 
-        let i2 = head.index;
         Some(ScanMatch {
-            text: &self.input[i1..i2],
+            token: CodeDelimiter,
             end: head,
         })
     }
@@ -876,8 +984,9 @@ impl<'a> Scanner<'a> {
             let prefix_matches = self.input[head.index..].starts_with(CODE_DELIMITER);
             if on_start_of_line && prefix_matches {
                 let i2 = head.index;
+                let text = &self.input[i1..i2];
                 return Some(ScanMatch {
-                    text: &self.input[i1..i2],
+                    token: Code(text),
                     end: head,
                 });
             } else if head.current == None {
@@ -892,7 +1001,6 @@ impl<'a> Scanner<'a> {
         //TODO: Maintain peek/lookahead on advance
         let mut head = self.read_head.clone();
 
-        let i1 = head.index;
         let mut new_line_count = 0;
         loop {
             match head.current {
@@ -906,9 +1014,8 @@ impl<'a> Scanner<'a> {
         }
 
         if new_line_count > 1 {
-            let i2 = head.index;
             Some(ScanMatch {
-                text: &self.input[i1..i2],
+                token: BlockBreak,
                 end: head,
             })
         } else {
@@ -919,17 +1026,14 @@ impl<'a> Scanner<'a> {
     fn match_linebreak(&self) -> Option<ScanMatch<'a>> {
         let mut head = self.read_head.clone();
 
-        let i1 = head.index;
-
         while let Some(SPACE) = head.current {
             head.read_next_char();
         }
 
         if head.current == Some(NEW_LINE) {
             head.read_next_char();
-            let i2 = head.index;
             Some(ScanMatch {
-                text: &self.input[i1..i2],
+                token: LineBreak,
                 end: head,
             })
         } else {
@@ -940,16 +1044,13 @@ impl<'a> Scanner<'a> {
     fn match_end_of_input(&self) -> Option<ScanMatch<'a>> {
         let mut head = self.read_head.clone();
 
-        let i1 = head.index;
-
         while let Some(SPACE) = head.current {
             head.read_next_char();
         }
 
         if head.current == None {
-            let i2 = head.index;
             Some(ScanMatch {
-                text: &self.input[i1..i2],
+                token: EndOfInput,
                 end: head,
             })
         } else {
@@ -957,7 +1058,7 @@ impl<'a> Scanner<'a> {
         }
     }
 
-    fn match_escaped(&self) -> Option<ScanMatch<'a>> {
+    fn match_escaped_markup_text(&self) -> Option<ScanMatch<'a>> {
         let mut head = self.read_head.clone();
 
         if head.current == Some(BACKSLASH) {
@@ -975,9 +1076,10 @@ impl<'a> Scanner<'a> {
         }
 
         let i2 = head.index;
+        let text = &self.input[i1..i2];
 
         Some(ScanMatch {
-            text: &self.input[i1..i2],
+            token: MarkupText(text),
             end: head,
         })
     }
@@ -995,12 +1097,13 @@ impl<'a> Scanner<'a> {
         }
 
         let i2 = head.index;
+        let text = &self.input[i1..i2];
 
         if i1 == i2 {
             None
         } else {
             Some(ScanMatch {
-                text: &self.input[i1..i2],
+                token: RawFragment(text),
                 end: head,
             })
         }
@@ -1021,6 +1124,7 @@ impl<'a> Scanner<'a> {
         }
 
         let i2 = head.index;
+        let text = &self.input[i1..i2];
 
         while head.current.is_some_and(|c| c == SPACE) {
             head.read_next_char();
@@ -1030,7 +1134,7 @@ impl<'a> Scanner<'a> {
             None
         } else {
             Some(ScanMatch {
-                text: &self.input[i1..i2],
+                token: DataValue(text),
                 end: head,
             })
         }
@@ -1046,63 +1150,146 @@ impl<'a> Scanner<'a> {
         }
 
         let i2 = head.index;
+        let text = &self.input[i1..i2];
 
         if i1 == i2 {
             None
         } else {
             Some(ScanMatch {
-                text: &self.input[i1..i2],
+                token: MarkupText(text),
                 end: head,
             })
         }
     }
 
-    fn match_block_parameter_name_value_seperator(&self) -> Option<ScanMatch<'a>> {
-        self.match_identifier()
-    }
-
-    fn match_block_parameter_name(&self) -> Option<ScanMatch<'a>> {
-        self.match_identifier()
-    }
-
-    fn match_data_identifier(&self) -> Option<ScanMatch<'a>> {
-        self.match_identifier()
-    }
-
-    //TODO: Do we need all three versions of identifier?
-    // Can we collapse the tokens into one?
-    fn match_identifier(&self) -> Option<ScanMatch<'a>> {
+    //TODO: This is the same as match_markup_text
+    fn match_title_text(&self) -> Option<ScanMatch<'a>> {
         let mut head = self.read_head.clone();
 
         let i1 = head.index;
 
-        while head
-            .current
-            .is_some_and(|c| c.is_alphanumeric() || c == UNDERSCORE || c == DASH || c == FULL_STOP)
-        {
+        while head.current.is_some_and(|c| !MARKUP_CHARS.contains(&c)) {
             head.read_next_char();
         }
 
         let i2 = head.index;
+        let text = &self.input[i1..i2];
 
         if i1 == i2 {
-            return None;
+            None
+        } else {
+            Some(ScanMatch {
+                token: TitleText(text),
+                end: head,
+            })
         }
+    }
 
-        while head.current.is_some_and(|c| c == SPACE) {
-            head.read_next_char();
+    //TODO:
+    //
+    // These are all the same logic
+    //
+    // match_data_identifier
+    // match_block_parameter_value
+    // match_block_parameter_name
+    //
+    // Can we collapse the tokens into one?
+
+    fn match_block_parameter_value(&self) -> Option<ScanMatch<'a>> {
+        {
+            let this = &self;
+            let mut head = this.read_head.clone();
+
+            let i1 = head.index;
+
+            while head.current.is_some_and(|c| {
+                c.is_alphanumeric() || c == UNDERSCORE || c == DASH || c == FULL_STOP
+            }) {
+                head.read_next_char();
+            }
+
+            let i2 = head.index;
+            let text = &this.input[i1..i2];
+
+            if i1 == i2 {
+                return None;
+            }
+
+            while head.current.is_some_and(|c| c == SPACE) {
+                head.read_next_char();
+            }
+
+            Some(ScanMatch {
+                token: BlockParameterValue(text),
+                end: head,
+            })
         }
+    }
 
-        Some(ScanMatch {
-            text: &self.input[i1..i2],
-            end: head,
-        })
+    fn match_block_parameter_name(&self) -> Option<ScanMatch<'a>> {
+        {
+            let this = &self;
+            let mut head = this.read_head.clone();
+
+            let i1 = head.index;
+
+            while head.current.is_some_and(|c| {
+                c.is_alphanumeric() || c == UNDERSCORE || c == DASH || c == FULL_STOP
+            }) {
+                head.read_next_char();
+            }
+
+            let i2 = head.index;
+            let text = &this.input[i1..i2];
+
+            if i1 == i2 {
+                return None;
+            }
+
+            while head.current.is_some_and(|c| c == SPACE) {
+                head.read_next_char();
+            }
+
+            Some(ScanMatch {
+                token: BlockParameterName(text),
+                end: head,
+            })
+        }
+    }
+
+    fn match_data_identifier(&self) -> Option<ScanMatch<'a>> {
+        {
+            let this = &self;
+            let mut head = this.read_head.clone();
+
+            let i1 = head.index;
+
+            while head.current.is_some_and(|c| {
+                c.is_alphanumeric() || c == UNDERSCORE || c == DASH || c == FULL_STOP
+            }) {
+                head.read_next_char();
+            }
+
+            let i2 = head.index;
+            let text = &this.input[i1..i2];
+
+            if i1 == i2 {
+                return None;
+            }
+
+            while head.current.is_some_and(|c| c == SPACE) {
+                head.read_next_char();
+            }
+
+            Some(ScanMatch {
+                token: DataIdentifier(text),
+                end: head,
+            })
+        }
     }
 
     fn match_data_key_value_seperator(&self) -> Option<ScanMatch<'a>> {
         let mut head = self.read_head.clone();
-
-        let i1 = head.index;
 
         if head.current == Some(COLON) {
             head.read_next_char()
@@ -1110,14 +1297,12 @@ impl<'a> Scanner<'a> {
             return None;
         }
 
-        let i2 = head.index;
-
         while head.current.is_some_and(|c| c == SPACE) {
             head.read_next_char();
         }
 
         Some(ScanMatch {
-            text: &self.input[i1..i2],
+            token: DataKeyValueSeperator,
             end: head,
         })
     }
@@ -1125,22 +1310,18 @@ impl<'a> Scanner<'a> {
     fn match_data_list_seperator(&self) -> Option<ScanMatch<'a>> {
         let mut head = self.read_head.clone();
 
-        let i1 = head.index;
-
         if head.current == Some(VERTICAL_BAR) {
             head.read_next_char()
         } else {
             return None;
         }
 
-        let i2 = head.index;
-
         while head.current.is_some_and(|c| c == SPACE) {
             head.read_next_char();
         }
 
         Some(ScanMatch {
-            text: &self.input[i1..i2],
+            token: DataListSeperator,
             end: head,
         })
     }
@@ -1160,11 +1341,12 @@ impl<'a> Scanner<'a> {
         }
 
         let i2 = head.index;
+        let text = &self.input[i1..i2];
 
         // TODO: Strictly speaking we should not allow a match with an
         // empty name, e.g just an '@'
         Some(ScanMatch {
-            text: &self.input[i1..i2],
+            token: StructuredDataDirective(text),
             end: head,
         })
     }
@@ -1184,9 +1366,10 @@ impl<'a> Scanner<'a> {
         }
 
         let i2 = head.index;
+        let text = &self.input[i1..i2];
 
         Some(ScanMatch {
-            text: &self.input[i1..i2],
+            token: ContainerDirective(text),
             end: head,
         })
     }
@@ -1206,9 +1389,10 @@ impl<'a> Scanner<'a> {
         }
 
         let i2 = head.index;
+        let text = &self.input[i1..i2];
 
         Some(ScanMatch {
-            text: &self.input[i1..i2],
+            token: BlockDirective(text),
             end: head,
         })
     }
@@ -1216,7 +1400,6 @@ impl<'a> Scanner<'a> {
     fn match_subsection_directive(&self) -> Option<ScanMatch<'a>> {
         let mut head = self.read_head.clone();
 
-        let i1 = head.index;
         if head.current == Some(SLASH) {
             head.read_next_char()
         } else {
@@ -1234,15 +1417,13 @@ impl<'a> Scanner<'a> {
         } else {
             return None;
         }
-
-        let i2 = head.index;
 
         while head.current.is_some_and(|c| c == SPACE) {
             head.read_next_char();
         }
 
         Some(ScanMatch {
-            text: &self.input[i1..i2],
+            token: SubSectionDirective,
             end: head,
         })
     }
@@ -1250,8 +1431,6 @@ impl<'a> Scanner<'a> {
     fn match_section_directive(&self) -> Option<ScanMatch<'a>> {
         let mut head = self.read_head.clone();
 
-        let i1 = head.index;
-
         if head.current == Some(SLASH) {
             head.read_next_char()
         } else {
@@ -1263,15 +1442,13 @@ impl<'a> Scanner<'a> {
         } else {
             return None;
         }
-
-        let i2 = head.index;
 
         while head.current.is_some_and(|c| c == SPACE) {
             head.read_next_char();
         }
 
         Some(ScanMatch {
-            text: &self.input[i1..i2],
+            token: SectionDirective,
             end: head,
         })
     }
@@ -1279,30 +1456,24 @@ impl<'a> Scanner<'a> {
     fn match_title_directive(&self) -> Option<ScanMatch<'a>> {
         let mut head = self.read_head.clone();
 
-        let i1 = head.index;
-
         if head.current == Some(SLASH) {
             head.read_next_char()
         } else {
             return None;
         }
 
-        let i2 = head.index;
-
         while head.current.is_some_and(|c| c == SPACE) {
             head.read_next_char();
         }
 
         Some(ScanMatch {
-            text: &self.input[i1..i2],
+            token: TitleDirective,
             end: head,
         })
     }
 
     fn match_delimited_container_start(&self) -> Option<ScanMatch<'a>> {
         let mut head = self.read_head.clone();
-
-        let i1 = head.index;
 
         for char in DELIMITED_CONTAINER_START.chars() {
             if head.current == Some(char) {
@@ -1313,14 +1484,12 @@ impl<'a> Scanner<'a> {
             }
         }
 
-        let i2 = head.index;
-
         while head.current.is_some_and(|c| c == SPACE) {
             head.read_next_char();
         }
 
         Some(ScanMatch {
-            text: &self.input[i1..i2],
+            token: DelimitedContainerStart,
             end: head,
         })
     }
@@ -1328,34 +1497,21 @@ impl<'a> Scanner<'a> {
     fn match_delimited_container_end(&self) -> Option<ScanMatch<'a>> {
         let mut head = self.read_head.clone();
 
-        let i1 = head.index;
-
-        if head.current == Some(LESS_THAN) {
-            head.read_next_char()
-        } else {
-            return None;
+        for char in DELIMITED_CONTAINER_END.chars() {
+            if head.current == Some(char) {
+                head.read_next_char();
+                continue;
+            } else {
+                return None;
+            }
         }
-
-        if head.current == Some(LESS_THAN) {
-            head.read_next_char()
-        } else {
-            return None;
-        }
-
-        if head.current == Some(LESS_THAN) {
-            head.read_next_char()
-        } else {
-            return None;
-        }
-
-        let i2 = head.index;
 
         while head.current.is_some_and(|c| c == SPACE) {
             head.read_next_char();
         }
 
         Some(ScanMatch {
-            text: &self.input[i1..i2],
+            token: DelimitedContainerEnd,
             end: head,
         })
     }
@@ -1370,9 +1526,10 @@ impl<'a> Scanner<'a> {
         }
 
         let i2 = head.index;
+        let text = &self.input[i1..i2];
 
         ScanMatch {
-            text: &self.input[i1..i2],
+            token: Unknown(text),
             end: head,
         }
     }
@@ -1388,7 +1545,7 @@ impl<'a> Scanner<'a> {
 // e.g escaped chars
 #[derive(Debug)]
 struct ScanMatch<'a> {
-    text: &'a str,
+    token: Token<'a>,
     //TODO: Store a position instead of a head
     end: ReadHead<'a>,
 }
