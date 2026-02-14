@@ -1,4 +1,5 @@
-use std::fmt::Display;
+use std::fmt::{self, Display, Formatter};
+use std::marker::PhantomData;
 use std::str::CharIndices;
 
 //TODO: Some kind of annotated example that describes the terminology
@@ -7,9 +8,9 @@ use std::str::CharIndices;
 const SPACE: char = ' ';
 const NEW_LINE: char = '\n';
 const COLON: char = ':';
-const DELIMITED_CONTAINER_START: &str = ">>>";
-const DELIMITED_CONTAINER_END: &str = "<<<";
-const CODE_DELIMITER: &str = "---";
+const CONTAINER_START_PATTERN: &str = ">>>";
+const CONTAINER_END_PATTERN: &str = "<<<";
+const CODE_DELIMITER_PATTERN: &str = "---";
 const HASH: char = '#';
 const LEFT_SQUARE_BRACKET: char = '[';
 const RIGHT_SQUARE_BRACKET: char = ']';
@@ -41,126 +42,876 @@ const MARKUP_CHARS: &[char; 10] = &[
     RIGHT_SQUARE_BRACKET,
 ];
 
-type Indent = usize;
+//TODO: Use a macro to clear up token building
 
-// TODO: Maybe we are tring to be too abstracted / high level in these tokens?
-// TODO: Would having _every_ token have a value (aka literial) be simpler?
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub enum Token<'a> {
-    StartOfInput,
-    EndOfInput,
-    Unknown(&'a str),
-    StructuredDataDirective(&'a str),
-    TitleDirective,
-    SectionDirective,
-    SubSectionDirective,
-    ContainerDirective(&'a str),
-    BlockDirective(&'a str),
-    BlockParametersStart,
-    BlockParametersEnd,
-    BlockParameterName(&'a str),
-    BlockParameterValue(&'a str),
-    //TODO: This name is meh, just call it what it is: equals sign?
-    BlockParameterNameValueSeperator,
-    BlockBreak,
-    DataListSeperator,
-    DataKeyValueSeperator,
-    DataIdentifier(&'a str),
-    DataValue(&'a str),
-    TitleText(&'a str),
-    TitleTextSpace,
-    LineBreak,
-    StrongDelimiter,
-    EmphasisDelimiter,
-    StrikethroughDelimiter,
-    RawDelimiter,
-    RawFragment(&'a str),
-    MarkupText(&'a str),
-    MarkupTextSpace,
-    Code(&'a str),
-    LinkOpeningDelimiter,
-    LinkClosingDelimiter,
-    LinkToReferenceJoiner,
-    ListBullet(Indent),
-    CodeDelimiter,
+pub enum TokenValue<'a> {
+    EndOfInput(EndOfInput),
+    TitleDirective(TitleDirective),
+    SectionDirective(SectionDirective),
+    SubSectionDirective(SubSectionDirective),
+    BlockParametersStart(BlockParametersStart),
+    BlockParametersEnd(BlockParametersEnd),
+    //TODO: This name is meh - just call it what it is: equals sign?
+    BlockParameterNameValueSeperator(BlockParameterNameValueSeperator),
+    BlockBreak(BlockBreak),
+    DataListSeperator(DataListSeperator),
+    DataKeyValueSeperator(DataKeyValueSeperator),
+    TitleTextSpace(TitleTextSpace),
+    LineBreak(LineBreak),
+    StrongDelimiter(StrongDelimiter),
+    EmphasisDelimiter(EmphasisDelimiter),
+    StrikethroughDelimiter(StrikethroughDelimiter),
+    RawDelimiter(RawDelimiter),
+    MarkupTextSpace(MarkupTextSpace),
+    LinkOpeningDelimiter(LinkOpeningDelimiter),
+    LinkClosingDelimiter(LinkClosingDelimiter),
+    LinkToReferenceJoiner(LinkToReferenceJoiner),
+    CodeDelimiter(CodeDelimiter),
     //TODO: More rubbish naming
-    DelimitedContainerStart,
-    DelimitedContainerEnd,
+    DelimitedContainerStart(DelimitedContainerStart),
+    DelimitedContainerEnd(DelimitedContainerEnd),
+    Unknown(Unknown<'a>),
+    StructuredDataDirective(StructuredDataDirective<'a>),
+    ContainerDirective(ContainerDirective<'a>),
+    BlockDirective(BlockDirective<'a>),
+    BlockParameterName(BlockParameterName<'a>),
+    BlockParameterValue(BlockParameterValue<'a>),
+    DataIdentifier(DataIdentifier<'a>),
+    DataValue(DataValue<'a>),
+    TitleText(TitleText<'a>),
+    MarkupText(MarkupText<'a>),
+    RawFragment(RawFragment<'a>),
+    Code(Code<'a>),
+    ListBullet(ListBullet),
 }
 
-impl Display for Token<'_> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            StartOfInput => write!(f, "start of input"),
-            EndOfInput => write!(f, "end of input"),
-            Unknown(value) => write!(f, "unknown '{value}'"),
-            StructuredDataDirective(title) => write!(f, "structured data directive '{title}'"),
-            TitleDirective => write!(f, "document directive"),
-            SectionDirective => write!(f, "section directive"),
-            SubSectionDirective => write!(f, "subsection directive"),
-            ContainerDirective(title) => write!(f, "container directive '{title}'"),
-            BlockDirective(title) => write!(f, "block directive {title}"),
-            BlockParametersStart => write!(f, "block parameters start '('"),
-            BlockParametersEnd => write!(f, "block parameters end ')'"),
-            BlockParameterName(name) => write!(f, "block parameter name '{name}'"),
-            BlockParameterValue(value) => write!(f, "block parameter value '{value}'"),
-            BlockParameterNameValueSeperator => write!(f, "block parameter name value seperator"),
-            BlockBreak => write!(f, "block break"),
-            DataListSeperator => write!(f, "metadata list seperator"),
-            DataKeyValueSeperator => write!(f, "metadata key value seperator"),
-            DataIdentifier(identifier) => write!(f, "metadata identifier'{identifier}'"),
-            DataValue(value) => write!(f, "metadata value '{value}'"),
-            TitleText(text) => write!(f, "title text '{text}'"),
-            TitleTextSpace => write!(f, "title text space"),
-            LineBreak => write!(f, "linebreak"),
-            StrongDelimiter => write!(f, "strong delimiter"),
-            EmphasisDelimiter => write!(f, "emphasis delimiter"),
-            StrikethroughDelimiter => write!(f, "strikethrough delimiter"),
-            RawDelimiter => write!(f, "raw delimiter"),
-            RawFragment(fragment) => write!(f, "raw fragment '{fragment}'"),
-            MarkupText(text) => write!(f, "markup text '{text}'"),
-            MarkupTextSpace => write!(f, "markup text space"),
-            LinkOpeningDelimiter => write!(f, "link opening delimiter"),
-            LinkClosingDelimiter => write!(f, "link closing delimiter"),
-            LinkToReferenceJoiner => write!(f, "link to reference joiner '@'"),
-            ListBullet(indent) => write!(f, "list bullet (indent {indent})"),
-            CodeDelimiter => write!(f, "delimited block delimiter"),
-            DelimitedContainerStart => write!(f, "delimited container start"),
-            DelimitedContainerEnd => write!(f, "delimited container end"),
-            Code(code) => write!(f, "code '{code}'"),
+impl<'a> Display for TokenValue<'a> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        let name = match self {
+            TokenValue::EndOfInput(_) => EndOfInput::NAME,
+            TokenValue::TitleDirective(_) => TitleDirective::NAME,
+            TokenValue::SectionDirective(_) => SectionDirective::NAME,
+            TokenValue::SubSectionDirective(_) => SubSectionDirective::NAME,
+            TokenValue::BlockParametersStart(_) => BlockParametersStart::NAME,
+            TokenValue::BlockParametersEnd(_) => BlockParametersEnd::NAME,
+            TokenValue::BlockParameterNameValueSeperator(_) => {
+                BlockParameterNameValueSeperator::NAME
+            }
+            TokenValue::BlockBreak(_) => BlockBreak::NAME,
+            TokenValue::DataListSeperator(_) => DataListSeperator::NAME,
+            TokenValue::DataKeyValueSeperator(_) => DataKeyValueSeperator::NAME,
+            TokenValue::TitleTextSpace(_) => TitleTextSpace::NAME,
+            TokenValue::LineBreak(_) => LineBreak::NAME,
+            TokenValue::StrongDelimiter(_) => StrongDelimiter::NAME,
+            TokenValue::EmphasisDelimiter(_) => EmphasisDelimiter::NAME,
+            TokenValue::StrikethroughDelimiter(_) => StrikethroughDelimiter::NAME,
+            TokenValue::RawDelimiter(_) => RawDelimiter::NAME,
+            TokenValue::MarkupTextSpace(_) => MarkupTextSpace::NAME,
+            TokenValue::LinkOpeningDelimiter(_) => LinkOpeningDelimiter::NAME,
+            TokenValue::LinkClosingDelimiter(_) => LinkClosingDelimiter::NAME,
+            TokenValue::LinkToReferenceJoiner(_) => LinkToReferenceJoiner::NAME,
+            TokenValue::CodeDelimiter(_) => CodeDelimiter::NAME,
+            TokenValue::DelimitedContainerStart(_) => DelimitedContainerStart::NAME,
+            TokenValue::DelimitedContainerEnd(_) => DelimitedContainerEnd::NAME,
+            TokenValue::Unknown(_) => Unknown::NAME,
+            TokenValue::StructuredDataDirective(_) => StructuredDataDirective::NAME,
+            TokenValue::ContainerDirective(_) => ContainerDirective::NAME,
+            TokenValue::BlockDirective(_) => BlockDirective::NAME,
+            TokenValue::BlockParameterName(_) => BlockParameterName::NAME,
+            TokenValue::BlockParameterValue(_) => BlockParameterValue::NAME,
+            TokenValue::DataIdentifier(_) => DataIdentifier::NAME,
+            TokenValue::DataValue(_) => DataValue::NAME,
+            TokenValue::TitleText(_) => TitleText::NAME,
+            TokenValue::MarkupText(_) => MarkupText::NAME,
+            TokenValue::RawFragment(_) => RawFragment::NAME,
+            TokenValue::Code(_) => Code::NAME,
+            TokenValue::ListBullet(_) => ListBullet::NAME,
+        };
+        write!(f, "{name}")
+    }
+}
+
+type Matcher = for<'a> fn(&Scanner<'a>) -> Option<ScanMatch<'a>>;
+
+pub struct UnexpectedTokenError<'a, T>
+where
+    T: TokenStuff<'a>,
+{
+    pub actual: TokenValue<'a>,
+    pub position: Position,
+    pub expected: PhantomData<T>,
+}
+
+impl<'a, T> Display for UnexpectedTokenError<'a, T>
+where
+    T: TokenStuff<'a>,
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "expected: {}, got: {}", T::NAME, self.actual)
+    }
+}
+
+//TODO: Naming
+pub struct SpecificToken<T> {
+    pub value: T,
+    pub position: Position,
+}
+
+// TODO: Would be nice to not have to have Clone, Copy
+// TODO: Naming
+#[derive(Clone, Copy, Debug)]
+pub struct Token<'a> {
+    // TODO: Can we aspire to make value private?
+    pub value: TokenValue<'a>,
+    // pub lexeme: &'a str,
+    // TODO: Maybe position also?
+    // For interaction via methods
+    pub position: Position,
+}
+
+impl<'a> Token<'a> {
+    pub fn extract<T>(&self) -> Result<T, UnexpectedTokenError<'a, T>>
+    where
+        T: TokenStuff<'a>,
+    {
+        self.expect_kind().map(|token| token.value)
+    }
+
+    pub fn expect_kind<T>(&self) -> Result<SpecificToken<T>, UnexpectedTokenError<'a, T>>
+    where
+        T: TokenStuff<'a>,
+    {
+        T::try_from(self.value)
+            .map(|token| SpecificToken {
+                value: token,
+                position: self.position,
+            })
+            .map_err(|_| UnexpectedTokenError::<'a, T> {
+                expected: PhantomData::<T>,
+                actual: self.value,
+                position: self.position,
+            })
+    }
+
+    pub fn expect<T>(&self, expected: T) -> Result<(), UnexpectedTokenError<'a, T>>
+    where
+        T: TokenStuff<'a>,
+    {
+        let actual = self.expect_kind()?;
+
+        if actual.value == expected {
+            Ok(())
+        } else {
+            // TODO: Get the expected token value into the error message
+            // OR just a different type of error where expected is not phantom?
+            Err(UnexpectedTokenError {
+                expected: PhantomData::<T>,
+                actual: self.value,
+                position: self.position,
+            })
+        }
+    }
+
+    pub fn is_kind<T>(&self) -> Option<SpecificToken<T>>
+    where
+        T: TokenStuff<'a>,
+    {
+        T::try_from(self.value).ok().map(|tok| SpecificToken {
+            value: tok,
+            position: self.position,
+        })
+    }
+
+    pub fn is<T>(&self, candidate: T) -> bool
+    where
+        T: TokenStuff<'a>,
+    {
+        T::try_from(self.value).is_ok_and(|v| v == candidate)
+    }
+}
+
+// TODO: Imagine a macro where we can define for each token
+// name
+// structure
+// pattern matcher
+// ???
+
+//TODO: Naming
+pub trait TokenStuff<'a>: PartialEq + TryFrom<TokenValue<'a>> {
+    const NAME: &'static str;
+}
+
+//TODO: do we need all these derives?
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct EndOfInput;
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct TitleDirective;
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct SectionDirective;
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct SubSectionDirective;
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct BlockParametersStart;
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct BlockParametersEnd;
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct BlockParameterNameValueSeperator;
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct BlockBreak;
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct DataListSeperator;
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct DataKeyValueSeperator;
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct TitleTextSpace;
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct LineBreak;
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct StrongDelimiter;
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct EmphasisDelimiter;
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct StrikethroughDelimiter;
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct RawDelimiter;
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct MarkupTextSpace;
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct LinkOpeningDelimiter;
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct LinkClosingDelimiter;
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct LinkToReferenceJoiner;
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct CodeDelimiter;
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct DelimitedContainerStart;
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct DelimitedContainerEnd;
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct StructuredDataDirective<'a>(pub &'a str);
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ContainerDirective<'a>(pub &'a str);
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct BlockDirective<'a>(pub &'a str);
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct BlockParameterName<'a>(pub &'a str);
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct BlockParameterValue<'a>(pub &'a str);
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct DataIdentifier<'a>(pub &'a str);
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct DataValue<'a>(pub &'a str);
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct TitleText<'a>(pub &'a str);
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct MarkupText<'a>(pub &'a str);
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct RawFragment<'a>(pub &'a str);
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Code<'a>(pub &'a str);
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Unknown<'a>(pub &'a str);
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ListBullet(pub usize);
+
+//TODO: Use macros to clear up repetition
+
+impl<'a> TryFrom<TokenValue<'a>> for DataValue<'a> {
+    type Error = ();
+
+    fn try_from(value: TokenValue<'a>) -> Result<Self, Self::Error> {
+        match value {
+            TokenValue::DataValue(token) => Ok(token),
+            _ => Err(()),
         }
     }
 }
 
-// TODO: Sub modes might be easier to reason about
-// Markup(List)
-// Markup(ListRaw)
-// Markup(Paragraph)
-// Markup(ParagraphRaw)
-#[derive(Clone, Copy, Debug, PartialEq)]
-enum ContentMode {
-    Title,
-    Header,
-    StructuredData,
-    Paragraph,
-    List,
-    CodeBlock,
+impl<'a> TryFrom<TokenValue<'a>> for DataIdentifier<'a> {
+    type Error = ();
+
+    fn try_from(value: TokenValue<'a>) -> Result<Self, Self::Error> {
+        match value {
+            TokenValue::DataIdentifier(token) => Ok(token),
+            _ => Err(()),
+        }
+    }
 }
 
-use Token::*;
+impl<'a> TryFrom<TokenValue<'a>> for TitleText<'a> {
+    type Error = ();
 
-use ContentMode::*;
+    fn try_from(value: TokenValue<'a>) -> Result<Self, Self::Error> {
+        match value {
+            TokenValue::TitleText(token) => Ok(token),
+            _ => Err(()),
+        }
+    }
+}
+
+impl<'a> TryFrom<TokenValue<'a>> for BlockParameterName<'a> {
+    type Error = ();
+
+    fn try_from(value: TokenValue<'a>) -> Result<Self, Self::Error> {
+        match value {
+            TokenValue::BlockParameterName(token) => Ok(token),
+            _ => Err(()),
+        }
+    }
+}
+
+impl<'a> TryFrom<TokenValue<'a>> for BlockParameterValue<'a> {
+    type Error = ();
+
+    fn try_from(value: TokenValue<'a>) -> Result<Self, Self::Error> {
+        match value {
+            TokenValue::BlockParameterValue(token) => Ok(token),
+            _ => Err(()),
+        }
+    }
+}
+
+impl<'a> TryFrom<TokenValue<'a>> for RawFragment<'a> {
+    type Error = ();
+
+    fn try_from(value: TokenValue<'a>) -> Result<Self, Self::Error> {
+        match value {
+            TokenValue::RawFragment(token) => Ok(token),
+            _ => Err(()),
+        }
+    }
+}
+
+impl<'a> TryFrom<TokenValue<'a>> for MarkupText<'a> {
+    type Error = ();
+
+    fn try_from(value: TokenValue<'a>) -> Result<Self, Self::Error> {
+        match value {
+            TokenValue::MarkupText(token) => Ok(token),
+            _ => Err(()),
+        }
+    }
+}
+
+impl<'a> TryFrom<TokenValue<'a>> for Code<'a> {
+    type Error = ();
+
+    fn try_from(value: TokenValue<'a>) -> Result<Self, Self::Error> {
+        match value {
+            TokenValue::Code(token) => Ok(token),
+            _ => Err(()),
+        }
+    }
+}
+
+impl<'a> TryFrom<TokenValue<'a>> for StructuredDataDirective<'a> {
+    type Error = ();
+
+    fn try_from(value: TokenValue<'a>) -> Result<Self, Self::Error> {
+        match value {
+            TokenValue::StructuredDataDirective(token) => Ok(token),
+            _ => Err(()),
+        }
+    }
+}
+
+impl<'a> TryFrom<TokenValue<'a>> for ContainerDirective<'a> {
+    type Error = ();
+
+    fn try_from(value: TokenValue<'a>) -> Result<Self, Self::Error> {
+        match value {
+            TokenValue::ContainerDirective(token) => Ok(token),
+            _ => Err(()),
+        }
+    }
+}
+
+impl<'a> TryFrom<TokenValue<'a>> for BlockDirective<'a> {
+    type Error = ();
+
+    fn try_from(value: TokenValue<'a>) -> Result<Self, Self::Error> {
+        match value {
+            TokenValue::BlockDirective(token) => Ok(token),
+            _ => Err(()),
+        }
+    }
+}
+
+impl<'a> TryFrom<TokenValue<'a>> for ListBullet {
+    type Error = ();
+
+    fn try_from(value: TokenValue<'a>) -> Result<Self, Self::Error> {
+        match value {
+            TokenValue::ListBullet(token) => Ok(token),
+            _ => Err(()),
+        }
+    }
+}
+
+impl<'a> TryFrom<TokenValue<'a>> for LineBreak {
+    type Error = ();
+
+    fn try_from(value: TokenValue<'a>) -> Result<Self, Self::Error> {
+        match value {
+            TokenValue::LineBreak(token) => Ok(token),
+            _ => Err(()),
+        }
+    }
+}
+
+impl<'a> TryFrom<TokenValue<'a>> for TitleDirective {
+    type Error = ();
+
+    fn try_from(value: TokenValue<'a>) -> Result<Self, Self::Error> {
+        match value {
+            TokenValue::TitleDirective(token) => Ok(token),
+            _ => Err(()),
+        }
+    }
+}
+
+impl<'a> TryFrom<TokenValue<'a>> for BlockBreak {
+    type Error = ();
+
+    fn try_from(value: TokenValue<'a>) -> Result<Self, Self::Error> {
+        match value {
+            TokenValue::BlockBreak(token) => Ok(token),
+            _ => Err(()),
+        }
+    }
+}
+
+impl<'a> TryFrom<TokenValue<'a>> for DataKeyValueSeperator {
+    type Error = ();
+
+    fn try_from(value: TokenValue<'a>) -> Result<Self, Self::Error> {
+        match value {
+            TokenValue::DataKeyValueSeperator(token) => Ok(token),
+            _ => Err(()),
+        }
+    }
+}
+
+impl<'a> TryFrom<TokenValue<'a>> for DelimitedContainerEnd {
+    type Error = ();
+
+    fn try_from(value: TokenValue<'a>) -> Result<Self, Self::Error> {
+        match value {
+            TokenValue::DelimitedContainerEnd(token) => Ok(token),
+            _ => Err(()),
+        }
+    }
+}
+
+impl<'a> TryFrom<TokenValue<'a>> for SectionDirective {
+    type Error = ();
+
+    fn try_from(value: TokenValue<'a>) -> Result<Self, Self::Error> {
+        match value {
+            TokenValue::SectionDirective(token) => Ok(token),
+            _ => Err(()),
+        }
+    }
+}
+
+impl<'a> TryFrom<TokenValue<'a>> for SubSectionDirective {
+    type Error = ();
+
+    fn try_from(value: TokenValue<'a>) -> Result<Self, Self::Error> {
+        match value {
+            TokenValue::SubSectionDirective(token) => Ok(token),
+            _ => Err(()),
+        }
+    }
+}
+
+impl<'a> TryFrom<TokenValue<'a>> for BlockParameterNameValueSeperator {
+    type Error = ();
+
+    fn try_from(value: TokenValue<'a>) -> Result<Self, Self::Error> {
+        match value {
+            TokenValue::BlockParameterNameValueSeperator(token) => Ok(token),
+            _ => Err(()),
+        }
+    }
+}
+
+impl<'a> TryFrom<TokenValue<'a>> for BlockParametersEnd {
+    type Error = ();
+
+    fn try_from(value: TokenValue<'a>) -> Result<Self, Self::Error> {
+        match value {
+            TokenValue::BlockParametersEnd(token) => Ok(token),
+            _ => Err(()),
+        }
+    }
+}
+
+impl<'a> TryFrom<TokenValue<'a>> for RawDelimiter {
+    type Error = ();
+
+    fn try_from(value: TokenValue<'a>) -> Result<Self, Self::Error> {
+        match value {
+            TokenValue::RawDelimiter(token) => Ok(token),
+            _ => Err(()),
+        }
+    }
+}
+
+impl<'a> TryFrom<TokenValue<'a>> for LinkOpeningDelimiter {
+    type Error = ();
+
+    fn try_from(value: TokenValue<'a>) -> Result<Self, Self::Error> {
+        match value {
+            TokenValue::LinkOpeningDelimiter(token) => Ok(token),
+            _ => Err(()),
+        }
+    }
+}
+
+impl<'a> TryFrom<TokenValue<'a>> for LinkClosingDelimiter {
+    type Error = ();
+
+    fn try_from(value: TokenValue<'a>) -> Result<Self, Self::Error> {
+        match value {
+            TokenValue::LinkClosingDelimiter(token) => Ok(token),
+            _ => Err(()),
+        }
+    }
+}
+
+impl<'a> TryFrom<TokenValue<'a>> for LinkToReferenceJoiner {
+    type Error = ();
+
+    fn try_from(value: TokenValue<'a>) -> Result<Self, Self::Error> {
+        match value {
+            TokenValue::LinkToReferenceJoiner(token) => Ok(token),
+            _ => Err(()),
+        }
+    }
+}
+
+impl<'a> TryFrom<TokenValue<'a>> for CodeDelimiter {
+    type Error = ();
+
+    fn try_from(value: TokenValue<'a>) -> Result<Self, Self::Error> {
+        match value {
+            TokenValue::CodeDelimiter(token) => Ok(token),
+            _ => Err(()),
+        }
+    }
+}
+
+impl<'a> TryFrom<TokenValue<'a>> for StrongDelimiter {
+    type Error = ();
+
+    fn try_from(value: TokenValue<'a>) -> Result<Self, Self::Error> {
+        match value {
+            TokenValue::StrongDelimiter(token) => Ok(token),
+            _ => Err(()),
+        }
+    }
+}
+
+impl<'a> TryFrom<TokenValue<'a>> for EmphasisDelimiter {
+    type Error = ();
+
+    fn try_from(value: TokenValue<'a>) -> Result<Self, Self::Error> {
+        match value {
+            TokenValue::EmphasisDelimiter(token) => Ok(token),
+            _ => Err(()),
+        }
+    }
+}
+
+impl<'a> TryFrom<TokenValue<'a>> for StrikethroughDelimiter {
+    type Error = ();
+
+    fn try_from(value: TokenValue<'a>) -> Result<Self, Self::Error> {
+        match value {
+            TokenValue::StrikethroughDelimiter(token) => Ok(token),
+            _ => Err(()),
+        }
+    }
+}
+
+impl<'a> TryFrom<TokenValue<'a>> for EndOfInput {
+    type Error = ();
+
+    fn try_from(value: TokenValue<'a>) -> Result<Self, Self::Error> {
+        match value {
+            TokenValue::EndOfInput(token) => Ok(token),
+            _ => Err(()),
+        }
+    }
+}
+
+impl<'a> TryFrom<TokenValue<'a>> for BlockParametersStart {
+    type Error = ();
+
+    fn try_from(value: TokenValue<'a>) -> Result<Self, Self::Error> {
+        match value {
+            TokenValue::BlockParametersStart(token) => Ok(token),
+            _ => Err(()),
+        }
+    }
+}
+
+impl<'a> TryFrom<TokenValue<'a>> for DataListSeperator {
+    type Error = ();
+
+    fn try_from(value: TokenValue<'a>) -> Result<Self, Self::Error> {
+        match value {
+            TokenValue::DataListSeperator(token) => Ok(token),
+            _ => Err(()),
+        }
+    }
+}
+
+impl<'a> TryFrom<TokenValue<'a>> for TitleTextSpace {
+    type Error = ();
+
+    fn try_from(value: TokenValue<'a>) -> Result<Self, Self::Error> {
+        match value {
+            TokenValue::TitleTextSpace(token) => Ok(token),
+            _ => Err(()),
+        }
+    }
+}
+impl<'a> TryFrom<TokenValue<'a>> for MarkupTextSpace {
+    type Error = ();
+
+    fn try_from(value: TokenValue<'a>) -> Result<Self, Self::Error> {
+        match value {
+            TokenValue::MarkupTextSpace(token) => Ok(token),
+            _ => Err(()),
+        }
+    }
+}
+impl<'a> TryFrom<TokenValue<'a>> for DelimitedContainerStart {
+    type Error = ();
+
+    fn try_from(value: TokenValue<'a>) -> Result<Self, Self::Error> {
+        match value {
+            TokenValue::DelimitedContainerStart(token) => Ok(token),
+            _ => Err(()),
+        }
+    }
+}
+
+impl<'a> TryFrom<TokenValue<'a>> for Unknown<'a> {
+    type Error = ();
+
+    fn try_from(value: TokenValue<'a>) -> Result<Self, Self::Error> {
+        match value {
+            TokenValue::Unknown(token) => Ok(token),
+            _ => Err(()),
+        }
+    }
+}
+
+impl<'a> TokenStuff<'a> for EndOfInput {
+    const NAME: &'static str = "end of input";
+}
+
+impl<'a> TokenStuff<'a> for TitleDirective {
+    const NAME: &'static str = "document directive";
+}
+
+impl<'a> TokenStuff<'a> for SectionDirective {
+    const NAME: &'static str = "section directive";
+}
+
+impl<'a> TokenStuff<'a> for SubSectionDirective {
+    const NAME: &'static str = "subsection directive";
+}
+
+impl<'a> TokenStuff<'a> for BlockParametersStart {
+    const NAME: &'static str = "block parameters start '('";
+}
+
+impl<'a> TokenStuff<'a> for BlockParametersEnd {
+    const NAME: &'static str = "block parameters end ')'";
+}
+
+impl<'a> TokenStuff<'a> for BlockParameterNameValueSeperator {
+    const NAME: &'static str = "block parameter name value seperator";
+}
+
+impl<'a> TokenStuff<'a> for BlockBreak {
+    const NAME: &'static str = "block break";
+}
+
+impl<'a> TokenStuff<'a> for DataListSeperator {
+    const NAME: &'static str = "metadata list seperator";
+}
+
+impl<'a> TokenStuff<'a> for DataKeyValueSeperator {
+    const NAME: &'static str = "metadata key value seperator";
+}
+
+impl<'a> TokenStuff<'a> for TitleTextSpace {
+    const NAME: &'static str = "title text space";
+}
+
+impl<'a> TokenStuff<'a> for LineBreak {
+    const NAME: &'static str = "linebreak";
+}
+
+impl<'a> TokenStuff<'a> for StrongDelimiter {
+    const NAME: &'static str = "strong delimiter";
+}
+
+impl<'a> TokenStuff<'a> for EmphasisDelimiter {
+    const NAME: &'static str = "emphasis delimiter";
+}
+
+impl<'a> TokenStuff<'a> for StrikethroughDelimiter {
+    const NAME: &'static str = "strikethrough delimiter";
+}
+
+impl<'a> TokenStuff<'a> for RawDelimiter {
+    const NAME: &'static str = "raw delimiter";
+}
+
+impl<'a> TokenStuff<'a> for MarkupTextSpace {
+    const NAME: &'static str = "markup text space";
+}
+
+impl<'a> TokenStuff<'a> for LinkOpeningDelimiter {
+    const NAME: &'static str = "link opening delimiter";
+}
+
+impl<'a> TokenStuff<'a> for LinkClosingDelimiter {
+    const NAME: &'static str = "link closing delimiter";
+}
+
+impl<'a> TokenStuff<'a> for LinkToReferenceJoiner {
+    const NAME: &'static str = "link to reference joiner '@'";
+}
+
+impl<'a> TokenStuff<'a> for CodeDelimiter {
+    const NAME: &'static str = "delimited block delimiter";
+}
+
+impl<'a> TokenStuff<'a> for DelimitedContainerStart {
+    const NAME: &'static str = "delimited container start";
+}
+
+impl<'a> TokenStuff<'a> for DelimitedContainerEnd {
+    const NAME: &'static str = "delimited container end";
+}
+
+impl<'a> TokenStuff<'a> for Unknown<'a> {
+    const NAME: &'static str = "unknown";
+}
+
+impl<'a> TokenStuff<'a> for StructuredDataDirective<'a> {
+    const NAME: &'static str = "structured data directive";
+}
+
+impl<'a> TokenStuff<'a> for ContainerDirective<'a> {
+    const NAME: &'static str = "container directive";
+}
+
+impl<'a> TokenStuff<'a> for BlockDirective<'a> {
+    const NAME: &'static str = "block directive";
+}
+
+impl<'a> TokenStuff<'a> for BlockParameterName<'a> {
+    const NAME: &'static str = "block parameter name";
+}
+
+impl<'a> TokenStuff<'a> for BlockParameterValue<'a> {
+    const NAME: &'static str = "block parameter value";
+}
+
+impl<'a> TokenStuff<'a> for DataIdentifier<'a> {
+    const NAME: &'static str = "metadata identifier";
+}
+
+impl<'a> TokenStuff<'a> for DataValue<'a> {
+    const NAME: &'static str = "metadata value";
+}
+
+impl<'a> TokenStuff<'a> for TitleText<'a> {
+    const NAME: &'static str = "title text";
+}
+
+impl<'a> TokenStuff<'a> for MarkupText<'a> {
+    const NAME: &'static str = "markup text";
+}
+
+impl<'a> TokenStuff<'a> for RawFragment<'a> {
+    const NAME: &'static str = "raw fragment";
+}
+
+impl<'a> TokenStuff<'a> for Code<'a> {
+    const NAME: &'static str = "code";
+}
+
+impl<'a> TokenStuff<'a> for ListBullet {
+    const NAME: &'static str = "list bullet";
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum ScanMode {
+    BlockStart,
+    Markup,
+    ListMarkup,
+    Raw,
+    Title,
+    Header,
+    HeaderValue,
+    StructuredData,
+    LinkReference,
+    Code,
+    Generic,
+}
 
 pub struct Tokeniser<'a> {
     scanner: Scanner<'a>,
-    position: Position,
-    current: Token<'a>,
     token_count: usize,
     max_tokens: usize,
-    mode: ContentMode,
-    upcoming_mode: Option<ContentMode>,
-    mode_inference_needed: bool,
-    in_raw: bool,
+    mode_stack: Vec<ScanMode>,
 }
 
 impl<'a> Tokeniser<'a> {
@@ -170,305 +921,84 @@ impl<'a> Tokeniser<'a> {
 
         Tokeniser {
             scanner,
-            position: Position { column: 0, row: 0 },
-            current: StartOfInput,
             token_count: 0,
             max_tokens: input.len(),
-            mode: ContentMode::Paragraph,
-            upcoming_mode: None,
-            mode_inference_needed: true,
-            in_raw: false,
+            mode_stack: vec![ScanMode::Generic],
         }
     }
 
-    pub fn current(&self) -> Token<'a> {
-        self.current
+    pub fn push_mode(&mut self, mode: ScanMode) {
+        self.mode_stack.push(mode);
     }
 
-    pub fn position(&self) -> Position {
-        self.position
+    pub fn pop_mode(&mut self) -> ScanMode {
+        //TODO: Instead of stack underflow, default to generic?
+        debug_assert!(self.mode_stack.len() > 1, "Cannot pop the base mode");
+        self.mode_stack.pop().expect("mode stack underflow")
     }
 
-    pub fn advance(&mut self) {
+    fn current_matchers(&self) -> &'static [Matcher] {
+        //TODO: meh expect
+        match self.mode_stack.last().expect("empty mode stack") {
+            ScanMode::BlockStart => SCAN_BLOCK_START,
+            ScanMode::Markup => SCAN_MARKUP,
+            ScanMode::ListMarkup => SCAN_LIST_MARKUP,
+            ScanMode::Raw => SCAN_RAW,
+            ScanMode::Title => SCAN_TITLE,
+            ScanMode::Header => SCAN_HEADER,
+            ScanMode::HeaderValue => SCAN_HEADER_VALUE,
+            ScanMode::StructuredData => SCAN_STRUCTURED_DATA,
+            ScanMode::LinkReference => SCAN_LINK_REFERENCE,
+            ScanMode::Code => SCAN_CODE,
+            ScanMode::Generic => SCAN_GENERIC,
+        }
+    }
+
+    pub fn peek(&self) -> Token<'a> {
+        let matchers = self.current_matchers();
+        let position = self.scanner.position();
+        // let start = self.scanner.read_head.index;
+
+        let scan_match = self.scan(matchers);
+        // let lexeme = &self.scanner.input[start..scan_match.end.index];
+
+        Token {
+            value: scan_match.value,
+            position,
+        }
+    }
+
+    pub fn advance(&mut self) -> Token<'a> {
         if self.token_count > self.max_tokens {
             panic!("Posible infinite loop detected")
         }
 
-        //TODO: could we get position from the matches instead?
+        let matchers = self.current_matchers();
         let position = self.scanner.position();
+        // let start = self.scanner.read_head.index;
 
-        if self.mode_inference_needed {
-            self.mode = self.infer_mode();
-            self.mode_inference_needed = false;
-        }
-
-        let scan_match = self.read_next_token();
-        let next_token = scan_match.token;
-        dbg!(next_token);
-
-        self.set_forward_flags(next_token);
+        let scan_match = self.scan(matchers);
+        // let lexeme = &self.scanner.input[start..scan_match.end.index];
 
         self.scanner.advance_past(&scan_match);
-
         self.token_count += 1;
-        self.position = position;
-        self.current = next_token;
-    }
 
-    // TODO: Maybe now we are in a place to consider if we want to try and have
-    // the parser determine the lex mode again?
-    fn infer_mode(&self) -> ContentMode {
-        let scanner = &self.scanner;
-        if scanner.is_on_char(SLASH) {
-            Title
-        } else if scanner.is_on_one_of(&[HASH, EXCLAMATION_MARK, AT_SIGN]) {
-            Header
-        } else if scanner.is_on_char(DASH) {
-            List
-        } else {
-            Paragraph
+        Token {
+            value: scan_match.value,
+            position,
         }
     }
 
-    fn read_next_token(&self) -> ScanMatch<'a> {
-        self.read_container_delimiter_token()
-            .or_else(|| self.read_modal_token())
-            .unwrap_or_else(|| self.read_generic_token())
-    }
-
-    fn read_modal_token(&self) -> Option<ScanMatch<'a>> {
-        match self.mode {
-            Title => self.read_title_token(),
-            Header => self.read_header_token(),
-            StructuredData => self.read_structured_data_token(),
-            Paragraph | List => self.read_markup_token(),
-            CodeBlock => self.read_code_block_token(),
-        }
-    }
-
-    fn set_forward_flags(&mut self, next_token: Token<'a>) {
-        match next_token {
-            LineBreak => {
-                if matches!(self.current, ContainerDirective(_)) {
-                    self.mode_inference_needed = true;
-                }
-                if let Some(next_mode) = self.upcoming_mode {
-                    self.mode = next_mode;
-                    self.upcoming_mode = None;
-                }
-                if matches!(self.current, CodeDelimiter) {
-                    self.in_raw = true;
-                }
-            }
-            BlockBreak => {
-                self.mode_inference_needed = true;
-            }
-            BlockDirective(name) => {
-                match name {
-                    "paragraph" => {
-                        self.upcoming_mode = Some(Paragraph);
-                    }
-                    "list" => {
-                        self.upcoming_mode = Some(List);
-                    }
-                    "code" => {
-                        self.upcoming_mode = Some(CodeBlock);
-                    }
-                    _ => {}
-                };
-            }
-            StructuredDataDirective(_) => {
-                self.upcoming_mode = Some(StructuredData);
-            }
-            CodeDelimiter if self.in_raw => {
-                self.in_raw = false;
-            }
-            RawDelimiter => {
-                self.in_raw = !self.in_raw;
-            }
-            _ => {}
-        };
-    }
-
-    fn read_container_delimiter_token(&self) -> Option<ScanMatch<'a>> {
-        let scanner = &self.scanner;
-
-        if let Some(delimiter) = scanner.match_delimited_container_start() {
-            Some(delimiter)
-        } else if let Some(delimiter) = scanner.match_delimited_container_end() {
-            Some(delimiter)
-        } else {
-            None
-        }
-    }
-
-    fn read_title_token(&self) -> Option<ScanMatch<'a>> {
-        let scanner = &self.scanner;
-
-        if let Some(directive) = scanner.match_subsection_directive() {
-            Some(directive)
-        } else if let Some(directive) = scanner.match_section_directive() {
-            Some(directive)
-        } else if let Some(directive) = scanner.match_title_directive() {
-            Some(directive)
-        } else if let Some(space) = scanner.match_title_text_space() {
-            Some(space)
-        } else if let Some(text) = scanner.match_title_text() {
-            Some(text)
-        } else {
-            None
-        }
-    }
-
-    fn read_header_token(&self) -> Option<ScanMatch<'a>> {
-        let scanner = &self.scanner;
-
-        if let Some(data_name) = scanner.match_structured_data_directive() {
-            Some(data_name)
-        } else if let Some(container_name) = scanner.match_container_directive() {
-            Some(container_name)
-        } else if let Some(block_name) = scanner.match_block_directive() {
-            Some(block_name)
-        } else if let Some(start) = scanner.match_block_parameters_start() {
-            Some(start)
-        } else if let Some(end) = scanner.match_block_parameters_end() {
-            Some(end)
-        } else if let Some(seperator) = scanner.match_block_parameter_name_value_seperator() {
-            Some(seperator)
-        } else if let Some(value) = scanner.match_block_parameter_value()
-            && self.current == BlockParameterNameValueSeperator
-        {
-            Some(value)
-        } else if let Some(value) = scanner.match_block_parameter_name() {
-            Some(value)
-        } else {
-            None
-        }
-    }
-
-    //TODO: remove &mut, do mutation in calling function
-    fn read_structured_data_token(&self) -> Option<ScanMatch<'a>> {
-        let scanner = &self.scanner;
-        let position = scanner.position();
-        let column = position.column;
-
-        if let Some(identifier) = scanner.match_data_identifier()
-            && column == 0
-        {
-            Some(identifier)
-        } else if let Some(seperator) = scanner.match_data_key_value_seperator() {
-            Some(seperator)
-        } else if let Some(seperator) = scanner.match_data_list_seperator() {
-            Some(seperator)
-        } else if let Some(value) = scanner.match_data_value() {
-            Some(value)
-        } else {
-            None
-        }
-    }
-
-    fn read_markup_token(&self) -> Option<ScanMatch<'a>> {
-        let scanner = &self.scanner;
-        let position = scanner.position();
-        let column = position.column;
-
-        let markup_space_allowed = !self.in_raw
-            && !matches!(
-                self.current,
-                DelimitedContainerStart | DelimitedContainerEnd
-            );
-
-        let in_list = self.mode == List;
-        let list_indent_allowed = in_list && !self.in_raw && column == 0;
-
-        if let Some(raw_delimiter) = scanner.match_raw_delimiter() {
-            Some(raw_delimiter)
-        } else if let Some(list_bullet) = scanner.match_list_bullet()
-            && list_indent_allowed
-        {
-            Some(list_bullet)
-        } else if let Some(markup_space) = scanner.match_markup_text_space()
-            && !in_list
-            && markup_space_allowed
-        {
-            Some(markup_space)
-        } else if let Some(markup_space) = scanner.match_list_markup_text_space()
-            && in_list
-            && markup_space_allowed
-        {
-            Some(markup_space)
-        } else if let Some(fragment) = scanner.match_raw_fragment()
-            && self.in_raw
-        {
-            Some(fragment)
-        } else if let Some(delimiter) = scanner.match_link_opening_delimiter() {
-            Some(delimiter)
-        } else if let Some(delimiter) = scanner.match_link_closing_delimiter() {
-            Some(delimiter)
-        } else if let Some(joiner) = scanner.match_link_to_reference_joiner()
-            && self.current == LinkClosingDelimiter
-        {
-            Some(joiner)
-        } else if let Some(identifier) = scanner.match_data_identifier()
-            && self.current == LinkToReferenceJoiner
-        {
-            Some(identifier)
-        } else if let Some(strong_delimiter) = scanner.match_strong_delimiter() {
-            Some(strong_delimiter)
-        } else if let Some(emphasis_delimiter) = scanner.match_emphasis_delimiter() {
-            Some(emphasis_delimiter)
-        } else if let Some(strikethrough_delimiter) = scanner.match_strikethrough_delimiter() {
-            Some(strikethrough_delimiter)
-        } else if let Some(escaped) = scanner.match_escaped_markup_text() {
-            Some(escaped)
-        } else if let Some(markup) = scanner.match_markup_text() {
-            Some(markup)
-        } else {
-            None
-        }
-    }
-
-    fn read_code_block_token(&self) -> Option<ScanMatch<'a>> {
-        let scanner = &self.scanner;
-
-        if let Some(delimiter) = scanner.match_code_delimiter() {
-            Some(delimiter)
-        } else if self.in_raw
-            && let Some(code) = scanner.match_code_block()
-        {
-            // TODO: Consider line by line instead
-            // Think: how to give a helpful error like 'unterminated code block'
-            Some(code)
-        } else {
-            None
-        }
-    }
-
-    fn read_generic_token(&self) -> ScanMatch<'a> {
-        let scanner = &self.scanner;
-
-        // TODO: this if/let strucutre is probable not the final form..
-        // If we return the match and the new position, let code
-        // higher up apply the advance?
-        //
-        // Would it be nice if this could be inlinable
-        // i.e probably dont want a seperate scanner?
-        //
-        // Once we do have the final form, maybe start playing
-        // with some macros?
-
-        if let Some(blockbreak) = scanner.match_blockbreak() {
-            blockbreak
-        } else if let Some(linebreak) = scanner.match_linebreak() {
-            linebreak
-        } else if let Some(end_of_input) = scanner.match_end_of_input() {
-            end_of_input
-        } else {
-            let unknown = scanner.match_unknown();
-            unknown
-        }
+    fn scan(&self, matchers: &[Matcher]) -> ScanMatch<'a> {
+        matchers
+            .iter()
+            .find_map(|m| (m)(&self.scanner))
+            // TODO: This is a bit clumsy, why not have match generic always be
+            // at the base of the stack?
+            .unwrap_or_else(|| match_generic(&self.scanner))
     }
 }
+
 #[derive(Clone, Copy, Debug)]
 pub struct Position {
     pub column: u32,
@@ -530,6 +1060,7 @@ impl<'a> ReadHead<'a> {
 
 #[derive(Debug)]
 struct Scanner<'a> {
+    //TODO: Actually store a peek
     input: &'a str,
     read_head: ReadHead<'a>,
 }
@@ -546,958 +1077,21 @@ impl<'a> Scanner<'a> {
         self.read_head.position()
     }
 
-    //TODO: Meh, remove
-    fn index(&self) -> usize {
-        self.read_head.index
-    }
-
-    fn is_on_char(&self, c: char) -> bool {
-        self.input[self.index()..].starts_with(c)
-    }
-
-    fn is_on_one_of(&self, chars: &[char]) -> bool {
-        self.input[self.index()..].starts_with(chars)
-    }
-
     fn is_on_empty_line(&self) -> bool {
-        // TODO: if we could have an internal version of
-        // this that returns the index of the new line
-        // then we could be a lot more optimised
-        self.input[self.index()..]
+        self.input[self.read_head.index..]
             .trim_start_matches(SPACE)
             .starts_with(NEW_LINE)
     }
 
     fn skip_while_on_empty_line(&mut self) {
-        // TODO: This is not that efficient...
-        // once we have put in the work to look ahead,
-        // can we use this to skip to new line
         while self.is_on_empty_line() {
-            while self.is_on_one_of(&[SPACE, NEW_LINE]) {
+            while self.input[self.read_head.index..].starts_with(&[SPACE, NEW_LINE]) {
                 self.read_head.read_next_char();
             }
         }
     }
 
-    // TODO: Get this working using any old technique,
-    // then rework to front load most of the effort
-    // in a way that can be used in all match functions
-    //
-    // What if we had a forward buffer that holds char info
-    // the instead of passing around read heads we just pass
-    // around an index
-    //
-    // Life would probably be eaiser if this buffer stored
-    // compressed whitespace
-    //
-    // TODO: We could even end up with a small DSL for matching?
-    //
-    // From there it would be a small hop to replacing each function with a macro
-    // so wouldn't even need to worry about inlining
-    //
-    //
-    // e.g
-    //
-    // if let Some(blockbreak) = match_blockbreak!(scanner) { ... }
-
-    fn match_list_bullet(&self) -> Option<ScanMatch<'a>> {
-        let mut head = self.read_head.clone();
-
-        let mut space_count = 0;
-
-        while head.current == Some(SPACE) {
-            space_count += 1;
-            head.read_next_char();
-        }
-
-        if head.current == Some(DASH) {
-            head.read_next_char();
-        } else {
-            return None;
-        }
-
-        while head.current == Some(SPACE) {
-            head.read_next_char();
-        }
-
-        Some(ScanMatch {
-            token: ListBullet(space_count),
-            end: head,
-        })
-    }
-
-    fn match_markup_text_space(&self) -> Option<ScanMatch<'a>> {
-        let mut head = self.read_head.clone();
-        let i1 = head.index;
-
-        while head.current == Some(SPACE) {
-            head.read_next_char();
-        }
-
-        let mut has_new_line = false;
-        if head.current == Some(NEW_LINE) {
-            head.read_next_char();
-            has_new_line = true;
-        }
-
-        if has_new_line && self.input[head.index..].starts_with(DELIMITED_CONTAINER_END) {
-            return None;
-        }
-
-        while head.current == Some(SPACE) {
-            head.read_next_char();
-        }
-
-        if head.current == Some(NEW_LINE) {
-            return None;
-        }
-
-        let i2 = head.index;
-
-        if i1 == i2 {
-            return None;
-        }
-
-        if head.current == None {
-            return None;
-        }
-
-        Some(ScanMatch {
-            token: MarkupTextSpace,
-            end: head,
-        })
-    }
-
-    fn match_list_markup_text_space(&self) -> Option<ScanMatch<'a>> {
-        let mut head = self.read_head.clone();
-        let i1 = head.index;
-
-        while head.current == Some(SPACE) {
-            head.read_next_char();
-        }
-
-        let mut has_new_line = false;
-        if head.current == Some(NEW_LINE) {
-            head.read_next_char();
-            has_new_line = true;
-        }
-
-        if has_new_line && self.input[head.index..].starts_with(DELIMITED_CONTAINER_END) {
-            return None;
-        }
-
-        while head.current == Some(SPACE) {
-            head.read_next_char();
-        }
-
-        if head.current == Some(NEW_LINE) {
-            return None;
-        }
-
-        let i2 = head.index;
-
-        if i1 == i2 {
-            return None;
-        }
-
-        if has_new_line && head.current == Some(DASH) {
-            return None;
-        }
-
-        if head.current == None {
-            return None;
-        }
-
-        Some(ScanMatch {
-            token: MarkupTextSpace,
-            end: head,
-        })
-    }
-
-    fn match_title_text_space(&self) -> Option<ScanMatch<'a>> {
-        let mut head = self.read_head.clone();
-
-        if head.current == Some(SPACE) {
-            head.read_next_char();
-        } else {
-            return None;
-        }
-
-        while head.current == Some(SPACE) {
-            head.read_next_char();
-        }
-
-        let has_text_next = head.current.is_some_and(|c| c != SPACE && c != NEW_LINE);
-
-        if !has_text_next {
-            return None;
-        }
-
-        Some(ScanMatch {
-            token: TitleTextSpace,
-            end: head,
-        })
-    }
-
-    fn match_block_parameters_start(&self) -> Option<ScanMatch<'a>> {
-        {
-            let this = &self;
-            let mut head = this.read_head.clone();
-
-            if head.current == Some(LEFT_BRACKET) {
-                head.read_next_char();
-            } else {
-                return None;
-            }
-
-            Some(ScanMatch {
-                token: BlockParametersStart,
-                end: head,
-            })
-        }
-    }
-
-    fn match_block_parameters_end(&self) -> Option<ScanMatch<'a>> {
-        {
-            let this = &self;
-            let mut head = this.read_head.clone();
-
-            if head.current == Some(RIGHT_BRACKET) {
-                head.read_next_char();
-            } else {
-                return None;
-            }
-
-            Some(ScanMatch {
-                token: BlockParametersEnd,
-                end: head,
-            })
-        }
-    }
-
-    fn match_block_parameter_name_value_seperator(&self) -> Option<ScanMatch<'a>> {
-        {
-            let this = &self;
-            let mut head = this.read_head.clone();
-
-            if head.current == Some(EQUALS) {
-                head.read_next_char();
-            } else {
-                return None;
-            }
-
-            Some(ScanMatch {
-                token: BlockParameterNameValueSeperator,
-                end: head,
-            })
-        }
-    }
-
-    fn match_raw_delimiter(&self) -> Option<ScanMatch<'a>> {
-        {
-            let this = &self;
-            let mut head = this.read_head.clone();
-
-            if head.current == Some(BACKTICK) {
-                head.read_next_char();
-            } else {
-                return None;
-            }
-
-            Some(ScanMatch {
-                token: RawDelimiter,
-                end: head,
-            })
-        }
-    }
-
-    fn match_link_opening_delimiter(&self) -> Option<ScanMatch<'a>> {
-        {
-            let this = &self;
-            let mut head = this.read_head.clone();
-
-            if head.current == Some(LEFT_SQUARE_BRACKET) {
-                head.read_next_char();
-            } else {
-                return None;
-            }
-
-            Some(ScanMatch {
-                token: LinkOpeningDelimiter,
-                end: head,
-            })
-        }
-    }
-
-    fn match_link_closing_delimiter(&self) -> Option<ScanMatch<'a>> {
-        {
-            let this = &self;
-            let mut head = this.read_head.clone();
-
-            if head.current == Some(RIGHT_SQUARE_BRACKET) {
-                head.read_next_char();
-            } else {
-                return None;
-            }
-
-            Some(ScanMatch {
-                token: LinkClosingDelimiter,
-                end: head,
-            })
-        }
-    }
-
-    fn match_link_to_reference_joiner(&self) -> Option<ScanMatch<'a>> {
-        {
-            let this = &self;
-            let mut head = this.read_head.clone();
-
-            if head.current == Some(AT_SIGN) {
-                head.read_next_char();
-            } else {
-                return None;
-            }
-
-            Some(ScanMatch {
-                token: LinkToReferenceJoiner,
-                end: head,
-            })
-        }
-    }
-
-    fn match_strong_delimiter(&self) -> Option<ScanMatch<'a>> {
-        {
-            let this = &self;
-            let mut head = this.read_head.clone();
-
-            if head.current == Some(ASTERISK) {
-                head.read_next_char();
-            } else {
-                return None;
-            }
-
-            Some(ScanMatch {
-                token: StrongDelimiter,
-                end: head,
-            })
-        }
-    }
-
-    fn match_emphasis_delimiter(&self) -> Option<ScanMatch<'a>> {
-        {
-            let this = &self;
-            let mut head = this.read_head.clone();
-
-            if head.current == Some(UNDERSCORE) {
-                head.read_next_char();
-            } else {
-                return None;
-            }
-
-            Some(ScanMatch {
-                token: EmphasisDelimiter,
-                end: head,
-            })
-        }
-    }
-
-    fn match_strikethrough_delimiter(&self) -> Option<ScanMatch<'a>> {
-        {
-            let this = &self;
-            let mut head = this.read_head.clone();
-
-            if head.current == Some(TILDE) {
-                head.read_next_char();
-            } else {
-                return None;
-            }
-
-            Some(ScanMatch {
-                token: StrikethroughDelimiter,
-                end: head,
-            })
-        }
-    }
-
-    fn match_code_delimiter(&self) -> Option<ScanMatch<'a>> {
-        let mut head = self.read_head.clone();
-
-        for char in CODE_DELIMITER.chars() {
-            if head.current == Some(char) {
-                head.read_next_char();
-                continue;
-            } else {
-                return None;
-            }
-        }
-
-        Some(ScanMatch {
-            token: CodeDelimiter,
-            end: head,
-        })
-    }
-
-    fn match_code_block(&self) -> Option<ScanMatch<'a>> {
-        let mut head = self.read_head.clone();
-
-        let i1 = self.index();
-
-        loop {
-            let on_start_of_line = head.column == 0;
-            let prefix_matches = self.input[head.index..].starts_with(CODE_DELIMITER);
-            if on_start_of_line && prefix_matches {
-                let i2 = head.index;
-                let text = &self.input[i1..i2];
-                return Some(ScanMatch {
-                    token: Code(text),
-                    end: head,
-                });
-            } else if head.current == None {
-                return None;
-            } else {
-                head.read_next_char();
-            }
-        }
-    }
-
-    fn match_blockbreak(&self) -> Option<ScanMatch<'a>> {
-        //TODO: Maintain peek/lookahead on advance
-        let mut head = self.read_head.clone();
-
-        let mut new_line_count = 0;
-        loop {
-            match head.current {
-                Some(SPACE) => {}
-                Some(NEW_LINE) => {
-                    new_line_count += 1;
-                }
-                _ => break,
-            }
-            head.read_next_char();
-        }
-
-        if new_line_count > 1 {
-            Some(ScanMatch {
-                token: BlockBreak,
-                end: head,
-            })
-        } else {
-            None
-        }
-    }
-
-    fn match_linebreak(&self) -> Option<ScanMatch<'a>> {
-        let mut head = self.read_head.clone();
-
-        while let Some(SPACE) = head.current {
-            head.read_next_char();
-        }
-
-        if head.current == Some(NEW_LINE) {
-            head.read_next_char();
-            Some(ScanMatch {
-                token: LineBreak,
-                end: head,
-            })
-        } else {
-            None
-        }
-    }
-
-    fn match_end_of_input(&self) -> Option<ScanMatch<'a>> {
-        let mut head = self.read_head.clone();
-
-        while let Some(SPACE) = head.current {
-            head.read_next_char();
-        }
-
-        if head.current == None {
-            Some(ScanMatch {
-                token: EndOfInput,
-                end: head,
-            })
-        } else {
-            None
-        }
-    }
-
-    fn match_escaped_markup_text(&self) -> Option<ScanMatch<'a>> {
-        let mut head = self.read_head.clone();
-
-        if head.current == Some(BACKSLASH) {
-            head.read_next_char();
-        } else {
-            return None;
-        }
-
-        let i1 = head.index;
-
-        if head.current.is_some() {
-            head.read_next_char();
-        } else {
-            return None;
-        }
-
-        let i2 = head.index;
-        let text = &self.input[i1..i2];
-
-        Some(ScanMatch {
-            token: MarkupText(text),
-            end: head,
-        })
-    }
-
-    fn match_raw_fragment(&self) -> Option<ScanMatch<'a>> {
-        let mut head = self.read_head.clone();
-
-        let i1 = head.index;
-
-        while head
-            .current
-            .is_some_and(|c| !(c == BACKTICK || c == NEW_LINE))
-        {
-            head.read_next_char();
-        }
-
-        let i2 = head.index;
-        let text = &self.input[i1..i2];
-
-        if i1 == i2 {
-            None
-        } else {
-            Some(ScanMatch {
-                token: RawFragment(text),
-                end: head,
-            })
-        }
-    }
-
-    fn match_data_value(&self) -> Option<ScanMatch<'a>> {
-        let mut head = self.read_head.clone();
-
-        let i1 = head.index;
-
-        // TODO: There are probably other things we want to reject from
-        // data value right?
-        while head
-            .current
-            .is_some_and(|c| !(c == SPACE || c == NEW_LINE || c == VERTICAL_BAR))
-        {
-            head.read_next_char();
-        }
-
-        let i2 = head.index;
-        let text = &self.input[i1..i2];
-
-        while head.current.is_some_and(|c| c == SPACE) {
-            head.read_next_char();
-        }
-
-        if i1 == i2 {
-            None
-        } else {
-            Some(ScanMatch {
-                token: DataValue(text),
-                end: head,
-            })
-        }
-    }
-
-    fn match_markup_text(&self) -> Option<ScanMatch<'a>> {
-        let mut head = self.read_head.clone();
-
-        let i1 = head.index;
-
-        while head.current.is_some_and(|c| !MARKUP_CHARS.contains(&c)) {
-            head.read_next_char();
-        }
-
-        let i2 = head.index;
-        let text = &self.input[i1..i2];
-
-        if i1 == i2 {
-            None
-        } else {
-            Some(ScanMatch {
-                token: MarkupText(text),
-                end: head,
-            })
-        }
-    }
-
-    //TODO: This is the same as match_markup_text
-    fn match_title_text(&self) -> Option<ScanMatch<'a>> {
-        let mut head = self.read_head.clone();
-
-        let i1 = head.index;
-
-        while head.current.is_some_and(|c| !MARKUP_CHARS.contains(&c)) {
-            head.read_next_char();
-        }
-
-        let i2 = head.index;
-        let text = &self.input[i1..i2];
-
-        if i1 == i2 {
-            None
-        } else {
-            Some(ScanMatch {
-                token: TitleText(text),
-                end: head,
-            })
-        }
-    }
-
-    //TODO:
-    //
-    // These are all the same logic
-    //
-    // match_data_identifier
-    // match_block_parameter_value
-    // match_block_parameter_name
-    //
-    // Can we collapse the tokens into one?
-
-    fn match_block_parameter_value(&self) -> Option<ScanMatch<'a>> {
-        {
-            let this = &self;
-            let mut head = this.read_head.clone();
-
-            let i1 = head.index;
-
-            while head.current.is_some_and(|c| {
-                c.is_alphanumeric() || c == UNDERSCORE || c == DASH || c == FULL_STOP
-            }) {
-                head.read_next_char();
-            }
-
-            let i2 = head.index;
-            let text = &this.input[i1..i2];
-
-            if i1 == i2 {
-                return None;
-            }
-
-            while head.current.is_some_and(|c| c == SPACE) {
-                head.read_next_char();
-            }
-
-            Some(ScanMatch {
-                token: BlockParameterValue(text),
-                end: head,
-            })
-        }
-    }
-
-    fn match_block_parameter_name(&self) -> Option<ScanMatch<'a>> {
-        {
-            let this = &self;
-            let mut head = this.read_head.clone();
-
-            let i1 = head.index;
-
-            while head.current.is_some_and(|c| {
-                c.is_alphanumeric() || c == UNDERSCORE || c == DASH || c == FULL_STOP
-            }) {
-                head.read_next_char();
-            }
-
-            let i2 = head.index;
-            let text = &this.input[i1..i2];
-
-            if i1 == i2 {
-                return None;
-            }
-
-            while head.current.is_some_and(|c| c == SPACE) {
-                head.read_next_char();
-            }
-
-            Some(ScanMatch {
-                token: BlockParameterName(text),
-                end: head,
-            })
-        }
-    }
-
-    fn match_data_identifier(&self) -> Option<ScanMatch<'a>> {
-        {
-            let this = &self;
-            let mut head = this.read_head.clone();
-
-            let i1 = head.index;
-
-            while head.current.is_some_and(|c| {
-                c.is_alphanumeric() || c == UNDERSCORE || c == DASH || c == FULL_STOP
-            }) {
-                head.read_next_char();
-            }
-
-            let i2 = head.index;
-            let text = &this.input[i1..i2];
-
-            if i1 == i2 {
-                return None;
-            }
-
-            while head.current.is_some_and(|c| c == SPACE) {
-                head.read_next_char();
-            }
-
-            Some(ScanMatch {
-                token: DataIdentifier(text),
-                end: head,
-            })
-        }
-    }
-
-    fn match_data_key_value_seperator(&self) -> Option<ScanMatch<'a>> {
-        let mut head = self.read_head.clone();
-
-        if head.current == Some(COLON) {
-            head.read_next_char()
-        } else {
-            return None;
-        }
-
-        while head.current.is_some_and(|c| c == SPACE) {
-            head.read_next_char();
-        }
-
-        Some(ScanMatch {
-            token: DataKeyValueSeperator,
-            end: head,
-        })
-    }
-
-    fn match_data_list_seperator(&self) -> Option<ScanMatch<'a>> {
-        let mut head = self.read_head.clone();
-
-        if head.current == Some(VERTICAL_BAR) {
-            head.read_next_char()
-        } else {
-            return None;
-        }
-
-        while head.current.is_some_and(|c| c == SPACE) {
-            head.read_next_char();
-        }
-
-        Some(ScanMatch {
-            token: DataListSeperator,
-            end: head,
-        })
-    }
-
-    fn match_structured_data_directive(&self) -> Option<ScanMatch<'a>> {
-        let mut head = self.read_head.clone();
-
-        if head.current == Some(AT_SIGN) {
-            head.read_next_char()
-        } else {
-            return None;
-        }
-
-        let i1 = head.index;
-        while head.current.is_some_and(|c| c.is_alphanumeric()) {
-            head.read_next_char();
-        }
-
-        let i2 = head.index;
-        let text = &self.input[i1..i2];
-
-        // TODO: Strictly speaking we should not allow a match with an
-        // empty name, e.g just an '@'
-        Some(ScanMatch {
-            token: StructuredDataDirective(text),
-            end: head,
-        })
-    }
-
-    fn match_container_directive(&self) -> Option<ScanMatch<'a>> {
-        let mut head = self.read_head.clone();
-
-        if head.current == Some(EXCLAMATION_MARK) {
-            head.read_next_char()
-        } else {
-            return None;
-        }
-
-        let i1 = head.index;
-        while head.current.is_some_and(|c| c.is_alphanumeric()) {
-            head.read_next_char();
-        }
-
-        let i2 = head.index;
-        let text = &self.input[i1..i2];
-
-        Some(ScanMatch {
-            token: ContainerDirective(text),
-            end: head,
-        })
-    }
-
-    fn match_block_directive(&self) -> Option<ScanMatch<'a>> {
-        let mut head = self.read_head.clone();
-
-        if head.current == Some(HASH) {
-            head.read_next_char()
-        } else {
-            return None;
-        }
-
-        let i1 = head.index;
-        while head.current.is_some_and(|c| c.is_alphanumeric()) {
-            head.read_next_char();
-        }
-
-        let i2 = head.index;
-        let text = &self.input[i1..i2];
-
-        Some(ScanMatch {
-            token: BlockDirective(text),
-            end: head,
-        })
-    }
-
-    fn match_subsection_directive(&self) -> Option<ScanMatch<'a>> {
-        let mut head = self.read_head.clone();
-
-        if head.current == Some(SLASH) {
-            head.read_next_char()
-        } else {
-            return None;
-        }
-
-        if head.current == Some(SLASH) {
-            head.read_next_char()
-        } else {
-            return None;
-        }
-
-        if head.current == Some(SLASH) {
-            head.read_next_char()
-        } else {
-            return None;
-        }
-
-        while head.current.is_some_and(|c| c == SPACE) {
-            head.read_next_char();
-        }
-
-        Some(ScanMatch {
-            token: SubSectionDirective,
-            end: head,
-        })
-    }
-
-    fn match_section_directive(&self) -> Option<ScanMatch<'a>> {
-        let mut head = self.read_head.clone();
-
-        if head.current == Some(SLASH) {
-            head.read_next_char()
-        } else {
-            return None;
-        }
-
-        if head.current == Some(SLASH) {
-            head.read_next_char()
-        } else {
-            return None;
-        }
-
-        while head.current.is_some_and(|c| c == SPACE) {
-            head.read_next_char();
-        }
-
-        Some(ScanMatch {
-            token: SectionDirective,
-            end: head,
-        })
-    }
-
-    fn match_title_directive(&self) -> Option<ScanMatch<'a>> {
-        let mut head = self.read_head.clone();
-
-        if head.current == Some(SLASH) {
-            head.read_next_char()
-        } else {
-            return None;
-        }
-
-        while head.current.is_some_and(|c| c == SPACE) {
-            head.read_next_char();
-        }
-
-        Some(ScanMatch {
-            token: TitleDirective,
-            end: head,
-        })
-    }
-
-    fn match_delimited_container_start(&self) -> Option<ScanMatch<'a>> {
-        let mut head = self.read_head.clone();
-
-        for char in DELIMITED_CONTAINER_START.chars() {
-            if head.current == Some(char) {
-                head.read_next_char();
-                continue;
-            } else {
-                return None;
-            }
-        }
-
-        while head.current.is_some_and(|c| c == SPACE) {
-            head.read_next_char();
-        }
-
-        Some(ScanMatch {
-            token: DelimitedContainerStart,
-            end: head,
-        })
-    }
-
-    fn match_delimited_container_end(&self) -> Option<ScanMatch<'a>> {
-        let mut head = self.read_head.clone();
-
-        for char in DELIMITED_CONTAINER_END.chars() {
-            if head.current == Some(char) {
-                head.read_next_char();
-                continue;
-            } else {
-                return None;
-            }
-        }
-
-        while head.current.is_some_and(|c| c == SPACE) {
-            head.read_next_char();
-        }
-
-        Some(ScanMatch {
-            token: DelimitedContainerEnd,
-            end: head,
-        })
-    }
-
-    fn match_unknown(&self) -> ScanMatch<'a> {
-        let mut head = self.read_head.clone();
-
-        let i1 = head.index;
-
-        while head.current.is_some_and(|c| !(c == SPACE || c == NEW_LINE)) {
-            head.read_next_char();
-        }
-
-        let i2 = head.index;
-        let text = &self.input[i1..i2];
-
-        ScanMatch {
-            token: Unknown(text),
-            end: head,
-        }
-    }
-
-    fn advance_past(&mut self, scan_match: &ScanMatch<'a>) {
+    pub(crate) fn advance_past(&mut self, scan_match: &ScanMatch<'a>) {
         //TODO: read head is a bit chunky to clone about the place no?
         self.read_head = scan_match.end.clone();
     }
@@ -1506,9 +1100,998 @@ impl<'a> Scanner<'a> {
 // TODO: Could hold different positions for full extent of
 // matching text vs the sub text we are interested in
 // e.g escaped chars
-#[derive(Debug)]
-struct ScanMatch<'a> {
-    token: Token<'a>,
-    //TODO: Store a position instead of a head
+pub struct ScanMatch<'a> {
+    value: TokenValue<'a>,
+    // TODO: Store a position instead of a head
     end: ReadHead<'a>,
 }
+
+fn match_list_bullet<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
+    let mut head = scanner.read_head.clone();
+
+    let mut space_count = 0;
+
+    while head.current == Some(SPACE) {
+        space_count += 1;
+        head.read_next_char();
+    }
+
+    if head.current == Some(DASH) {
+        head.read_next_char();
+    } else {
+        return None;
+    }
+
+    while head.current == Some(SPACE) {
+        head.read_next_char();
+    }
+
+    Some(ScanMatch {
+        value: TokenValue::ListBullet(ListBullet(space_count)),
+        end: head,
+    })
+}
+
+fn match_markup_text_space<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
+    let mut head = scanner.read_head.clone();
+    let i1 = head.index;
+
+    while head.current == Some(SPACE) {
+        head.read_next_char();
+    }
+
+    let mut has_new_line = false;
+    if head.current == Some(NEW_LINE) {
+        head.read_next_char();
+        has_new_line = true;
+    }
+
+    if has_new_line && scanner.input[head.index..].starts_with(CONTAINER_END_PATTERN) {
+        return None;
+    }
+
+    while head.current == Some(SPACE) {
+        head.read_next_char();
+    }
+
+    if head.current == Some(NEW_LINE) {
+        return None;
+    }
+
+    let i2 = head.index;
+
+    if i1 == i2 {
+        return None;
+    }
+
+    if head.current == None {
+        return None;
+    }
+
+    Some(ScanMatch {
+        value: TokenValue::MarkupTextSpace(MarkupTextSpace),
+        end: head,
+    })
+}
+
+fn match_list_markup_text_space<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
+    let mut head = scanner.read_head.clone();
+    let i1 = head.index;
+
+    while head.current == Some(SPACE) {
+        head.read_next_char();
+    }
+
+    let mut has_new_line = false;
+    if head.current == Some(NEW_LINE) {
+        head.read_next_char();
+        has_new_line = true;
+    }
+
+    if has_new_line && scanner.input[head.index..].starts_with(CONTAINER_END_PATTERN) {
+        return None;
+    }
+
+    while head.current == Some(SPACE) {
+        head.read_next_char();
+    }
+
+    if head.current == Some(NEW_LINE) {
+        return None;
+    }
+
+    let i2 = head.index;
+
+    if i1 == i2 {
+        return None;
+    }
+
+    if has_new_line && head.current == Some(DASH) {
+        return None;
+    }
+
+    if head.current == None {
+        return None;
+    }
+
+    Some(ScanMatch {
+        value: TokenValue::MarkupTextSpace(MarkupTextSpace),
+        end: head,
+    })
+}
+
+fn match_title_text_space<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
+    let mut head = scanner.read_head.clone();
+
+    if head.current == Some(SPACE) {
+        head.read_next_char();
+    } else {
+        return None;
+    }
+
+    while head.current == Some(SPACE) {
+        head.read_next_char();
+    }
+
+    let has_text_next = head.current.is_some_and(|c| c != SPACE && c != NEW_LINE);
+
+    if !has_text_next {
+        return None;
+    }
+
+    Some(ScanMatch {
+        value: TokenValue::TitleTextSpace(TitleTextSpace),
+        end: head,
+    })
+}
+
+fn match_parameters_start<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
+    let mut head = scanner.read_head.clone();
+
+    if head.current == Some(LEFT_BRACKET) {
+        head.read_next_char();
+    } else {
+        return None;
+    }
+
+    Some(ScanMatch {
+        value: TokenValue::BlockParametersStart(BlockParametersStart),
+        end: head,
+    })
+}
+
+fn match_parameters_end<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
+    let mut head = scanner.read_head.clone();
+
+    if head.current == Some(RIGHT_BRACKET) {
+        head.read_next_char();
+    } else {
+        return None;
+    }
+
+    Some(ScanMatch {
+        value: TokenValue::BlockParametersEnd(BlockParametersEnd),
+        end: head,
+    })
+}
+
+fn match_parameter_name_value_seperator<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
+    let mut head = scanner.read_head.clone();
+
+    if head.current == Some(EQUALS) {
+        head.read_next_char();
+    } else {
+        return None;
+    }
+
+    Some(ScanMatch {
+        value: TokenValue::BlockParameterNameValueSeperator(BlockParameterNameValueSeperator),
+        end: head,
+    })
+}
+
+fn match_raw_delimiter<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
+    let mut head = scanner.read_head.clone();
+
+    if head.current == Some(BACKTICK) {
+        head.read_next_char();
+    } else {
+        return None;
+    }
+
+    Some(ScanMatch {
+        value: TokenValue::RawDelimiter(RawDelimiter),
+        end: head,
+    })
+}
+
+fn match_link_opening_delimiter<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
+    let mut head = scanner.read_head.clone();
+
+    if head.current == Some(LEFT_SQUARE_BRACKET) {
+        head.read_next_char();
+    } else {
+        return None;
+    }
+
+    Some(ScanMatch {
+        value: TokenValue::LinkOpeningDelimiter(LinkOpeningDelimiter),
+        end: head,
+    })
+}
+
+fn match_link_closing_delimiter<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
+    let mut head = scanner.read_head.clone();
+
+    if head.current == Some(RIGHT_SQUARE_BRACKET) {
+        head.read_next_char();
+    } else {
+        return None;
+    }
+
+    Some(ScanMatch {
+        value: TokenValue::LinkClosingDelimiter(LinkClosingDelimiter),
+        end: head,
+    })
+}
+
+fn match_link_to_reference_joiner<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
+    let mut head = scanner.read_head.clone();
+
+    if head.current == Some(AT_SIGN) {
+        head.read_next_char();
+    } else {
+        return None;
+    }
+
+    Some(ScanMatch {
+        value: TokenValue::LinkToReferenceJoiner(LinkToReferenceJoiner),
+        end: head,
+    })
+}
+
+fn match_strong_delimiter<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
+    let mut head = scanner.read_head.clone();
+
+    if head.current == Some(ASTERISK) {
+        head.read_next_char();
+    } else {
+        return None;
+    }
+
+    Some(ScanMatch {
+        value: TokenValue::StrongDelimiter(StrongDelimiter),
+        end: head,
+    })
+}
+
+fn match_emphasis_delimiter<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
+    let mut head = scanner.read_head.clone();
+
+    if head.current == Some(UNDERSCORE) {
+        head.read_next_char();
+    } else {
+        return None;
+    }
+
+    Some(ScanMatch {
+        value: TokenValue::EmphasisDelimiter(EmphasisDelimiter),
+        end: head,
+    })
+}
+
+fn match_strikethrough_delimiter<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
+    let mut head = scanner.read_head.clone();
+
+    if head.current == Some(TILDE) {
+        head.read_next_char();
+    } else {
+        return None;
+    }
+
+    Some(ScanMatch {
+        value: TokenValue::StrikethroughDelimiter(StrikethroughDelimiter),
+        end: head,
+    })
+}
+
+fn match_code_delimiter<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
+    let mut head = scanner.read_head.clone();
+
+    for char in CODE_DELIMITER_PATTERN.chars() {
+        if head.current == Some(char) {
+            head.read_next_char();
+            continue;
+        } else {
+            return None;
+        }
+    }
+
+    Some(ScanMatch {
+        value: TokenValue::CodeDelimiter(CodeDelimiter),
+        end: head,
+    })
+}
+
+fn match_code_block<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
+    let mut head = scanner.read_head.clone();
+
+    let i1 = head.index;
+
+    loop {
+        let on_start_of_line = head.column == 0;
+        let prefix_matches = scanner.input[head.index..].starts_with(CODE_DELIMITER_PATTERN);
+        if on_start_of_line && prefix_matches {
+            let i2 = head.index;
+            let text = &scanner.input[i1..i2];
+            return Some(ScanMatch {
+                value: TokenValue::Code(Code(text)),
+                end: head,
+            });
+        } else if head.current == None {
+            return None;
+        } else {
+            head.read_next_char();
+        }
+    }
+}
+
+fn match_blockbreak<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
+    let mut head = scanner.read_head.clone();
+
+    let mut new_line_count = 0;
+    loop {
+        match head.current {
+            Some(SPACE) => {}
+            Some(NEW_LINE) => {
+                new_line_count += 1;
+            }
+            _ => break,
+        }
+        head.read_next_char();
+    }
+
+    if new_line_count > 1 {
+        Some(ScanMatch {
+            value: TokenValue::BlockBreak(BlockBreak),
+            end: head,
+        })
+    } else {
+        None
+    }
+}
+
+fn match_linebreak<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
+    let mut head = scanner.read_head.clone();
+
+    while let Some(SPACE) = head.current {
+        head.read_next_char();
+    }
+
+    if head.current == Some(NEW_LINE) {
+        head.read_next_char();
+        Some(ScanMatch {
+            value: TokenValue::LineBreak(LineBreak),
+            end: head,
+        })
+    } else {
+        None
+    }
+}
+
+fn match_end_of_input<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
+    let mut head = scanner.read_head.clone();
+
+    while let Some(SPACE) = head.current {
+        head.read_next_char();
+    }
+
+    if head.current == None {
+        Some(ScanMatch {
+            value: TokenValue::EndOfInput(EndOfInput),
+            end: head,
+        })
+    } else {
+        None
+    }
+}
+
+fn match_escaped_markup_text<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
+    let mut head = scanner.read_head.clone();
+
+    if head.current == Some(BACKSLASH) {
+        head.read_next_char();
+    } else {
+        return None;
+    }
+
+    let i1 = head.index;
+
+    if head.current.is_some() {
+        head.read_next_char();
+    } else {
+        return None;
+    }
+
+    let i2 = head.index;
+    let text = &scanner.input[i1..i2];
+
+    Some(ScanMatch {
+        value: TokenValue::MarkupText(MarkupText(text)),
+        end: head,
+    })
+}
+
+fn match_raw_fragment<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
+    let mut head = scanner.read_head.clone();
+
+    let i1 = head.index;
+
+    while head
+        .current
+        .is_some_and(|c| !(c == BACKTICK || c == NEW_LINE))
+    {
+        head.read_next_char();
+    }
+
+    let i2 = head.index;
+    let text = &scanner.input[i1..i2];
+
+    if i1 == i2 {
+        None
+    } else {
+        Some(ScanMatch {
+            value: TokenValue::RawFragment(RawFragment(text)),
+            end: head,
+        })
+    }
+}
+
+fn match_data_value<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
+    let mut head = scanner.read_head.clone();
+
+    let i1 = head.index;
+
+    while head
+        .current
+        .is_some_and(|c| !(c == SPACE || c == NEW_LINE || c == VERTICAL_BAR))
+    {
+        head.read_next_char();
+    }
+
+    let i2 = head.index;
+    let text = &scanner.input[i1..i2];
+
+    while head.current.is_some_and(|c| c == SPACE) {
+        head.read_next_char();
+    }
+
+    if i1 == i2 {
+        None
+    } else {
+        Some(ScanMatch {
+            //TODO: meh amounts of ceremony here
+            value: TokenValue::DataValue(DataValue(text)),
+            end: head,
+        })
+    }
+}
+
+fn match_markup_text<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
+    let mut head = scanner.read_head.clone();
+
+    let i1 = head.index;
+
+    while head.current.is_some_and(|c| !MARKUP_CHARS.contains(&c)) {
+        head.read_next_char();
+    }
+
+    let i2 = head.index;
+    let text = &scanner.input[i1..i2];
+
+    if i1 == i2 {
+        None
+    } else {
+        Some(ScanMatch {
+            value: TokenValue::MarkupText(MarkupText(text)),
+            end: head,
+        })
+    }
+}
+
+fn match_title_text<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
+    let mut head = scanner.read_head.clone();
+
+    let i1 = head.index;
+
+    while head.current.is_some_and(|c| !MARKUP_CHARS.contains(&c)) {
+        head.read_next_char();
+    }
+
+    let i2 = head.index;
+    let text = &scanner.input[i1..i2];
+
+    if i1 == i2 {
+        None
+    } else {
+        Some(ScanMatch {
+            value: TokenValue::TitleText(TitleText(text)),
+            end: head,
+        })
+    }
+}
+
+fn match_parameter_value<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
+    let mut head = scanner.read_head.clone();
+
+    let i1 = head.index;
+
+    while head
+        .current
+        .is_some_and(|c| c.is_alphanumeric() || c == UNDERSCORE || c == DASH || c == FULL_STOP)
+    {
+        head.read_next_char();
+    }
+
+    let i2 = head.index;
+    let text = &scanner.input[i1..i2];
+
+    if i1 == i2 {
+        return None;
+    }
+
+    while head.current.is_some_and(|c| c == SPACE) {
+        head.read_next_char();
+    }
+
+    Some(ScanMatch {
+        value: TokenValue::BlockParameterValue(BlockParameterValue(text)),
+        end: head,
+    })
+}
+
+fn match_parameter_name<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
+    let mut head = scanner.read_head.clone();
+
+    let i1 = head.index;
+
+    while head
+        .current
+        .is_some_and(|c| c.is_alphanumeric() || c == UNDERSCORE || c == DASH || c == FULL_STOP)
+    {
+        head.read_next_char();
+    }
+
+    let i2 = head.index;
+    let text = &scanner.input[i1..i2];
+
+    if i1 == i2 {
+        return None;
+    }
+
+    while head.current.is_some_and(|c| c == SPACE) {
+        head.read_next_char();
+    }
+
+    Some(ScanMatch {
+        value: TokenValue::BlockParameterName(BlockParameterName(text)),
+        end: head,
+    })
+}
+
+fn match_data_identifier<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
+    let mut head = scanner.read_head.clone();
+
+    let i1 = head.index;
+
+    while head
+        .current
+        .is_some_and(|c| c.is_alphanumeric() || c == UNDERSCORE || c == DASH || c == FULL_STOP)
+    {
+        head.read_next_char();
+    }
+
+    let i2 = head.index;
+    let text = &scanner.input[i1..i2];
+
+    if i1 == i2 {
+        return None;
+    }
+
+    while head.current.is_some_and(|c| c == SPACE) {
+        head.read_next_char();
+    }
+
+    Some(ScanMatch {
+        value: TokenValue::DataIdentifier(DataIdentifier(text)),
+        end: head,
+    })
+}
+
+fn match_data_key_value_seperator<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
+    let mut head = scanner.read_head.clone();
+
+    if head.current == Some(COLON) {
+        head.read_next_char()
+    } else {
+        return None;
+    }
+
+    while head.current.is_some_and(|c| c == SPACE) {
+        head.read_next_char();
+    }
+
+    Some(ScanMatch {
+        value: TokenValue::DataKeyValueSeperator(DataKeyValueSeperator),
+        end: head,
+    })
+}
+
+fn match_data_list_seperator<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
+    let mut head = scanner.read_head.clone();
+
+    if head.current == Some(VERTICAL_BAR) {
+        head.read_next_char()
+    } else {
+        return None;
+    }
+
+    while head.current.is_some_and(|c| c == SPACE) {
+        head.read_next_char();
+    }
+
+    Some(ScanMatch {
+        value: TokenValue::DataListSeperator(DataListSeperator),
+        end: head,
+    })
+}
+
+fn match_data_directive<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
+    let mut head = scanner.read_head.clone();
+
+    if head.current == Some(AT_SIGN) {
+        head.read_next_char()
+    } else {
+        return None;
+    }
+
+    let i1 = head.index;
+    while head.current.is_some_and(|c| c.is_alphanumeric()) {
+        head.read_next_char();
+    }
+
+    let i2 = head.index;
+    let text = &scanner.input[i1..i2];
+
+    Some(ScanMatch {
+        value: TokenValue::StructuredDataDirective(StructuredDataDirective(text)),
+        end: head,
+    })
+}
+
+fn match_container_directive<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
+    let mut head = scanner.read_head.clone();
+
+    if head.current == Some(EXCLAMATION_MARK) {
+        head.read_next_char()
+    } else {
+        return None;
+    }
+
+    let i1 = head.index;
+    while head.current.is_some_and(|c| c.is_alphanumeric()) {
+        head.read_next_char();
+    }
+
+    let i2 = head.index;
+    let text = &scanner.input[i1..i2];
+
+    Some(ScanMatch {
+        value: TokenValue::ContainerDirective(ContainerDirective(text)),
+        end: head,
+    })
+}
+
+fn match_block_directive<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
+    let mut head = scanner.read_head.clone();
+
+    if head.current == Some(HASH) {
+        head.read_next_char()
+    } else {
+        return None;
+    }
+
+    let i1 = head.index;
+    while head.current.is_some_and(|c| c.is_alphanumeric()) {
+        head.read_next_char();
+    }
+
+    let i2 = head.index;
+    let text = &scanner.input[i1..i2];
+
+    Some(ScanMatch {
+        value: TokenValue::BlockDirective(BlockDirective(text)),
+        end: head,
+    })
+}
+
+fn match_subsection_directive<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
+    let mut head = scanner.read_head.clone();
+
+    if head.current == Some(SLASH) {
+        head.read_next_char()
+    } else {
+        return None;
+    }
+
+    if head.current == Some(SLASH) {
+        head.read_next_char()
+    } else {
+        return None;
+    }
+
+    if head.current == Some(SLASH) {
+        head.read_next_char()
+    } else {
+        return None;
+    }
+
+    while head.current.is_some_and(|c| c == SPACE) {
+        head.read_next_char();
+    }
+
+    Some(ScanMatch {
+        value: TokenValue::SubSectionDirective(SubSectionDirective),
+        end: head,
+    })
+}
+
+fn match_section_directive<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
+    let mut head = scanner.read_head.clone();
+
+    if head.current == Some(SLASH) {
+        head.read_next_char()
+    } else {
+        return None;
+    }
+
+    if head.current == Some(SLASH) {
+        head.read_next_char()
+    } else {
+        return None;
+    }
+
+    while head.current.is_some_and(|c| c == SPACE) {
+        head.read_next_char();
+    }
+
+    Some(ScanMatch {
+        value: TokenValue::SectionDirective(SectionDirective),
+        end: head,
+    })
+}
+
+fn match_title_directive<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
+    let mut head = scanner.read_head.clone();
+
+    if head.current == Some(SLASH) {
+        head.read_next_char()
+    } else {
+        return None;
+    }
+
+    while head.current.is_some_and(|c| c == SPACE) {
+        head.read_next_char();
+    }
+
+    Some(ScanMatch {
+        value: TokenValue::TitleDirective(TitleDirective),
+        end: head,
+    })
+}
+
+fn match_container_start<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
+    let mut head = scanner.read_head.clone();
+
+    for char in CONTAINER_START_PATTERN.chars() {
+        if head.current == Some(char) {
+            head.read_next_char();
+            continue;
+        } else {
+            return None;
+        }
+    }
+
+    while head.current.is_some_and(|c| c == SPACE) {
+        head.read_next_char();
+    }
+
+    Some(ScanMatch {
+        value: TokenValue::DelimitedContainerStart(DelimitedContainerStart),
+        end: head,
+    })
+}
+
+fn match_container_end<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
+    let mut head = scanner.read_head.clone();
+
+    for char in CONTAINER_END_PATTERN.chars() {
+        if head.current == Some(char) {
+            head.read_next_char();
+            continue;
+        } else {
+            return None;
+        }
+    }
+
+    while head.current.is_some_and(|c| c == SPACE) {
+        head.read_next_char();
+    }
+
+    Some(ScanMatch {
+        value: TokenValue::DelimitedContainerEnd(DelimitedContainerEnd),
+        end: head,
+    })
+}
+
+fn match_unknown<'a>(scanner: &Scanner<'a>) -> ScanMatch<'a> {
+    let mut head = scanner.read_head.clone();
+
+    let i1 = head.index;
+
+    while head.current.is_some_and(|c| !(c == SPACE || c == NEW_LINE)) {
+        head.read_next_char();
+    }
+
+    let i2 = head.index;
+    let text = &scanner.input[i1..i2];
+
+    ScanMatch {
+        value: TokenValue::Unknown(Unknown(text)),
+        end: head,
+    }
+}
+
+fn match_generic<'a>(scanner: &Scanner<'a>) -> ScanMatch<'a> {
+    if let Some(blockbreak) = match_blockbreak(scanner) {
+        blockbreak
+    } else if let Some(linebreak) = match_linebreak(scanner) {
+        linebreak
+    } else if let Some(end_of_input) = match_end_of_input(scanner) {
+        end_of_input
+    } else {
+        match_unknown(scanner)
+    }
+}
+
+//TODO: do we really need this?
+fn match_data_identifier_at_start<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
+    if scanner.position().column != 0 {
+        return None;
+    }
+    match_data_identifier(scanner)
+}
+
+//TODO: do we really need this?
+fn match_list_bullet_at_start<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
+    if scanner.position().column != 0 {
+        return None;
+    }
+    match_list_bullet(scanner)
+}
+
+const CONTAINER_START: Matcher = match_container_start;
+const CONTAINER_END: Matcher = match_container_end;
+const SUBSECTION_DIRECTIVE: Matcher = match_subsection_directive;
+const SECTION_DIRECTIVE: Matcher = match_section_directive;
+const TITLE_DIRECTIVE: Matcher = match_title_directive;
+const DATA_DIRECTIVE: Matcher = match_data_directive;
+const CONTAINER_DIRECTIVE: Matcher = match_container_directive;
+const BLOCK_DIRECTIVE: Matcher = match_block_directive;
+const LIST_BULLET: Matcher = match_list_bullet;
+const LIST_BULLET_AT_START: Matcher = match_list_bullet_at_start;
+const RAW_DELIMITER: Matcher = match_raw_delimiter;
+const RAW_FRAGMENT: Matcher = match_raw_fragment;
+const LINK_OPENING: Matcher = match_link_opening_delimiter;
+const LINK_CLOSING: Matcher = match_link_closing_delimiter;
+const LINK_TO_REFERENCE_JOINER: Matcher = match_link_to_reference_joiner;
+const STRONG_DELIMITER: Matcher = match_strong_delimiter;
+const EMPHASIS_DELIMITER: Matcher = match_emphasis_delimiter;
+const STRIKETHROUGH_DELIMITER: Matcher = match_strikethrough_delimiter;
+const ESCAPED_TEXT: Matcher = match_escaped_markup_text;
+const MARKUP_TEXT: Matcher = match_markup_text;
+const MARKUP_TEXT_SPACE: Matcher = match_markup_text_space;
+const LIST_MARKUP_TEXT_SPACE: Matcher = match_list_markup_text_space;
+const TITLE_TEXT: Matcher = match_title_text;
+const TITLE_TEXT_SPACE: Matcher = match_title_text_space;
+const PARAMETERS_START: Matcher = match_parameters_start;
+const PARAMETERS_END: Matcher = match_parameters_end;
+const PARAMETER_NAME_VALUE_SEP: Matcher = match_parameter_name_value_seperator;
+const PARAMETER_NAME: Matcher = match_parameter_name;
+const PARAMETER_VALUE: Matcher = match_parameter_value;
+const DATA_IDENTIFIER_AT_START: Matcher = match_data_identifier_at_start;
+const DATA_IDENTIFIER: Matcher = match_data_identifier;
+const DATA_KEY_VALUE_SEP: Matcher = match_data_key_value_seperator;
+const DATA_LIST_SEP: Matcher = match_data_list_seperator;
+const DATA_VALUE: Matcher = match_data_value;
+const CODE_DELIMITER: Matcher = match_code_delimiter;
+const CODE_BLOCK: Matcher = match_code_block;
+
+const SCAN_BLOCK_START: &[Matcher] = &[
+    CONTAINER_START,
+    CONTAINER_END,
+    SUBSECTION_DIRECTIVE,
+    SECTION_DIRECTIVE,
+    TITLE_DIRECTIVE,
+    DATA_DIRECTIVE,
+    CONTAINER_DIRECTIVE,
+    BLOCK_DIRECTIVE,
+    LIST_BULLET,
+    RAW_DELIMITER,
+    LINK_OPENING,
+    STRONG_DELIMITER,
+    EMPHASIS_DELIMITER,
+    STRIKETHROUGH_DELIMITER,
+    ESCAPED_TEXT,
+    MARKUP_TEXT,
+];
+
+const SCAN_MARKUP: &[Matcher] = &[
+    RAW_DELIMITER,
+    LINK_OPENING,
+    LINK_CLOSING,
+    STRONG_DELIMITER,
+    EMPHASIS_DELIMITER,
+    STRIKETHROUGH_DELIMITER,
+    ESCAPED_TEXT,
+    MARKUP_TEXT_SPACE,
+    MARKUP_TEXT,
+];
+
+const SCAN_LIST_MARKUP: &[Matcher] = &[
+    RAW_DELIMITER,
+    LIST_BULLET_AT_START,
+    LINK_OPENING,
+    LINK_CLOSING,
+    STRONG_DELIMITER,
+    EMPHASIS_DELIMITER,
+    STRIKETHROUGH_DELIMITER,
+    ESCAPED_TEXT,
+    LIST_MARKUP_TEXT_SPACE,
+    MARKUP_TEXT,
+];
+
+const SCAN_RAW: &[Matcher] = &[RAW_DELIMITER, RAW_FRAGMENT];
+
+const SCAN_TITLE: &[Matcher] = &[
+    SUBSECTION_DIRECTIVE,
+    SECTION_DIRECTIVE,
+    TITLE_DIRECTIVE,
+    TITLE_TEXT_SPACE,
+    TITLE_TEXT,
+];
+
+const SCAN_HEADER: &[Matcher] = &[
+    DATA_DIRECTIVE,
+    CONTAINER_DIRECTIVE,
+    BLOCK_DIRECTIVE,
+    PARAMETERS_START,
+    PARAMETERS_END,
+    PARAMETER_NAME_VALUE_SEP,
+    PARAMETER_NAME,
+];
+
+const SCAN_HEADER_VALUE: &[Matcher] = &[PARAMETER_VALUE];
+
+const SCAN_STRUCTURED_DATA: &[Matcher] = &[
+    DATA_IDENTIFIER_AT_START,
+    DATA_KEY_VALUE_SEP,
+    DATA_LIST_SEP,
+    DATA_VALUE,
+];
+
+const SCAN_LINK_REFERENCE: &[Matcher] = &[LINK_TO_REFERENCE_JOINER, DATA_IDENTIFIER];
+
+const SCAN_CODE: &[Matcher] = &[CODE_DELIMITER, CODE_BLOCK];
+
+const SCAN_GENERIC: &[Matcher] = &[];
