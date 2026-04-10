@@ -228,9 +228,7 @@ fn parse_references(tokeniser: &mut Tokeniser) -> ParseResult<Box<[Reference]>> 
 
     let mut references = Vec::new();
 
-    while let Some(identifier_token) = tokeniser.peek().is_kind() {
-        let DataIdentifier(id) = identifier_token.value;
-
+    while let Some(DataIdentifier(id)) = tokeniser.peek().is_value() {
         tokeniser.advance();
         tokeniser.advance().expect(DataKeyValueSeperator)?;
 
@@ -269,16 +267,15 @@ fn parse_header_text(tokeniser: &mut Tokeniser) -> ParseResult<String> {
     tokeniser.push_mode(ScanMode::Title);
 
     loop {
-        match tokeniser.peek().value {
-            TokenKind::TitleText(_) => {
-                let TitleText(value) = tokeniser.advance().extract()?;
-                title.push_str(value);
-            }
-            TokenKind::TitleTextSpace(_) => {
-                tokeniser.advance();
-                title.push(SPACE);
-            }
-            _ => break,
+        let next = tokeniser.peek();
+        if let Some(TitleText(text)) = next.is_value() {
+            title.push_str(text);
+            tokeniser.advance();
+        } else if next.is(TitleTextSpace) {
+            title.push(SPACE);
+            tokeniser.advance();
+        } else {
+            break;
         }
     }
 
@@ -304,12 +301,12 @@ fn parse_metadata_list(tokeniser: &mut Tokeniser) -> ParseResult<Box<[String]>> 
 }
 
 fn parse_element(tokeniser: &mut Tokeniser) -> ParseResult<Element> {
-    let peeked = tokeniser.peek();
+    let next = tokeniser.peek();
     //TODO: Ergonomics
     // We never care about the value, so return a tag?
-    match peeked.value {
+    match next.value {
         TokenKind::TitleDirective(_) => {
-            parse_err!(TitleNotAtStart, peeked.position)
+            parse_err!(TitleNotAtStart, next.position)
         }
         TokenKind::SectionDirective(_) => {
             let section = parse_section(tokeniser)?;
@@ -333,16 +330,16 @@ fn parse_element(tokeniser: &mut Tokeniser) -> ParseResult<Element> {
 fn parse_container(tokeniser: &mut Tokeniser) -> ParseResult<Container> {
     tokeniser.advance().expect(ContainerDirective("info"))?;
 
-    let peeked = tokeniser.peek();
-    if peeked.is(BlockBreak) {
-        return parse_err!(EmptyContainer, peeked.position);
+    let next = tokeniser.peek();
+    if next.is(BlockBreak) {
+        return parse_err!(EmptyContainer, next.position);
     }
 
     tokeniser.advance().expect(LineBreak)?;
 
-    let peeked = tokeniser.peek();
-    if peeked.is(EndOfInput) {
-        return parse_err!(EmptyContainer, peeked.position);
+    let next = tokeniser.peek();
+    if next.is(EndOfInput) {
+        return parse_err!(EmptyContainer, next.position);
     }
 
     //TODO: Support other kinds of container
@@ -356,9 +353,9 @@ fn parse_container(tokeniser: &mut Tokeniser) -> ParseResult<Container> {
         tokeniser.advance().expect(LineBreak)?;
 
         //TODO: use expect and into instead to specialise error?
-        let peeked = tokeniser.peek();
-        if peeked.is(DelimitedContainerEnd) {
-            return parse_err!(EmptyContainer, peeked.position);
+        let next = tokeniser.peek();
+        if next.is(DelimitedContainerEnd) {
+            return parse_err!(EmptyContainer, next.position);
         }
 
         while !tokeniser.peek().is(DelimitedContainerEnd) {
@@ -483,20 +480,20 @@ fn parse_block(tokeniser: &mut Tokeniser) -> ParseResult<Block> {
     // TODO: Meh
     // TODO: no really, fix the ergonomics here
     // TODO: Directive should be consts if we are being consistant
-    let peeked = tokeniser.peek();
-    let block = match peeked.value {
+    let next = tokeniser.peek();
+    let block = match next.value {
         TokenKind::ListBullet(_) => parse_list(tokeniser)?,
         TokenKind::BlockDirective(BlockDirective("paragraph")) => parse_paragraph(tokeniser)?,
         TokenKind::BlockDirective(BlockDirective("list")) => parse_list(tokeniser)?,
         TokenKind::BlockDirective(BlockDirective("code")) => parse_code(tokeniser)?,
         TokenKind::StructuredDataDirective(StructuredDataDirective("metadata")) => {
-            return parse_err!(MetadataNotAtStart, peeked.position);
+            return parse_err!(MetadataNotAtStart, next.position);
         }
         TokenKind::StructuredDataDirective(StructuredDataDirective("references")) => {
-            return parse_err!(ReferencesOutOfPlace, peeked.position);
+            return parse_err!(ReferencesOutOfPlace, next.position);
         }
         TokenKind::BlockDirective(BlockDirective(name)) => {
-            return parse_err!(UnknownBlock(name.into()), peeked.position);
+            return parse_err!(UnknownBlock(name.into()), next.position);
         }
         //TODO: Easier way to have 'is markup'
         TokenKind::MarkupText(_)
@@ -507,9 +504,9 @@ fn parse_block(tokeniser: &mut Tokeniser) -> ParseResult<Block> {
         | TokenKind::StrongDelimiter(_)
         | TokenKind::StrikethroughDelimiter(_) => parse_paragraph(tokeniser)?,
         TokenKind::DelimitedContainerEnd(_) => {
-            return parse_err!(ContainerMissingStart, peeked.position);
+            return parse_err!(ContainerMissingStart, next.position);
         }
-        _ => return unexpected_token_err!(peeked),
+        _ => return unexpected_token_err!(next),
     };
 
     let next = tokeniser.peek();
@@ -595,11 +592,7 @@ fn parse_list(tokeniser: &mut Tokeniser) -> ParseResult<Block> {
         if tokeniser.peek().is(BlockParametersStart) {
             tokeniser.advance();
 
-            if let SpannedTokenKind {
-                value: TokenKind::BlockParameterName(BlockParameterName(name)),
-                ..
-            } = tokeniser.peek()
-            {
+            if let Some(BlockParameterName(name)) = tokeniser.peek().is_value() {
                 tokeniser.advance();
 
                 tokeniser
@@ -688,10 +681,13 @@ fn parse_styled_text_run(tokeniser: &mut Tokeniser) -> ParseResult<TextRun> {
 
     let run = parse_markup_text(tokeniser)?;
 
+    //TODO: If we ended hiding value then we will need to re think this
     // let closing_delimiter = tokeniser.peek();
-    // if closing.kind != opening_delimiter {
-    //     return unexpected_token_err!(closing, "expected: {opening_delimiter}");
+    // if closing_delimiter.value != opening_delimiter.value {
+    //     let expected = opening_delimiter.value;
+    //     return unexpected_token_err!(closing_delimiter, "{expected}");
     // }
+    // tokeniser.advance();
 
     //TODO: consider options
     // 1 - have a specific method for just expecting on a value
@@ -737,8 +733,8 @@ fn parse_raw_text_run(tokeniser: &mut Tokeniser) -> ParseResult<TextRun> {
 
     loop {
         //TODO: Another case where if/let advance might be easier
-        let peeked = tokeniser.peek();
-        match peeked.value {
+        let next = tokeniser.peek();
+        match next.value {
             //TODO: hmm
             TokenKind::RawFragment(_) => {
                 let RawFragment(fragment) = tokeniser.advance().extract()?;
@@ -749,7 +745,7 @@ fn parse_raw_text_run(tokeniser: &mut Tokeniser) -> ParseResult<TextRun> {
                 run.push(SPACE);
             }
             TokenKind::RawDelimiter(_) => break,
-            _ => return parse_err!(UnterminatedRawTextRun, peeked.position),
+            _ => return parse_err!(UnterminatedRawTextRun, next.position),
         }
     }
 
@@ -799,17 +795,15 @@ fn parse_markup_text(tokeniser: &mut Tokeniser) -> ParseResult<String> {
     let mut run = String::new();
 
     loop {
-        //TODO: Another case where if/let advance might be easier
-        match tokeniser.peek().value {
-            TokenKind::MarkupText(_) => {
-                let MarkupText(text) = tokeniser.advance().extract()?;
-                run.push_str(text);
-            }
-            TokenKind::MarkupTextSpace(_) => {
-                tokeniser.advance();
-                run.push(SPACE);
-            }
-            _ => break,
+        let next = tokeniser.peek();
+        if let Some(MarkupText(text)) = next.is_value() {
+            run.push_str(text);
+            tokeniser.advance();
+        } else if next.is(MarkupTextSpace) {
+            tokeniser.advance();
+            run.push(SPACE);
+        } else {
+            break;
         }
     }
 

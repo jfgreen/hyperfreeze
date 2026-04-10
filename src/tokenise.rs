@@ -42,9 +42,14 @@ const MARKUP_CHARS: &[char; 10] = &[
     RIGHT_SQUARE_BRACKET,
 ];
 
-//TODO: Use a macro to clear up token building
+// TODO: Use a macro to clear up token building
+// A macro where we can define for each token
+// name
+// structure
+// pattern matcher
+// ???
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(PartialEq, Clone, Copy, Debug)]
 pub enum TokenKind<'a> {
     EndOfInput(EndOfInput),
     TitleDirective(TitleDirective),
@@ -134,6 +139,14 @@ impl<'a> Display for TokenKind<'a> {
 
 type Matcher = for<'a> fn(&Scanner<'a>) -> Option<ScanMatch<'a>>;
 
+// pub enum TokenExpectation<'a, T>
+// where
+//     T: Token<'a>,
+// {
+//     Value(TokenKind<'a>),
+//     Token(PhantomData<T>),
+// }
+
 pub struct UnexpectedTokenError<'a, T>
 where
     T: Token<'a>,
@@ -152,13 +165,16 @@ where
     }
 }
 
-//TODO: Naming
 pub struct Spanned<T> {
     pub value: T,
+    //TODO: store span, not position
     pub position: Position,
 }
 
 pub type SpannedTokenKind<'a> = Spanned<TokenKind<'a>>;
+
+//TODO: We are quite close to being able to make SpannedTokenKind.value private
+// It wont be able to share a type, but it will enforce the parser follows certain patterns
 
 impl<'a> SpannedTokenKind<'a> {
     pub fn extract<T>(&self) -> Result<T, UnexpectedTokenError<'a, T>>
@@ -184,6 +200,10 @@ impl<'a> SpannedTokenKind<'a> {
             })
     }
 
+    // TODO: I think we could remove this and only use expect kind
+    // if we specialised tokens for each kind of header
+    // That would remove the need to store expected value in error?
+    // as it would always be a unit type?
     pub fn expect<T>(&self, expected: T) -> Result<(), UnexpectedTokenError<'a, T>>
     where
         T: Token<'a>,
@@ -213,6 +233,14 @@ impl<'a> SpannedTokenKind<'a> {
         })
     }
 
+    //TODO: Naming of the is_ methods feels off again.
+    pub fn is_value<T>(&self) -> Option<T>
+    where
+        T: Token<'a>,
+    {
+        T::try_from(self.value).ok()
+    }
+
     pub fn is<T>(&self, candidate: T) -> bool
     where
         T: Token<'a>,
@@ -221,18 +249,10 @@ impl<'a> SpannedTokenKind<'a> {
     }
 }
 
-// TODO: Imagine a macro where we can define for each token
-// name
-// structure
-// pattern matcher
-// ???
-
-//TODO: Naming
+//TODO: put matcher func as an associated type?
 pub trait Token<'a>: PartialEq + TryFrom<TokenKind<'a>> {
     const NAME: &'static str;
 }
-
-//TODO: do we need all these derives?
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct EndOfInput;
