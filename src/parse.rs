@@ -66,7 +66,7 @@ impl Display for ParseError {
             TitleNotAtStart => write!(f, "document title is not at start of document"),
             MetadataNotAtStart => write!(f, "document metadata is not at start of document"),
             ReferencesOutOfPlace => write!(f, "references not in at start of document"),
-            UnexpectedToken(token) => write!(f, "unexpected token, {}", token),
+            UnexpectedToken(message) => write!(f, "unexpected token, {}", message),
             UnevenListIndent(count) => write!(f, "list indent of {} is not even", count),
             UnknownBlock(name) => write!(f, "unknown block '{}'", name),
             ContainerMissingStart => write!(f, "delimited container end with no preceeding start"),
@@ -103,19 +103,6 @@ type ParseResult<T> = Result<T, ParseError>;
 use ErrorKind::*;
 
 const SPACE: char = ' ';
-
-macro_rules! unexpected_token_err {
-    ($token:expr) => {{
-        let message = format!("{} was not expected here", $token.value);
-        parse_err!(UnexpectedToken(message), $token.position)
-    }};
-
-    ($token:expr, $expected:expr) => {{
-        let expected = format!($expected);
-        let message = format!("{expected}, got: {}", $token.value);
-        parse_err!(UnexpectedToken(message), $token.position)
-    }};
-}
 
 // TODO: Ensure containers can not hold sections
 // TODO: Test for doc that ends with escape '\'
@@ -506,7 +493,7 @@ fn parse_block(tokeniser: &mut Tokeniser) -> ParseResult<Block> {
         TokenKind::DelimitedContainerEnd(_) => {
             return parse_err!(ContainerMissingStart, next.position);
         }
-        _ => return unexpected_token_err!(next),
+        _ => todo!("write tests for this"),
     };
 
     let next = tokeniser.peek();
@@ -672,22 +659,33 @@ fn parse_styled_text_run(tokeniser: &mut Tokeniser) -> ParseResult<TextRun> {
     let opening_delimiter = tokeniser.advance();
     let run_start = opening_delimiter.position;
 
+    //TODO: Could we have an 'expect one of' method
+    // would have synergies with 'is one of'
     let style = match opening_delimiter.value {
         TokenKind::StrongDelimiter(_) => Style::Strong,
         TokenKind::EmphasisDelimiter(_) => Style::Emphasis,
         TokenKind::StrikethroughDelimiter(_) => Style::Strikethrough,
-        _ => return unexpected_token_err!(opening_delimiter),
+        _ => {
+            let message = format!(
+                "expected: {}, {} or {} but got: {}",
+                StrongDelimiter::NAME,
+                EmphasisDelimiter::NAME,
+                StrikethroughDelimiter::NAME,
+                opening_delimiter.value
+            );
+            return parse_err!(UnexpectedToken(message), opening_delimiter.position);
+        }
     };
 
     let run = parse_markup_text(tokeniser)?;
 
     //TODO: If we ended hiding value then we will need to re think this
-    // let closing_delimiter = tokeniser.peek();
-    // if closing_delimiter.value != opening_delimiter.value {
-    //     let expected = opening_delimiter.value;
-    //     return unexpected_token_err!(closing_delimiter, "{expected}");
-    // }
-    // tokeniser.advance();
+    let next = tokeniser.peek();
+    if next.value != opening_delimiter.value {
+        let message = format!("expected: {}, got: {}", opening_delimiter.value, next.value,);
+        return parse_err!(UnexpectedToken(message), next.position);
+    }
+    tokeniser.advance();
 
     //TODO: consider options
     // 1 - have a specific method for just expecting on a value
@@ -696,18 +694,18 @@ fn parse_styled_text_run(tokeniser: &mut Tokeniser) -> ParseResult<TextRun> {
     // tokeniser.advance().expect_blah(opening_delimiter.value)?;
 
     //TODO: Combine with above one?
-    match opening_delimiter.value {
-        TokenKind::StrongDelimiter(_) => {
-            tokeniser.advance().expect(StrongDelimiter)?;
-        }
-        TokenKind::EmphasisDelimiter(_) => {
-            tokeniser.advance().expect(EmphasisDelimiter)?;
-        }
-        TokenKind::StrikethroughDelimiter(_) => {
-            tokeniser.advance().expect(StrikethroughDelimiter)?;
-        }
-        _ => return unexpected_token_err!(opening_delimiter),
-    };
+    // match opening_delimiter.value {
+    //     TokenKind::StrongDelimiter(_) => {
+    //         tokeniser.advance().expect(StrongDelimiter)?;
+    //     }
+    //     TokenKind::EmphasisDelimiter(_) => {
+    //         tokeniser.advance().expect(EmphasisDelimiter)?;
+    //     }
+    //     TokenKind::StrikethroughDelimiter(_) => {
+    //         tokeniser.advance().expect(StrikethroughDelimiter)?;
+    //     }
+    //     _ => return parse_err!(opening_delimiter),
+    // };
 
     if run.starts_with(SPACE) || run.ends_with(SPACE) {
         return parse_err!(LooseDelimiter, run_start);
