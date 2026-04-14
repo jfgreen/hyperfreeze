@@ -167,7 +167,8 @@ where
 
 pub struct Spanned<T> {
     pub value: T,
-    //TODO: store span, not position
+    // TODO: store span, not position
+    // TODO: position could be private?
     pub position: Position,
 }
 
@@ -181,23 +182,11 @@ impl<'a> SpannedTokenKind<'a> {
     where
         T: Token<'a>,
     {
-        self.expect_kind().map(|token| token.value)
-    }
-
-    pub fn expect_kind<T>(&self) -> Result<Spanned<T>, UnexpectedTokenError<'a, T>>
-    where
-        T: Token<'a>,
-    {
-        T::try_from(self.value)
-            .map(|token| Spanned {
-                value: token,
-                position: self.position,
-            })
-            .map_err(|_| UnexpectedTokenError::<'a, T> {
-                expected: PhantomData::<T>,
-                actual: self.value,
-                position: self.position,
-            })
+        T::try_from(self.value).map_err(|_| UnexpectedTokenError::<'a, T> {
+            expected: PhantomData::<T>,
+            actual: self.value,
+            position: self.position,
+        })
     }
 
     // TODO: I think we could remove this and only use expect kind
@@ -208,14 +197,13 @@ impl<'a> SpannedTokenKind<'a> {
     where
         T: Token<'a>,
     {
-        let actual = self.expect_kind()?;
-
-        if actual.value == expected {
+        if let Ok(token) = T::try_from(self.value)
+            && token == expected
+        {
             Ok(())
         } else {
-            // TODO: Get the expected token value into the error message
-            // OR just a different type of error where expected is not phantom?
-            Err(UnexpectedTokenError {
+            //TODO: we should have a way to pass the whole expected value?
+            Err(UnexpectedTokenError::<'a, T> {
                 expected: PhantomData::<T>,
                 actual: self.value,
                 position: self.position,
