@@ -50,7 +50,7 @@ const MARKUP_CHARS: &[char; 10] = &[
 // ???
 
 #[derive(PartialEq, Clone, Copy, Debug)]
-pub enum TokenKind<'a> {
+pub enum Token<'a> {
     EndOfInput(EndOfInput),
     TitleDirective(TitleDirective),
     SectionDirective(SectionDirective),
@@ -91,47 +91,45 @@ pub enum TokenKind<'a> {
     ListBullet(ListBullet),
 }
 
-impl<'a> Display for TokenKind<'a> {
+impl<'a> Display for Token<'a> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         let name = match self {
-            TokenKind::EndOfInput(_) => EndOfInput::NAME,
-            TokenKind::TitleDirective(_) => TitleDirective::NAME,
-            TokenKind::SectionDirective(_) => SectionDirective::NAME,
-            TokenKind::SubSectionDirective(_) => SubSectionDirective::NAME,
-            TokenKind::BlockParametersStart(_) => BlockParametersStart::NAME,
-            TokenKind::BlockParametersEnd(_) => BlockParametersEnd::NAME,
-            TokenKind::BlockParameterNameValueSeperator(_) => {
-                BlockParameterNameValueSeperator::NAME
-            }
-            TokenKind::BlockBreak(_) => BlockBreak::NAME,
-            TokenKind::DataListSeperator(_) => DataListSeperator::NAME,
-            TokenKind::DataKeyValueSeperator(_) => DataKeyValueSeperator::NAME,
-            TokenKind::TitleTextSpace(_) => TitleTextSpace::NAME,
-            TokenKind::LineBreak(_) => LineBreak::NAME,
-            TokenKind::StrongDelimiter(_) => StrongDelimiter::NAME,
-            TokenKind::EmphasisDelimiter(_) => EmphasisDelimiter::NAME,
-            TokenKind::StrikethroughDelimiter(_) => StrikethroughDelimiter::NAME,
-            TokenKind::RawDelimiter(_) => RawDelimiter::NAME,
-            TokenKind::MarkupTextSpace(_) => MarkupTextSpace::NAME,
-            TokenKind::LinkOpeningDelimiter(_) => LinkOpeningDelimiter::NAME,
-            TokenKind::LinkClosingDelimiter(_) => LinkClosingDelimiter::NAME,
-            TokenKind::LinkToReferenceJoiner(_) => LinkToReferenceJoiner::NAME,
-            TokenKind::CodeDelimiter(_) => CodeDelimiter::NAME,
-            TokenKind::DelimitedContainerStart(_) => DelimitedContainerStart::NAME,
-            TokenKind::DelimitedContainerEnd(_) => DelimitedContainerEnd::NAME,
-            TokenKind::Unknown(_) => Unknown::NAME,
-            TokenKind::StructuredDataDirective(_) => StructuredDataDirective::NAME,
-            TokenKind::ContainerDirective(_) => ContainerDirective::NAME,
-            TokenKind::BlockDirective(_) => BlockDirective::NAME,
-            TokenKind::BlockParameterName(_) => BlockParameterName::NAME,
-            TokenKind::BlockParameterValue(_) => BlockParameterValue::NAME,
-            TokenKind::DataIdentifier(_) => DataIdentifier::NAME,
-            TokenKind::DataValue(_) => DataValue::NAME,
-            TokenKind::TitleText(_) => TitleText::NAME,
-            TokenKind::MarkupText(_) => MarkupText::NAME,
-            TokenKind::RawFragment(_) => RawFragment::NAME,
-            TokenKind::Code(_) => Code::NAME,
-            TokenKind::ListBullet(_) => ListBullet::NAME,
+            Token::EndOfInput(_) => EndOfInput::NAME,
+            Token::TitleDirective(_) => TitleDirective::NAME,
+            Token::SectionDirective(_) => SectionDirective::NAME,
+            Token::SubSectionDirective(_) => SubSectionDirective::NAME,
+            Token::BlockParametersStart(_) => BlockParametersStart::NAME,
+            Token::BlockParametersEnd(_) => BlockParametersEnd::NAME,
+            Token::BlockParameterNameValueSeperator(_) => BlockParameterNameValueSeperator::NAME,
+            Token::BlockBreak(_) => BlockBreak::NAME,
+            Token::DataListSeperator(_) => DataListSeperator::NAME,
+            Token::DataKeyValueSeperator(_) => DataKeyValueSeperator::NAME,
+            Token::TitleTextSpace(_) => TitleTextSpace::NAME,
+            Token::LineBreak(_) => LineBreak::NAME,
+            Token::StrongDelimiter(_) => StrongDelimiter::NAME,
+            Token::EmphasisDelimiter(_) => EmphasisDelimiter::NAME,
+            Token::StrikethroughDelimiter(_) => StrikethroughDelimiter::NAME,
+            Token::RawDelimiter(_) => RawDelimiter::NAME,
+            Token::MarkupTextSpace(_) => MarkupTextSpace::NAME,
+            Token::LinkOpeningDelimiter(_) => LinkOpeningDelimiter::NAME,
+            Token::LinkClosingDelimiter(_) => LinkClosingDelimiter::NAME,
+            Token::LinkToReferenceJoiner(_) => LinkToReferenceJoiner::NAME,
+            Token::CodeDelimiter(_) => CodeDelimiter::NAME,
+            Token::DelimitedContainerStart(_) => DelimitedContainerStart::NAME,
+            Token::DelimitedContainerEnd(_) => DelimitedContainerEnd::NAME,
+            Token::Unknown(_) => Unknown::NAME,
+            Token::StructuredDataDirective(_) => StructuredDataDirective::NAME,
+            Token::ContainerDirective(_) => ContainerDirective::NAME,
+            Token::BlockDirective(_) => BlockDirective::NAME,
+            Token::BlockParameterName(_) => BlockParameterName::NAME,
+            Token::BlockParameterValue(_) => BlockParameterValue::NAME,
+            Token::DataIdentifier(_) => DataIdentifier::NAME,
+            Token::DataValue(_) => DataValue::NAME,
+            Token::TitleText(_) => TitleText::NAME,
+            Token::MarkupText(_) => MarkupText::NAME,
+            Token::RawFragment(_) => RawFragment::NAME,
+            Token::Code(_) => Code::NAME,
+            Token::ListBullet(_) => ListBullet::NAME,
         };
         write!(f, "{name}")
     }
@@ -149,16 +147,16 @@ type Matcher = for<'a> fn(&Scanner<'a>) -> Option<ScanMatch<'a>>;
 
 pub struct UnexpectedTokenError<'a, T>
 where
-    T: Token<'a>,
+    T: TokenSpec<'a>,
 {
-    pub actual: TokenKind<'a>,
+    pub actual: Token<'a>,
     pub position: Position,
     pub expected: PhantomData<T>,
 }
 
 impl<'a, T> Display for UnexpectedTokenError<'a, T>
 where
-    T: Token<'a>,
+    T: TokenSpec<'a>,
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "expected: {}, got: {}", T::NAME, self.actual)
@@ -172,7 +170,8 @@ pub struct Spanned<T> {
     pub position: Position,
 }
 
-pub type SpannedTokenKind<'a> = Spanned<TokenKind<'a>>;
+// TODO: What if we leant into exposing the dynamic type?
+pub type SpannedTokenKind<'a> = Spanned<Token<'a>>;
 
 //TODO: We are quite close to being able to make SpannedTokenKind.value private
 // It wont be able to share a type, but it will enforce the parser follows certain patterns
@@ -180,7 +179,7 @@ pub type SpannedTokenKind<'a> = Spanned<TokenKind<'a>>;
 impl<'a> SpannedTokenKind<'a> {
     pub fn extract<T>(&self) -> Result<T, UnexpectedTokenError<'a, T>>
     where
-        T: Token<'a>,
+        T: TokenSpec<'a>,
     {
         T::try_from(self.value).map_err(|_| UnexpectedTokenError::<'a, T> {
             expected: PhantomData::<T>,
@@ -189,13 +188,17 @@ impl<'a> SpannedTokenKind<'a> {
         })
     }
 
-    // TODO: I think we could remove this and only use expect kind
-    // if we specialised tokens for each kind of header
+    // If we specialised tokens for each kind of header
+    // then we could remove 'expected: T' and just expect based on the type
+    // alsoe
+    //
     // That would remove the need to store expected value in error?
     // as it would always be a unit type?
+    //
+    // And also remove the need to make tokens implement partialeq
     pub fn expect<T>(&self, expected: T) -> Result<(), UnexpectedTokenError<'a, T>>
     where
-        T: Token<'a>,
+        T: TokenSpec<'a>,
     {
         if let Ok(token) = T::try_from(self.value)
             && token == expected
@@ -211,9 +214,10 @@ impl<'a> SpannedTokenKind<'a> {
         }
     }
 
+    //TODO: naming rather off
     pub fn is_kind<T>(&self) -> Option<Spanned<T>>
     where
-        T: Token<'a>,
+        T: TokenSpec<'a>,
     {
         T::try_from(self.value).ok().map(|tok| Spanned {
             value: tok,
@@ -221,24 +225,25 @@ impl<'a> SpannedTokenKind<'a> {
         })
     }
 
-    //TODO: Naming of the is_ methods feels off again.
-    pub fn is_value<T>(&self) -> Option<T>
+    pub fn value_into<T>(&self) -> Option<T>
     where
-        T: Token<'a>,
+        T: TokenSpec<'a>,
     {
         T::try_from(self.value).ok()
     }
 
     pub fn is<T>(&self, candidate: T) -> bool
     where
-        T: Token<'a>,
+        T: TokenSpec<'a>,
     {
         T::try_from(self.value).is_ok_and(|v| v == candidate)
     }
 }
 
 //TODO: put matcher func as an associated type?
-pub trait Token<'a>: PartialEq + TryFrom<TokenKind<'a>> {
+// TODO: do we really need this? Its just the TryFrom thats
+// essential right?
+pub trait TokenSpec<'a>: PartialEq + TryFrom<Token<'a>> {
     const NAME: &'static str;
 }
 
@@ -352,541 +357,541 @@ pub struct ListBullet(pub usize);
 
 //TODO: Use macros to clear up repetition
 
-impl<'a> TryFrom<TokenKind<'a>> for DataValue<'a> {
+impl<'a> TryFrom<Token<'a>> for DataValue<'a> {
     type Error = ();
 
-    fn try_from(value: TokenKind<'a>) -> Result<Self, Self::Error> {
+    fn try_from(value: Token<'a>) -> Result<Self, Self::Error> {
         match value {
-            TokenKind::DataValue(token) => Ok(token),
+            Token::DataValue(token) => Ok(token),
             _ => Err(()),
         }
     }
 }
 
-impl<'a> TryFrom<TokenKind<'a>> for DataIdentifier<'a> {
+impl<'a> TryFrom<Token<'a>> for DataIdentifier<'a> {
     type Error = ();
 
-    fn try_from(value: TokenKind<'a>) -> Result<Self, Self::Error> {
+    fn try_from(value: Token<'a>) -> Result<Self, Self::Error> {
         match value {
-            TokenKind::DataIdentifier(token) => Ok(token),
+            Token::DataIdentifier(token) => Ok(token),
             _ => Err(()),
         }
     }
 }
 
-impl<'a> TryFrom<TokenKind<'a>> for TitleText<'a> {
+impl<'a> TryFrom<Token<'a>> for TitleText<'a> {
     type Error = ();
 
-    fn try_from(value: TokenKind<'a>) -> Result<Self, Self::Error> {
+    fn try_from(value: Token<'a>) -> Result<Self, Self::Error> {
         match value {
-            TokenKind::TitleText(token) => Ok(token),
+            Token::TitleText(token) => Ok(token),
             _ => Err(()),
         }
     }
 }
 
-impl<'a> TryFrom<TokenKind<'a>> for BlockParameterName<'a> {
+impl<'a> TryFrom<Token<'a>> for BlockParameterName<'a> {
     type Error = ();
 
-    fn try_from(value: TokenKind<'a>) -> Result<Self, Self::Error> {
+    fn try_from(value: Token<'a>) -> Result<Self, Self::Error> {
         match value {
-            TokenKind::BlockParameterName(token) => Ok(token),
+            Token::BlockParameterName(token) => Ok(token),
             _ => Err(()),
         }
     }
 }
 
-impl<'a> TryFrom<TokenKind<'a>> for BlockParameterValue<'a> {
+impl<'a> TryFrom<Token<'a>> for BlockParameterValue<'a> {
     type Error = ();
 
-    fn try_from(value: TokenKind<'a>) -> Result<Self, Self::Error> {
+    fn try_from(value: Token<'a>) -> Result<Self, Self::Error> {
         match value {
-            TokenKind::BlockParameterValue(token) => Ok(token),
+            Token::BlockParameterValue(token) => Ok(token),
             _ => Err(()),
         }
     }
 }
 
-impl<'a> TryFrom<TokenKind<'a>> for RawFragment<'a> {
+impl<'a> TryFrom<Token<'a>> for RawFragment<'a> {
     type Error = ();
 
-    fn try_from(value: TokenKind<'a>) -> Result<Self, Self::Error> {
+    fn try_from(value: Token<'a>) -> Result<Self, Self::Error> {
         match value {
-            TokenKind::RawFragment(token) => Ok(token),
+            Token::RawFragment(token) => Ok(token),
             _ => Err(()),
         }
     }
 }
 
-impl<'a> TryFrom<TokenKind<'a>> for MarkupText<'a> {
+impl<'a> TryFrom<Token<'a>> for MarkupText<'a> {
     type Error = ();
 
-    fn try_from(value: TokenKind<'a>) -> Result<Self, Self::Error> {
+    fn try_from(value: Token<'a>) -> Result<Self, Self::Error> {
         match value {
-            TokenKind::MarkupText(token) => Ok(token),
+            Token::MarkupText(token) => Ok(token),
             _ => Err(()),
         }
     }
 }
 
-impl<'a> TryFrom<TokenKind<'a>> for Code<'a> {
+impl<'a> TryFrom<Token<'a>> for Code<'a> {
     type Error = ();
 
-    fn try_from(value: TokenKind<'a>) -> Result<Self, Self::Error> {
+    fn try_from(value: Token<'a>) -> Result<Self, Self::Error> {
         match value {
-            TokenKind::Code(token) => Ok(token),
+            Token::Code(token) => Ok(token),
             _ => Err(()),
         }
     }
 }
 
-impl<'a> TryFrom<TokenKind<'a>> for StructuredDataDirective<'a> {
+impl<'a> TryFrom<Token<'a>> for StructuredDataDirective<'a> {
     type Error = ();
 
-    fn try_from(value: TokenKind<'a>) -> Result<Self, Self::Error> {
+    fn try_from(value: Token<'a>) -> Result<Self, Self::Error> {
         match value {
-            TokenKind::StructuredDataDirective(token) => Ok(token),
+            Token::StructuredDataDirective(token) => Ok(token),
             _ => Err(()),
         }
     }
 }
 
-impl<'a> TryFrom<TokenKind<'a>> for ContainerDirective<'a> {
+impl<'a> TryFrom<Token<'a>> for ContainerDirective<'a> {
     type Error = ();
 
-    fn try_from(value: TokenKind<'a>) -> Result<Self, Self::Error> {
+    fn try_from(value: Token<'a>) -> Result<Self, Self::Error> {
         match value {
-            TokenKind::ContainerDirective(token) => Ok(token),
+            Token::ContainerDirective(token) => Ok(token),
             _ => Err(()),
         }
     }
 }
 
-impl<'a> TryFrom<TokenKind<'a>> for BlockDirective<'a> {
+impl<'a> TryFrom<Token<'a>> for BlockDirective<'a> {
     type Error = ();
 
-    fn try_from(value: TokenKind<'a>) -> Result<Self, Self::Error> {
+    fn try_from(value: Token<'a>) -> Result<Self, Self::Error> {
         match value {
-            TokenKind::BlockDirective(token) => Ok(token),
+            Token::BlockDirective(token) => Ok(token),
             _ => Err(()),
         }
     }
 }
 
-impl<'a> TryFrom<TokenKind<'a>> for ListBullet {
+impl<'a> TryFrom<Token<'a>> for ListBullet {
     type Error = ();
 
-    fn try_from(value: TokenKind<'a>) -> Result<Self, Self::Error> {
+    fn try_from(value: Token<'a>) -> Result<Self, Self::Error> {
         match value {
-            TokenKind::ListBullet(token) => Ok(token),
+            Token::ListBullet(token) => Ok(token),
             _ => Err(()),
         }
     }
 }
 
-impl<'a> TryFrom<TokenKind<'a>> for LineBreak {
+impl<'a> TryFrom<Token<'a>> for LineBreak {
     type Error = ();
 
-    fn try_from(value: TokenKind<'a>) -> Result<Self, Self::Error> {
+    fn try_from(value: Token<'a>) -> Result<Self, Self::Error> {
         match value {
-            TokenKind::LineBreak(token) => Ok(token),
+            Token::LineBreak(token) => Ok(token),
             _ => Err(()),
         }
     }
 }
 
-impl<'a> TryFrom<TokenKind<'a>> for TitleDirective {
+impl<'a> TryFrom<Token<'a>> for TitleDirective {
     type Error = ();
 
-    fn try_from(value: TokenKind<'a>) -> Result<Self, Self::Error> {
+    fn try_from(value: Token<'a>) -> Result<Self, Self::Error> {
         match value {
-            TokenKind::TitleDirective(token) => Ok(token),
+            Token::TitleDirective(token) => Ok(token),
             _ => Err(()),
         }
     }
 }
 
-impl<'a> TryFrom<TokenKind<'a>> for BlockBreak {
+impl<'a> TryFrom<Token<'a>> for BlockBreak {
     type Error = ();
 
-    fn try_from(value: TokenKind<'a>) -> Result<Self, Self::Error> {
+    fn try_from(value: Token<'a>) -> Result<Self, Self::Error> {
         match value {
-            TokenKind::BlockBreak(token) => Ok(token),
+            Token::BlockBreak(token) => Ok(token),
             _ => Err(()),
         }
     }
 }
 
-impl<'a> TryFrom<TokenKind<'a>> for DataKeyValueSeperator {
+impl<'a> TryFrom<Token<'a>> for DataKeyValueSeperator {
     type Error = ();
 
-    fn try_from(value: TokenKind<'a>) -> Result<Self, Self::Error> {
+    fn try_from(value: Token<'a>) -> Result<Self, Self::Error> {
         match value {
-            TokenKind::DataKeyValueSeperator(token) => Ok(token),
+            Token::DataKeyValueSeperator(token) => Ok(token),
             _ => Err(()),
         }
     }
 }
 
-impl<'a> TryFrom<TokenKind<'a>> for DelimitedContainerEnd {
+impl<'a> TryFrom<Token<'a>> for DelimitedContainerEnd {
     type Error = ();
 
-    fn try_from(value: TokenKind<'a>) -> Result<Self, Self::Error> {
+    fn try_from(value: Token<'a>) -> Result<Self, Self::Error> {
         match value {
-            TokenKind::DelimitedContainerEnd(token) => Ok(token),
+            Token::DelimitedContainerEnd(token) => Ok(token),
             _ => Err(()),
         }
     }
 }
 
-impl<'a> TryFrom<TokenKind<'a>> for SectionDirective {
+impl<'a> TryFrom<Token<'a>> for SectionDirective {
     type Error = ();
 
-    fn try_from(value: TokenKind<'a>) -> Result<Self, Self::Error> {
+    fn try_from(value: Token<'a>) -> Result<Self, Self::Error> {
         match value {
-            TokenKind::SectionDirective(token) => Ok(token),
+            Token::SectionDirective(token) => Ok(token),
             _ => Err(()),
         }
     }
 }
 
-impl<'a> TryFrom<TokenKind<'a>> for SubSectionDirective {
+impl<'a> TryFrom<Token<'a>> for SubSectionDirective {
     type Error = ();
 
-    fn try_from(value: TokenKind<'a>) -> Result<Self, Self::Error> {
+    fn try_from(value: Token<'a>) -> Result<Self, Self::Error> {
         match value {
-            TokenKind::SubSectionDirective(token) => Ok(token),
+            Token::SubSectionDirective(token) => Ok(token),
             _ => Err(()),
         }
     }
 }
 
-impl<'a> TryFrom<TokenKind<'a>> for BlockParameterNameValueSeperator {
+impl<'a> TryFrom<Token<'a>> for BlockParameterNameValueSeperator {
     type Error = ();
 
-    fn try_from(value: TokenKind<'a>) -> Result<Self, Self::Error> {
+    fn try_from(value: Token<'a>) -> Result<Self, Self::Error> {
         match value {
-            TokenKind::BlockParameterNameValueSeperator(token) => Ok(token),
+            Token::BlockParameterNameValueSeperator(token) => Ok(token),
             _ => Err(()),
         }
     }
 }
 
-impl<'a> TryFrom<TokenKind<'a>> for BlockParametersEnd {
+impl<'a> TryFrom<Token<'a>> for BlockParametersEnd {
     type Error = ();
 
-    fn try_from(value: TokenKind<'a>) -> Result<Self, Self::Error> {
+    fn try_from(value: Token<'a>) -> Result<Self, Self::Error> {
         match value {
-            TokenKind::BlockParametersEnd(token) => Ok(token),
+            Token::BlockParametersEnd(token) => Ok(token),
             _ => Err(()),
         }
     }
 }
 
-impl<'a> TryFrom<TokenKind<'a>> for RawDelimiter {
+impl<'a> TryFrom<Token<'a>> for RawDelimiter {
     type Error = ();
 
-    fn try_from(value: TokenKind<'a>) -> Result<Self, Self::Error> {
+    fn try_from(value: Token<'a>) -> Result<Self, Self::Error> {
         match value {
-            TokenKind::RawDelimiter(token) => Ok(token),
+            Token::RawDelimiter(token) => Ok(token),
             _ => Err(()),
         }
     }
 }
 
-impl<'a> TryFrom<TokenKind<'a>> for LinkOpeningDelimiter {
+impl<'a> TryFrom<Token<'a>> for LinkOpeningDelimiter {
     type Error = ();
 
-    fn try_from(value: TokenKind<'a>) -> Result<Self, Self::Error> {
+    fn try_from(value: Token<'a>) -> Result<Self, Self::Error> {
         match value {
-            TokenKind::LinkOpeningDelimiter(token) => Ok(token),
+            Token::LinkOpeningDelimiter(token) => Ok(token),
             _ => Err(()),
         }
     }
 }
 
-impl<'a> TryFrom<TokenKind<'a>> for LinkClosingDelimiter {
+impl<'a> TryFrom<Token<'a>> for LinkClosingDelimiter {
     type Error = ();
 
-    fn try_from(value: TokenKind<'a>) -> Result<Self, Self::Error> {
+    fn try_from(value: Token<'a>) -> Result<Self, Self::Error> {
         match value {
-            TokenKind::LinkClosingDelimiter(token) => Ok(token),
+            Token::LinkClosingDelimiter(token) => Ok(token),
             _ => Err(()),
         }
     }
 }
 
-impl<'a> TryFrom<TokenKind<'a>> for LinkToReferenceJoiner {
+impl<'a> TryFrom<Token<'a>> for LinkToReferenceJoiner {
     type Error = ();
 
-    fn try_from(value: TokenKind<'a>) -> Result<Self, Self::Error> {
+    fn try_from(value: Token<'a>) -> Result<Self, Self::Error> {
         match value {
-            TokenKind::LinkToReferenceJoiner(token) => Ok(token),
+            Token::LinkToReferenceJoiner(token) => Ok(token),
             _ => Err(()),
         }
     }
 }
 
-impl<'a> TryFrom<TokenKind<'a>> for CodeDelimiter {
+impl<'a> TryFrom<Token<'a>> for CodeDelimiter {
     type Error = ();
 
-    fn try_from(value: TokenKind<'a>) -> Result<Self, Self::Error> {
+    fn try_from(value: Token<'a>) -> Result<Self, Self::Error> {
         match value {
-            TokenKind::CodeDelimiter(token) => Ok(token),
+            Token::CodeDelimiter(token) => Ok(token),
             _ => Err(()),
         }
     }
 }
 
-impl<'a> TryFrom<TokenKind<'a>> for StrongDelimiter {
+impl<'a> TryFrom<Token<'a>> for StrongDelimiter {
     type Error = ();
 
-    fn try_from(value: TokenKind<'a>) -> Result<Self, Self::Error> {
+    fn try_from(value: Token<'a>) -> Result<Self, Self::Error> {
         match value {
-            TokenKind::StrongDelimiter(token) => Ok(token),
+            Token::StrongDelimiter(token) => Ok(token),
             _ => Err(()),
         }
     }
 }
 
-impl<'a> TryFrom<TokenKind<'a>> for EmphasisDelimiter {
+impl<'a> TryFrom<Token<'a>> for EmphasisDelimiter {
     type Error = ();
 
-    fn try_from(value: TokenKind<'a>) -> Result<Self, Self::Error> {
+    fn try_from(value: Token<'a>) -> Result<Self, Self::Error> {
         match value {
-            TokenKind::EmphasisDelimiter(token) => Ok(token),
+            Token::EmphasisDelimiter(token) => Ok(token),
             _ => Err(()),
         }
     }
 }
 
-impl<'a> TryFrom<TokenKind<'a>> for StrikethroughDelimiter {
+impl<'a> TryFrom<Token<'a>> for StrikethroughDelimiter {
     type Error = ();
 
-    fn try_from(value: TokenKind<'a>) -> Result<Self, Self::Error> {
+    fn try_from(value: Token<'a>) -> Result<Self, Self::Error> {
         match value {
-            TokenKind::StrikethroughDelimiter(token) => Ok(token),
+            Token::StrikethroughDelimiter(token) => Ok(token),
             _ => Err(()),
         }
     }
 }
 
-impl<'a> TryFrom<TokenKind<'a>> for EndOfInput {
+impl<'a> TryFrom<Token<'a>> for EndOfInput {
     type Error = ();
 
-    fn try_from(value: TokenKind<'a>) -> Result<Self, Self::Error> {
+    fn try_from(value: Token<'a>) -> Result<Self, Self::Error> {
         match value {
-            TokenKind::EndOfInput(token) => Ok(token),
+            Token::EndOfInput(token) => Ok(token),
             _ => Err(()),
         }
     }
 }
 
-impl<'a> TryFrom<TokenKind<'a>> for BlockParametersStart {
+impl<'a> TryFrom<Token<'a>> for BlockParametersStart {
     type Error = ();
 
-    fn try_from(value: TokenKind<'a>) -> Result<Self, Self::Error> {
+    fn try_from(value: Token<'a>) -> Result<Self, Self::Error> {
         match value {
-            TokenKind::BlockParametersStart(token) => Ok(token),
+            Token::BlockParametersStart(token) => Ok(token),
             _ => Err(()),
         }
     }
 }
 
-impl<'a> TryFrom<TokenKind<'a>> for DataListSeperator {
+impl<'a> TryFrom<Token<'a>> for DataListSeperator {
     type Error = ();
 
-    fn try_from(value: TokenKind<'a>) -> Result<Self, Self::Error> {
+    fn try_from(value: Token<'a>) -> Result<Self, Self::Error> {
         match value {
-            TokenKind::DataListSeperator(token) => Ok(token),
+            Token::DataListSeperator(token) => Ok(token),
             _ => Err(()),
         }
     }
 }
 
-impl<'a> TryFrom<TokenKind<'a>> for TitleTextSpace {
+impl<'a> TryFrom<Token<'a>> for TitleTextSpace {
     type Error = ();
 
-    fn try_from(value: TokenKind<'a>) -> Result<Self, Self::Error> {
+    fn try_from(value: Token<'a>) -> Result<Self, Self::Error> {
         match value {
-            TokenKind::TitleTextSpace(token) => Ok(token),
+            Token::TitleTextSpace(token) => Ok(token),
             _ => Err(()),
         }
     }
 }
-impl<'a> TryFrom<TokenKind<'a>> for MarkupTextSpace {
+impl<'a> TryFrom<Token<'a>> for MarkupTextSpace {
     type Error = ();
 
-    fn try_from(value: TokenKind<'a>) -> Result<Self, Self::Error> {
+    fn try_from(value: Token<'a>) -> Result<Self, Self::Error> {
         match value {
-            TokenKind::MarkupTextSpace(token) => Ok(token),
+            Token::MarkupTextSpace(token) => Ok(token),
             _ => Err(()),
         }
     }
 }
-impl<'a> TryFrom<TokenKind<'a>> for DelimitedContainerStart {
+impl<'a> TryFrom<Token<'a>> for DelimitedContainerStart {
     type Error = ();
 
-    fn try_from(value: TokenKind<'a>) -> Result<Self, Self::Error> {
+    fn try_from(value: Token<'a>) -> Result<Self, Self::Error> {
         match value {
-            TokenKind::DelimitedContainerStart(token) => Ok(token),
-            _ => Err(()),
-        }
-    }
-}
-
-impl<'a> TryFrom<TokenKind<'a>> for Unknown<'a> {
-    type Error = ();
-
-    fn try_from(value: TokenKind<'a>) -> Result<Self, Self::Error> {
-        match value {
-            TokenKind::Unknown(token) => Ok(token),
+            Token::DelimitedContainerStart(token) => Ok(token),
             _ => Err(()),
         }
     }
 }
 
-impl<'a> Token<'a> for EndOfInput {
+impl<'a> TryFrom<Token<'a>> for Unknown<'a> {
+    type Error = ();
+
+    fn try_from(value: Token<'a>) -> Result<Self, Self::Error> {
+        match value {
+            Token::Unknown(token) => Ok(token),
+            _ => Err(()),
+        }
+    }
+}
+
+impl<'a> TokenSpec<'a> for EndOfInput {
     const NAME: &'static str = "end of input";
 }
 
-impl<'a> Token<'a> for TitleDirective {
+impl<'a> TokenSpec<'a> for TitleDirective {
     const NAME: &'static str = "document directive";
 }
 
-impl<'a> Token<'a> for SectionDirective {
+impl<'a> TokenSpec<'a> for SectionDirective {
     const NAME: &'static str = "section directive";
 }
 
-impl<'a> Token<'a> for SubSectionDirective {
+impl<'a> TokenSpec<'a> for SubSectionDirective {
     const NAME: &'static str = "subsection directive";
 }
 
-impl<'a> Token<'a> for BlockParametersStart {
+impl<'a> TokenSpec<'a> for BlockParametersStart {
     const NAME: &'static str = "block parameters start '('";
 }
 
-impl<'a> Token<'a> for BlockParametersEnd {
+impl<'a> TokenSpec<'a> for BlockParametersEnd {
     const NAME: &'static str = "block parameters end ')'";
 }
 
-impl<'a> Token<'a> for BlockParameterNameValueSeperator {
+impl<'a> TokenSpec<'a> for BlockParameterNameValueSeperator {
     const NAME: &'static str = "block parameter name value seperator";
 }
 
-impl<'a> Token<'a> for BlockBreak {
+impl<'a> TokenSpec<'a> for BlockBreak {
     const NAME: &'static str = "block break";
 }
 
-impl<'a> Token<'a> for DataListSeperator {
+impl<'a> TokenSpec<'a> for DataListSeperator {
     const NAME: &'static str = "metadata list seperator";
 }
 
-impl<'a> Token<'a> for DataKeyValueSeperator {
+impl<'a> TokenSpec<'a> for DataKeyValueSeperator {
     const NAME: &'static str = "metadata key value seperator";
 }
 
-impl<'a> Token<'a> for TitleTextSpace {
+impl<'a> TokenSpec<'a> for TitleTextSpace {
     const NAME: &'static str = "title text space";
 }
 
-impl<'a> Token<'a> for LineBreak {
+impl<'a> TokenSpec<'a> for LineBreak {
     const NAME: &'static str = "linebreak";
 }
 
-impl<'a> Token<'a> for StrongDelimiter {
+impl<'a> TokenSpec<'a> for StrongDelimiter {
     const NAME: &'static str = "strong delimiter";
 }
 
-impl<'a> Token<'a> for EmphasisDelimiter {
+impl<'a> TokenSpec<'a> for EmphasisDelimiter {
     const NAME: &'static str = "emphasis delimiter";
 }
 
-impl<'a> Token<'a> for StrikethroughDelimiter {
+impl<'a> TokenSpec<'a> for StrikethroughDelimiter {
     const NAME: &'static str = "strikethrough delimiter";
 }
 
-impl<'a> Token<'a> for RawDelimiter {
+impl<'a> TokenSpec<'a> for RawDelimiter {
     const NAME: &'static str = "raw delimiter";
 }
 
-impl<'a> Token<'a> for MarkupTextSpace {
+impl<'a> TokenSpec<'a> for MarkupTextSpace {
     const NAME: &'static str = "markup text space";
 }
 
-impl<'a> Token<'a> for LinkOpeningDelimiter {
+impl<'a> TokenSpec<'a> for LinkOpeningDelimiter {
     const NAME: &'static str = "link opening delimiter";
 }
 
-impl<'a> Token<'a> for LinkClosingDelimiter {
+impl<'a> TokenSpec<'a> for LinkClosingDelimiter {
     const NAME: &'static str = "link closing delimiter";
 }
 
-impl<'a> Token<'a> for LinkToReferenceJoiner {
+impl<'a> TokenSpec<'a> for LinkToReferenceJoiner {
     const NAME: &'static str = "link to reference joiner '@'";
 }
 
-impl<'a> Token<'a> for CodeDelimiter {
+impl<'a> TokenSpec<'a> for CodeDelimiter {
     const NAME: &'static str = "delimited block delimiter";
 }
 
-impl<'a> Token<'a> for DelimitedContainerStart {
+impl<'a> TokenSpec<'a> for DelimitedContainerStart {
     const NAME: &'static str = "delimited container start";
 }
 
-impl<'a> Token<'a> for DelimitedContainerEnd {
+impl<'a> TokenSpec<'a> for DelimitedContainerEnd {
     const NAME: &'static str = "delimited container end";
 }
 
-impl<'a> Token<'a> for Unknown<'a> {
+impl<'a> TokenSpec<'a> for Unknown<'a> {
     const NAME: &'static str = "unknown";
 }
 
-impl<'a> Token<'a> for StructuredDataDirective<'a> {
+impl<'a> TokenSpec<'a> for StructuredDataDirective<'a> {
     const NAME: &'static str = "structured data directive";
 }
 
-impl<'a> Token<'a> for ContainerDirective<'a> {
+impl<'a> TokenSpec<'a> for ContainerDirective<'a> {
     const NAME: &'static str = "container directive";
 }
 
-impl<'a> Token<'a> for BlockDirective<'a> {
+impl<'a> TokenSpec<'a> for BlockDirective<'a> {
     const NAME: &'static str = "block directive";
 }
 
-impl<'a> Token<'a> for BlockParameterName<'a> {
+impl<'a> TokenSpec<'a> for BlockParameterName<'a> {
     const NAME: &'static str = "block parameter name";
 }
 
-impl<'a> Token<'a> for BlockParameterValue<'a> {
+impl<'a> TokenSpec<'a> for BlockParameterValue<'a> {
     const NAME: &'static str = "block parameter value";
 }
 
-impl<'a> Token<'a> for DataIdentifier<'a> {
+impl<'a> TokenSpec<'a> for DataIdentifier<'a> {
     const NAME: &'static str = "metadata identifier";
 }
 
-impl<'a> Token<'a> for DataValue<'a> {
+impl<'a> TokenSpec<'a> for DataValue<'a> {
     const NAME: &'static str = "metadata value";
 }
 
-impl<'a> Token<'a> for TitleText<'a> {
+impl<'a> TokenSpec<'a> for TitleText<'a> {
     const NAME: &'static str = "title text";
 }
 
-impl<'a> Token<'a> for MarkupText<'a> {
+impl<'a> TokenSpec<'a> for MarkupText<'a> {
     const NAME: &'static str = "markup text";
 }
 
-impl<'a> Token<'a> for RawFragment<'a> {
+impl<'a> TokenSpec<'a> for RawFragment<'a> {
     const NAME: &'static str = "raw fragment";
 }
 
-impl<'a> Token<'a> for Code<'a> {
+impl<'a> TokenSpec<'a> for Code<'a> {
     const NAME: &'static str = "code";
 }
 
-impl<'a> Token<'a> for ListBullet {
+impl<'a> TokenSpec<'a> for ListBullet {
     const NAME: &'static str = "list bullet";
 }
 
@@ -1099,7 +1104,7 @@ impl<'a> Scanner<'a> {
 // matching text vs the sub text we are interested in
 // e.g escaped chars
 pub struct ScanMatch<'a> {
-    value: TokenKind<'a>,
+    value: Token<'a>,
     // TODO: Store a position instead of a head
     end: ReadHead<'a>,
 }
@@ -1125,7 +1130,7 @@ fn match_list_bullet<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
     }
 
     Some(ScanMatch {
-        value: TokenKind::ListBullet(ListBullet(space_count)),
+        value: Token::ListBullet(ListBullet(space_count)),
         end: head,
     })
 }
@@ -1167,7 +1172,7 @@ fn match_markup_text_space<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
     }
 
     Some(ScanMatch {
-        value: TokenKind::MarkupTextSpace(MarkupTextSpace),
+        value: Token::MarkupTextSpace(MarkupTextSpace),
         end: head,
     })
 }
@@ -1213,7 +1218,7 @@ fn match_list_markup_text_space<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'
     }
 
     Some(ScanMatch {
-        value: TokenKind::MarkupTextSpace(MarkupTextSpace),
+        value: Token::MarkupTextSpace(MarkupTextSpace),
         end: head,
     })
 }
@@ -1238,7 +1243,7 @@ fn match_title_text_space<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
     }
 
     Some(ScanMatch {
-        value: TokenKind::TitleTextSpace(TitleTextSpace),
+        value: Token::TitleTextSpace(TitleTextSpace),
         end: head,
     })
 }
@@ -1253,7 +1258,7 @@ fn match_parameters_start<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
     }
 
     Some(ScanMatch {
-        value: TokenKind::BlockParametersStart(BlockParametersStart),
+        value: Token::BlockParametersStart(BlockParametersStart),
         end: head,
     })
 }
@@ -1268,7 +1273,7 @@ fn match_parameters_end<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
     }
 
     Some(ScanMatch {
-        value: TokenKind::BlockParametersEnd(BlockParametersEnd),
+        value: Token::BlockParametersEnd(BlockParametersEnd),
         end: head,
     })
 }
@@ -1283,7 +1288,7 @@ fn match_parameter_name_value_seperator<'a>(scanner: &Scanner<'a>) -> Option<Sca
     }
 
     Some(ScanMatch {
-        value: TokenKind::BlockParameterNameValueSeperator(BlockParameterNameValueSeperator),
+        value: Token::BlockParameterNameValueSeperator(BlockParameterNameValueSeperator),
         end: head,
     })
 }
@@ -1298,7 +1303,7 @@ fn match_raw_delimiter<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
     }
 
     Some(ScanMatch {
-        value: TokenKind::RawDelimiter(RawDelimiter),
+        value: Token::RawDelimiter(RawDelimiter),
         end: head,
     })
 }
@@ -1313,7 +1318,7 @@ fn match_link_opening_delimiter<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'
     }
 
     Some(ScanMatch {
-        value: TokenKind::LinkOpeningDelimiter(LinkOpeningDelimiter),
+        value: Token::LinkOpeningDelimiter(LinkOpeningDelimiter),
         end: head,
     })
 }
@@ -1328,7 +1333,7 @@ fn match_link_closing_delimiter<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'
     }
 
     Some(ScanMatch {
-        value: TokenKind::LinkClosingDelimiter(LinkClosingDelimiter),
+        value: Token::LinkClosingDelimiter(LinkClosingDelimiter),
         end: head,
     })
 }
@@ -1343,7 +1348,7 @@ fn match_link_to_reference_joiner<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch
     }
 
     Some(ScanMatch {
-        value: TokenKind::LinkToReferenceJoiner(LinkToReferenceJoiner),
+        value: Token::LinkToReferenceJoiner(LinkToReferenceJoiner),
         end: head,
     })
 }
@@ -1358,7 +1363,7 @@ fn match_strong_delimiter<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
     }
 
     Some(ScanMatch {
-        value: TokenKind::StrongDelimiter(StrongDelimiter),
+        value: Token::StrongDelimiter(StrongDelimiter),
         end: head,
     })
 }
@@ -1373,7 +1378,7 @@ fn match_emphasis_delimiter<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> 
     }
 
     Some(ScanMatch {
-        value: TokenKind::EmphasisDelimiter(EmphasisDelimiter),
+        value: Token::EmphasisDelimiter(EmphasisDelimiter),
         end: head,
     })
 }
@@ -1388,7 +1393,7 @@ fn match_strikethrough_delimiter<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<
     }
 
     Some(ScanMatch {
-        value: TokenKind::StrikethroughDelimiter(StrikethroughDelimiter),
+        value: Token::StrikethroughDelimiter(StrikethroughDelimiter),
         end: head,
     })
 }
@@ -1406,7 +1411,7 @@ fn match_code_delimiter<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
     }
 
     Some(ScanMatch {
-        value: TokenKind::CodeDelimiter(CodeDelimiter),
+        value: Token::CodeDelimiter(CodeDelimiter),
         end: head,
     })
 }
@@ -1423,7 +1428,7 @@ fn match_code_block<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
             let i2 = head.index;
             let text = &scanner.input[i1..i2];
             return Some(ScanMatch {
-                value: TokenKind::Code(Code(text)),
+                value: Token::Code(Code(text)),
                 end: head,
             });
         } else if head.current == None {
@@ -1451,7 +1456,7 @@ fn match_blockbreak<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
 
     if new_line_count > 1 {
         Some(ScanMatch {
-            value: TokenKind::BlockBreak(BlockBreak),
+            value: Token::BlockBreak(BlockBreak),
             end: head,
         })
     } else {
@@ -1469,7 +1474,7 @@ fn match_linebreak<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
     if head.current == Some(NEW_LINE) {
         head.read_next_char();
         Some(ScanMatch {
-            value: TokenKind::LineBreak(LineBreak),
+            value: Token::LineBreak(LineBreak),
             end: head,
         })
     } else {
@@ -1486,7 +1491,7 @@ fn match_end_of_input<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
 
     if head.current == None {
         Some(ScanMatch {
-            value: TokenKind::EndOfInput(EndOfInput),
+            value: Token::EndOfInput(EndOfInput),
             end: head,
         })
     } else {
@@ -1515,7 +1520,7 @@ fn match_escaped_markup_text<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>>
     let text = &scanner.input[i1..i2];
 
     Some(ScanMatch {
-        value: TokenKind::MarkupText(MarkupText(text)),
+        value: Token::MarkupText(MarkupText(text)),
         end: head,
     })
 }
@@ -1539,7 +1544,7 @@ fn match_raw_fragment<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
         None
     } else {
         Some(ScanMatch {
-            value: TokenKind::RawFragment(RawFragment(text)),
+            value: Token::RawFragment(RawFragment(text)),
             end: head,
         })
     }
@@ -1569,7 +1574,7 @@ fn match_data_value<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
     } else {
         Some(ScanMatch {
             //TODO: meh amounts of ceremony here
-            value: TokenKind::DataValue(DataValue(text)),
+            value: Token::DataValue(DataValue(text)),
             end: head,
         })
     }
@@ -1591,7 +1596,7 @@ fn match_markup_text<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
         None
     } else {
         Some(ScanMatch {
-            value: TokenKind::MarkupText(MarkupText(text)),
+            value: Token::MarkupText(MarkupText(text)),
             end: head,
         })
     }
@@ -1613,7 +1618,7 @@ fn match_title_text<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
         None
     } else {
         Some(ScanMatch {
-            value: TokenKind::TitleText(TitleText(text)),
+            value: Token::TitleText(TitleText(text)),
             end: head,
         })
     }
@@ -1643,7 +1648,7 @@ fn match_parameter_value<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
     }
 
     Some(ScanMatch {
-        value: TokenKind::BlockParameterValue(BlockParameterValue(text)),
+        value: Token::BlockParameterValue(BlockParameterValue(text)),
         end: head,
     })
 }
@@ -1672,7 +1677,7 @@ fn match_parameter_name<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
     }
 
     Some(ScanMatch {
-        value: TokenKind::BlockParameterName(BlockParameterName(text)),
+        value: Token::BlockParameterName(BlockParameterName(text)),
         end: head,
     })
 }
@@ -1701,7 +1706,7 @@ fn match_data_identifier<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
     }
 
     Some(ScanMatch {
-        value: TokenKind::DataIdentifier(DataIdentifier(text)),
+        value: Token::DataIdentifier(DataIdentifier(text)),
         end: head,
     })
 }
@@ -1720,7 +1725,7 @@ fn match_data_key_value_seperator<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch
     }
 
     Some(ScanMatch {
-        value: TokenKind::DataKeyValueSeperator(DataKeyValueSeperator),
+        value: Token::DataKeyValueSeperator(DataKeyValueSeperator),
         end: head,
     })
 }
@@ -1739,7 +1744,7 @@ fn match_data_list_seperator<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>>
     }
 
     Some(ScanMatch {
-        value: TokenKind::DataListSeperator(DataListSeperator),
+        value: Token::DataListSeperator(DataListSeperator),
         end: head,
     })
 }
@@ -1762,7 +1767,7 @@ fn match_data_directive<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
     let text = &scanner.input[i1..i2];
 
     Some(ScanMatch {
-        value: TokenKind::StructuredDataDirective(StructuredDataDirective(text)),
+        value: Token::StructuredDataDirective(StructuredDataDirective(text)),
         end: head,
     })
 }
@@ -1785,7 +1790,7 @@ fn match_container_directive<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>>
     let text = &scanner.input[i1..i2];
 
     Some(ScanMatch {
-        value: TokenKind::ContainerDirective(ContainerDirective(text)),
+        value: Token::ContainerDirective(ContainerDirective(text)),
         end: head,
     })
 }
@@ -1808,7 +1813,7 @@ fn match_block_directive<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
     let text = &scanner.input[i1..i2];
 
     Some(ScanMatch {
-        value: TokenKind::BlockDirective(BlockDirective(text)),
+        value: Token::BlockDirective(BlockDirective(text)),
         end: head,
     })
 }
@@ -1839,7 +1844,7 @@ fn match_subsection_directive<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>
     }
 
     Some(ScanMatch {
-        value: TokenKind::SubSectionDirective(SubSectionDirective),
+        value: Token::SubSectionDirective(SubSectionDirective),
         end: head,
     })
 }
@@ -1864,7 +1869,7 @@ fn match_section_directive<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
     }
 
     Some(ScanMatch {
-        value: TokenKind::SectionDirective(SectionDirective),
+        value: Token::SectionDirective(SectionDirective),
         end: head,
     })
 }
@@ -1883,7 +1888,7 @@ fn match_title_directive<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
     }
 
     Some(ScanMatch {
-        value: TokenKind::TitleDirective(TitleDirective),
+        value: Token::TitleDirective(TitleDirective),
         end: head,
     })
 }
@@ -1905,7 +1910,7 @@ fn match_container_start<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
     }
 
     Some(ScanMatch {
-        value: TokenKind::DelimitedContainerStart(DelimitedContainerStart),
+        value: Token::DelimitedContainerStart(DelimitedContainerStart),
         end: head,
     })
 }
@@ -1927,7 +1932,7 @@ fn match_container_end<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
     }
 
     Some(ScanMatch {
-        value: TokenKind::DelimitedContainerEnd(DelimitedContainerEnd),
+        value: Token::DelimitedContainerEnd(DelimitedContainerEnd),
         end: head,
     })
 }
@@ -1945,7 +1950,7 @@ fn match_unknown<'a>(scanner: &Scanner<'a>) -> ScanMatch<'a> {
     let text = &scanner.input[i1..i2];
 
     ScanMatch {
-        value: TokenKind::Unknown(Unknown(text)),
+        value: Token::Unknown(Unknown(text)),
         end: head,
     }
 }

@@ -86,7 +86,7 @@ impl Display for ParseError {
 
 impl<'a, T> From<UnexpectedTokenError<'a, T>> for ParseError
 where
-    T: Token<'a>,
+    T: TokenSpec<'a>,
 {
     fn from(err: UnexpectedTokenError<'a, T>) -> Self {
         ParseError {
@@ -215,7 +215,7 @@ fn parse_references(tokeniser: &mut Tokeniser) -> ParseResult<Box<[Reference]>> 
 
     let mut references = Vec::new();
 
-    while let Some(DataIdentifier(id)) = tokeniser.peek().is_value() {
+    while let Some(DataIdentifier(id)) = tokeniser.peek().value_into() {
         tokeniser.advance();
         tokeniser.advance().expect(DataKeyValueSeperator)?;
 
@@ -255,7 +255,7 @@ fn parse_header_text(tokeniser: &mut Tokeniser) -> ParseResult<String> {
 
     loop {
         let next = tokeniser.peek();
-        if let Some(TitleText(text)) = next.is_value() {
+        if let Some(TitleText(text)) = next.value_into() {
             title.push_str(text);
             tokeniser.advance();
         } else if next.is(TitleTextSpace) {
@@ -291,19 +291,20 @@ fn parse_element(tokeniser: &mut Tokeniser) -> ParseResult<Element> {
     let next = tokeniser.peek();
     //TODO: Ergonomics
     // We never care about the value, so return a tag?
+
     match next.value {
-        TokenKind::TitleDirective(_) => {
+        Token::TitleDirective(_) => {
             parse_err!(TitleNotAtStart, next.position)
         }
-        TokenKind::SectionDirective(_) => {
+        Token::SectionDirective(_) => {
             let section = parse_section(tokeniser)?;
             Ok(Element::Section(section))
         }
-        TokenKind::ContainerDirective(_) => {
+        Token::ContainerDirective(_) => {
             let container = parse_container(tokeniser)?;
             Ok(Element::Container(container))
         }
-        TokenKind::SubSectionDirective(_) => {
+        Token::SubSectionDirective(_) => {
             todo!("reject subsection for not being inside a section");
         }
         _ => {
@@ -398,14 +399,14 @@ fn parse_section_element(tokeniser: &mut Tokeniser) -> ParseResult<SectionElemen
     //TODO: Very simmilar to parse_element, possible re-use?
     let peeked = tokeniser.peek();
     match peeked.value {
-        TokenKind::TitleDirective(_) => {
+        Token::TitleDirective(_) => {
             parse_err!(TitleNotAtStart, peeked.position)
         }
-        TokenKind::SubSectionDirective(_) => {
+        Token::SubSectionDirective(_) => {
             let subsection = parse_subsection(tokeniser)?;
             Ok(SectionElement::SubSection(subsection))
         }
-        TokenKind::ContainerDirective(_) => {
+        Token::ContainerDirective(_) => {
             let container = parse_container(tokeniser)?;
             Ok(SectionElement::Container(container))
         }
@@ -449,10 +450,10 @@ fn parse_subsection_element(tokeniser: &mut Tokeniser) -> ParseResult<SubSection
         // TitleDirective => {
         //     parse_err!(TitleNotAtStart, token.position)
         // }
-        TokenKind::SubSectionDirective(_) => {
+        Token::SubSectionDirective(_) => {
             todo!("not allow")
         }
-        TokenKind::ContainerDirective(_) => {
+        Token::ContainerDirective(_) => {
             let container = parse_container(tokeniser)?;
             Ok(SubSectionElement::Container(container))
         }
@@ -469,28 +470,28 @@ fn parse_block(tokeniser: &mut Tokeniser) -> ParseResult<Block> {
     // TODO: Directive should be consts if we are being consistant
     let next = tokeniser.peek();
     let block = match next.value {
-        TokenKind::ListBullet(_) => parse_list(tokeniser)?,
-        TokenKind::BlockDirective(BlockDirective("paragraph")) => parse_paragraph(tokeniser)?,
-        TokenKind::BlockDirective(BlockDirective("list")) => parse_list(tokeniser)?,
-        TokenKind::BlockDirective(BlockDirective("code")) => parse_code(tokeniser)?,
-        TokenKind::StructuredDataDirective(StructuredDataDirective("metadata")) => {
+        Token::ListBullet(_) => parse_list(tokeniser)?,
+        Token::BlockDirective(BlockDirective("paragraph")) => parse_paragraph(tokeniser)?,
+        Token::BlockDirective(BlockDirective("list")) => parse_list(tokeniser)?,
+        Token::BlockDirective(BlockDirective("code")) => parse_code(tokeniser)?,
+        Token::StructuredDataDirective(StructuredDataDirective("metadata")) => {
             return parse_err!(MetadataNotAtStart, next.position);
         }
-        TokenKind::StructuredDataDirective(StructuredDataDirective("references")) => {
+        Token::StructuredDataDirective(StructuredDataDirective("references")) => {
             return parse_err!(ReferencesOutOfPlace, next.position);
         }
-        TokenKind::BlockDirective(BlockDirective(name)) => {
+        Token::BlockDirective(BlockDirective(name)) => {
             return parse_err!(UnknownBlock(name.into()), next.position);
         }
         //TODO: Easier way to have 'is markup'
-        TokenKind::MarkupText(_)
-        | TokenKind::MarkupTextSpace(_)
-        | TokenKind::LinkOpeningDelimiter(_)
-        | TokenKind::RawDelimiter(_)
-        | TokenKind::EmphasisDelimiter(_)
-        | TokenKind::StrongDelimiter(_)
-        | TokenKind::StrikethroughDelimiter(_) => parse_paragraph(tokeniser)?,
-        TokenKind::DelimitedContainerEnd(_) => {
+        Token::MarkupText(_)
+        | Token::MarkupTextSpace(_)
+        | Token::LinkOpeningDelimiter(_)
+        | Token::RawDelimiter(_)
+        | Token::EmphasisDelimiter(_)
+        | Token::StrongDelimiter(_)
+        | Token::StrikethroughDelimiter(_) => parse_paragraph(tokeniser)?,
+        Token::DelimitedContainerEnd(_) => {
             return parse_err!(ContainerMissingStart, next.position);
         }
         _ => todo!("write tests for this"),
@@ -579,7 +580,7 @@ fn parse_list(tokeniser: &mut Tokeniser) -> ParseResult<Block> {
         if tokeniser.peek().is(BlockParametersStart) {
             tokeniser.advance();
 
-            if let Some(BlockParameterName(name)) = tokeniser.peek().is_value() {
+            if let Some(BlockParameterName(name)) = tokeniser.peek().value_into() {
                 tokeniser.advance();
 
                 tokeniser
@@ -625,15 +626,13 @@ fn parse_text_runs(tokeniser: &mut Tokeniser) -> ParseResult<Box<[TextRun]>> {
     //TODO: Ergonomics
     loop {
         let run = match tokeniser.peek().value {
-            TokenKind::MarkupText(_) | TokenKind::MarkupTextSpace(_) => {
-                parse_plain_text_run(tokeniser)?
-            }
+            Token::MarkupText(_) | Token::MarkupTextSpace(_) => parse_plain_text_run(tokeniser)?,
             //TODO: Could group style delimiters into sub enum
-            TokenKind::StrongDelimiter(_)
-            | TokenKind::EmphasisDelimiter(_)
-            | TokenKind::StrikethroughDelimiter(_) => parse_styled_text_run(tokeniser)?,
-            TokenKind::RawDelimiter(_) => parse_raw_text_run(tokeniser)?,
-            TokenKind::LinkOpeningDelimiter(_) => parse_linked_text_run(tokeniser)?,
+            Token::StrongDelimiter(_)
+            | Token::EmphasisDelimiter(_)
+            | Token::StrikethroughDelimiter(_) => parse_styled_text_run(tokeniser)?,
+            Token::RawDelimiter(_) => parse_raw_text_run(tokeniser)?,
+            Token::LinkOpeningDelimiter(_) => parse_linked_text_run(tokeniser)?,
 
             _ => break,
         };
@@ -662,9 +661,9 @@ fn parse_styled_text_run(tokeniser: &mut Tokeniser) -> ParseResult<TextRun> {
     //TODO: Could we have an 'expect one of' method
     // would have synergies with 'is one of'
     let style = match opening_delimiter.value {
-        TokenKind::StrongDelimiter(_) => Style::Strong,
-        TokenKind::EmphasisDelimiter(_) => Style::Emphasis,
-        TokenKind::StrikethroughDelimiter(_) => Style::Strikethrough,
+        Token::StrongDelimiter(_) => Style::Strong,
+        Token::EmphasisDelimiter(_) => Style::Emphasis,
+        Token::StrikethroughDelimiter(_) => Style::Strikethrough,
         _ => {
             let message = format!(
                 "expected: {}, {} or {} but got: {}",
@@ -730,20 +729,17 @@ fn parse_raw_text_run(tokeniser: &mut Tokeniser) -> ParseResult<TextRun> {
     let mut run = String::new();
 
     loop {
-        //TODO: Another case where if/let advance might be easier
         let next = tokeniser.peek();
-        match next.value {
-            //TODO: hmm
-            TokenKind::RawFragment(_) => {
-                let RawFragment(fragment) = tokeniser.advance().extract()?;
-                run.push_str(fragment)
-            }
-            TokenKind::LineBreak(_) => {
-                tokeniser.advance();
-                run.push(SPACE);
-            }
-            TokenKind::RawDelimiter(_) => break,
-            _ => return parse_err!(UnterminatedRawTextRun, next.position),
+        if let Some(RawFragment(fragment)) = next.value_into() {
+            run.push_str(fragment);
+            tokeniser.advance();
+        } else if next.is(LineBreak) {
+            tokeniser.advance();
+            run.push(SPACE);
+        } else if next.is(RawDelimiter) {
+            break;
+        } else {
+            return parse_err!(UnterminatedRawTextRun, next.position);
         }
     }
 
@@ -794,7 +790,7 @@ fn parse_markup_text(tokeniser: &mut Tokeniser) -> ParseResult<String> {
 
     loop {
         let next = tokeniser.peek();
-        if let Some(MarkupText(text)) = next.is_value() {
+        if let Some(MarkupText(text)) = next.value_into() {
             run.push_str(text);
             tokeniser.advance();
         } else if next.is(MarkupTextSpace) {
