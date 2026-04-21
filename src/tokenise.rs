@@ -49,7 +49,7 @@ const MARKUP_CHARS: &[char; 10] = &[
 // pattern matcher
 // ???
 
-#[derive(PartialEq, Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug)]
 pub enum Token<'a> {
     EndOfInput(EndOfInput),
     TitleDirective(TitleDirective),
@@ -150,14 +150,6 @@ impl<'a> Display for Token<'a> {
 
 type Matcher = for<'a> fn(&Scanner<'a>) -> Option<ScanMatch<'a>>;
 
-// pub enum TokenExpectation<'a, T>
-// where
-//     T: Token<'a>,
-// {
-//     Value(TokenKind<'a>),
-//     Token(PhantomData<T>),
-// }
-
 pub struct UnexpectedTokenError<'a, T>
 where
     T: TokenSpec<'a>,
@@ -238,134 +230,128 @@ impl<'a> SpannedTokenKind<'a> {
 //TODO: put matcher func as an associated type?
 // TODO: do we really need this? Its just the TryFrom thats
 // essential right?
-pub trait TokenSpec<'a>: PartialEq + TryFrom<Token<'a>> {
+pub trait TokenSpec<'a>: TryFrom<Token<'a>> {
     const NAME: &'static str;
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug)]
 pub struct MetadataDirective;
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug)]
 pub struct ReferencesDirective;
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug)]
 pub struct ParagraphDirective;
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug)]
 pub struct ListDirective;
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug)]
 pub struct CodeDirective;
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug)]
 pub struct UnknownBlockDirective<'a>(pub &'a str);
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug)]
 pub struct EndOfInput;
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug)]
 pub struct TitleDirective;
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug)]
 pub struct SectionDirective;
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug)]
 pub struct SubSectionDirective;
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug)]
 pub struct BlockParametersStart;
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug)]
 pub struct BlockParametersEnd;
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug)]
 pub struct BlockParameterNameValueSeperator;
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug)]
 pub struct BlockBreak;
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug)]
 pub struct DataListSeperator;
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug)]
 pub struct DataKeyValueSeperator;
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug)]
 pub struct TitleTextSpace;
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug)]
 pub struct LineBreak;
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug)]
 pub struct StrongDelimiter;
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug)]
 pub struct EmphasisDelimiter;
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug)]
 pub struct StrikethroughDelimiter;
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug)]
 pub struct RawDelimiter;
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug)]
 pub struct MarkupTextSpace;
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug)]
 pub struct LinkOpeningDelimiter;
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug)]
 pub struct LinkClosingDelimiter;
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug)]
 pub struct LinkToReferenceJoiner;
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug)]
 pub struct CodeDelimiter;
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug)]
 pub struct DelimitedContainerStart;
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug)]
 pub struct DelimitedContainerEnd;
 
-// #[derive(Clone, Copy, Debug, PartialEq)]
-// pub struct StructuredDataDirective<'a>(pub &'a str);
-
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug)]
 pub struct ContainerDirective<'a>(pub &'a str);
 
-// #[derive(Clone, Copy, Debug, PartialEq)]
-// pub struct BlockDirective<'a>(pub &'a str);
-
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug)]
 pub struct BlockParameterName<'a>(pub &'a str);
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug)]
 pub struct BlockParameterValue<'a>(pub &'a str);
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug)]
 pub struct DataIdentifier<'a>(pub &'a str);
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug)]
 pub struct DataValue<'a>(pub &'a str);
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug)]
 pub struct TitleText<'a>(pub &'a str);
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug)]
 pub struct MarkupText<'a>(pub &'a str);
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug)]
 pub struct RawFragment<'a>(pub &'a str);
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug)]
 pub struct Code<'a>(pub &'a str);
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug)]
 pub struct Unknown<'a>(pub &'a str);
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug)]
 pub struct ListBullet(pub usize);
 
 //TODO: Use macros to clear up repetition
@@ -458,17 +444,6 @@ impl<'a> TryFrom<Token<'a>> for Code<'a> {
     }
 }
 
-// impl<'a> TryFrom<Token<'a>> for StructuredDataDirective<'a> {
-//     type Error = ();
-
-//     fn try_from(value: Token<'a>) -> Result<Self, Self::Error> {
-//         match value {
-//             Token::StructuredDataDirective(token) => Ok(token),
-//             _ => Err(()),
-//         }
-//     }
-// }
-
 impl<'a> TryFrom<Token<'a>> for ContainerDirective<'a> {
     type Error = ();
 
@@ -479,17 +454,6 @@ impl<'a> TryFrom<Token<'a>> for ContainerDirective<'a> {
         }
     }
 }
-
-// impl<'a> TryFrom<Token<'a>> for BlockDirective<'a> {
-//     type Error = ();
-
-//     fn try_from(value: Token<'a>) -> Result<Self, Self::Error> {
-//         match value {
-//             Token::BlockDirective(token) => Ok(token),
-//             _ => Err(()),
-//         }
-//     }
-// }
 
 impl<'a> TryFrom<Token<'a>> for ListBullet {
     type Error = ();
@@ -926,17 +890,9 @@ impl<'a> TokenSpec<'a> for Unknown<'a> {
     const NAME: &'static str = "unknown";
 }
 
-// impl<'a> TokenSpec<'a> for StructuredDataDirective<'a> {
-//     const NAME: &'static str = "structured data directive";
-// }
-
 impl<'a> TokenSpec<'a> for ContainerDirective<'a> {
     const NAME: &'static str = "container directive";
 }
-
-// impl<'a> TokenSpec<'a> for BlockDirective<'a> {
-//     const NAME: &'static str = "block directive";
-// }
 
 impl<'a> TokenSpec<'a> for BlockParameterName<'a> {
     const NAME: &'static str = "block parameter name";

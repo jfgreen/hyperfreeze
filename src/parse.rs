@@ -681,6 +681,10 @@ fn parse_plain_text_run(tokeniser: &mut Tokeniser) -> ParseResult<TextRun> {
     Ok(run)
 }
 
+//TODO: easier to just have three very simmilar functions for
+// parse_strong_text_run
+// parse_emphasised_text_run
+// parse_strikethrough_text_run
 fn parse_styled_text_run(tokeniser: &mut Tokeniser) -> ParseResult<TextRun> {
     let opening_delimiter = tokeniser.advance();
     let run_start = opening_delimiter.position;
@@ -705,33 +709,26 @@ fn parse_styled_text_run(tokeniser: &mut Tokeniser) -> ParseResult<TextRun> {
 
     let run = parse_markup_text(tokeniser)?;
 
-    //TODO: If we ended hiding value then we will need to re think this
     let next = tokeniser.peek();
-    if next.value != opening_delimiter.value {
-        let message = format!("expected: {}, got: {}", opening_delimiter.value, next.value,);
-        return parse_err!(UnexpectedToken(message), next.position);
-    }
-    tokeniser.advance();
-
-    //TODO: consider options
-    // 1 - have a specific method for just expecting on a value
-    // 2 - handle the three varients here
-    // 3 - dispatch to three different sub functions
-    // tokeniser.advance().expect_blah(opening_delimiter.value)?;
 
     //TODO: Combine with above one?
-    // match opening_delimiter.value {
-    //     TokenKind::StrongDelimiter(_) => {
-    //         tokeniser.advance().expect::<StrongDelimiter>()?;
-    //     }
-    //     TokenKind::EmphasisDelimiter(_) => {
-    //         tokeniser.advance().expect::<EmphasisDelimiter>()?;
-    //     }
-    //     TokenKind::StrikethroughDelimiter(_) => {
-    //         tokeniser.advance().expect::<StrikethroughDelimiter>()?;
-    //     }
-    //     _ => return parse_err!(opening_delimiter),
-    // };
+    match opening_delimiter.value {
+        Token::StrongDelimiter(_) => {
+            next.expect::<StrongDelimiter>()?;
+        }
+        Token::EmphasisDelimiter(_) => {
+            next.expect::<EmphasisDelimiter>()?;
+        }
+        Token::StrikethroughDelimiter(_) => {
+            next.expect::<StrikethroughDelimiter>()?;
+        }
+        _ => {
+            let message = format!("expected: {}, got: {}", opening_delimiter.value, next.value);
+            return parse_err!(UnexpectedToken(message), next.position);
+        }
+    };
+
+    tokeniser.advance();
 
     if run.starts_with(SPACE) || run.ends_with(SPACE) {
         return parse_err!(LooseDelimiter, run_start);
