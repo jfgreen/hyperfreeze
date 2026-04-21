@@ -13,7 +13,6 @@ pub struct ParseError {
 }
 
 macro_rules! parse_err {
-    //TODO: Try track_caller stuff
     ($error:expr, $position:expr) => {{
         Err(ParseError {
             kind: $error,
@@ -171,7 +170,7 @@ fn parse_metadata(tokeniser: &mut Tokeniser, metadata: &mut Metadata) -> ParseRe
 
         match key {
             "id" => {
-                let DataValue(id) = tokeniser.advance().extract()?;
+                let DataValue(id) = tokeniser.advance().expect()?;
                 metadata.id = Some(id.to_string());
             }
             "tags" => {
@@ -212,7 +211,7 @@ fn parse_references(tokeniser: &mut Tokeniser) -> ParseResult<Box<[Reference]>> 
 
         //  TODO: Can we lose the need to qualify the token module
         // Just lost the tag concept entirely?
-        let DataValue(link) = tokeniser.advance().extract()?;
+        let DataValue(link) = tokeniser.advance().expect()?;
 
         // TODO: This is a common pattern - macro? Or refactor to not
         // need these delimiter tokens?
@@ -265,12 +264,12 @@ fn parse_header_text(tokeniser: &mut Tokeniser) -> ParseResult<String> {
 fn parse_metadata_list(tokeniser: &mut Tokeniser) -> ParseResult<Box<[String]>> {
     let mut tags = Vec::new();
 
-    let DataValue(first_tag) = tokeniser.advance().extract()?;
+    let DataValue(first_tag) = tokeniser.advance().expect()?;
     tags.push(first_tag.to_string());
 
     while tokeniser.peek().is::<DataListSeperator>() {
         tokeniser.advance();
-        let DataValue(tag) = tokeniser.advance().extract()?;
+        let DataValue(tag) = tokeniser.advance().expect()?;
         tags.push(tag.to_string());
     }
 
@@ -615,7 +614,7 @@ fn parse_list(tokeniser: &mut Tokeniser) -> ParseResult<Block> {
                     .expect::<BlockParameterNameValueSeperator>()?;
 
                 tokeniser.push_mode(ScanMode::HeaderValue);
-                let BlockParameterValue(value) = tokeniser.advance().extract()?;
+                let BlockParameterValue(value) = tokeniser.advance().expect()?;
 
                 tokeniser.pop_mode();
 
@@ -799,7 +798,7 @@ fn parse_linked_text_run(tokeniser: &mut Tokeniser) -> ParseResult<TextRun> {
 
     tokeniser.advance().expect::<LinkToReferenceJoiner>()?;
 
-    let DataIdentifier(identifier) = tokeniser.advance().extract()?;
+    let DataIdentifier(identifier) = tokeniser.advance().expect()?;
 
     tokeniser.pop_mode();
 
@@ -843,7 +842,7 @@ fn parse_code(tokeniser: &mut Tokeniser) -> ParseResult<Block> {
 
     tokeniser.push_mode(ScanMode::Code);
 
-    let Code(code) = tokeniser.advance().extract()?;
+    let Code(code) = tokeniser.advance().expect()?;
 
     tokeniser.advance().expect::<CodeDelimiter>()?;
 

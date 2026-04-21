@@ -84,9 +84,7 @@ pub enum Token<'a> {
     DelimitedContainerStart(DelimitedContainerStart),
     DelimitedContainerEnd(DelimitedContainerEnd),
     Unknown(Unknown<'a>),
-    // StructuredDataDirective(StructuredDataDirective<'a>),
     ContainerDirective(ContainerDirective<'a>),
-    // BlockDirective(BlockDirective<'a>),
     BlockParameterName(BlockParameterName<'a>),
     BlockParameterValue(BlockParameterValue<'a>),
     DataIdentifier(DataIdentifier<'a>),
@@ -131,9 +129,7 @@ impl<'a> Display for Token<'a> {
             Token::DelimitedContainerStart(_) => DelimitedContainerStart::NAME,
             Token::DelimitedContainerEnd(_) => DelimitedContainerEnd::NAME,
             Token::Unknown(_) => Unknown::NAME,
-            // Token::StructuredDataDirective(_) => StructuredDataDirective::NAME,
             Token::ContainerDirective(_) => ContainerDirective::NAME,
-            // Token::BlockDirective(_) => BlockDirective::NAME,
             Token::BlockParameterName(_) => BlockParameterName::NAME,
             Token::BlockParameterValue(_) => BlockParameterValue::NAME,
             Token::DataIdentifier(_) => DataIdentifier::NAME,
@@ -182,7 +178,7 @@ pub type SpannedTokenKind<'a> = Spanned<Token<'a>>;
 // It wont be able to share a type, but it will enforce the parser follows certain patterns
 
 impl<'a> SpannedTokenKind<'a> {
-    pub fn extract<T>(&self) -> Result<T, UnexpectedTokenError<'a, T>>
+    pub fn expect<T>(&self) -> Result<T, UnexpectedTokenError<'a, T>>
     where
         T: TokenSpec<'a>,
     {
@@ -191,14 +187,6 @@ impl<'a> SpannedTokenKind<'a> {
             actual: self.value,
             position: self.position,
         })
-    }
-
-    //TODO: Redundant?
-    pub fn expect<T>(&self) -> Result<(), UnexpectedTokenError<'a, T>>
-    where
-        T: TokenSpec<'a>,
-    {
-        self.extract().map(|_| ())
     }
 
     //TODO: naming rather off
