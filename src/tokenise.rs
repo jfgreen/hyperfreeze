@@ -55,6 +55,13 @@ pub enum Token<'a> {
     TitleDirective(TitleDirective),
     SectionDirective(SectionDirective),
     SubSectionDirective(SubSectionDirective),
+    MetadataDirective(MetadataDirective),
+    ReferencesDirective(ReferencesDirective),
+    ParagraphDirective(ParagraphDirective),
+    ListDirective(ListDirective),
+    CodeDirective(CodeDirective),
+    //TODO: Could just be 'unknown directive' and include more cases?
+    UnknownBlockDirective(UnknownBlockDirective<'a>),
     BlockParametersStart(BlockParametersStart),
     BlockParametersEnd(BlockParametersEnd),
     //TODO: This name is meh - just call it what it is: equals sign?
@@ -77,9 +84,9 @@ pub enum Token<'a> {
     DelimitedContainerStart(DelimitedContainerStart),
     DelimitedContainerEnd(DelimitedContainerEnd),
     Unknown(Unknown<'a>),
-    StructuredDataDirective(StructuredDataDirective<'a>),
+    // StructuredDataDirective(StructuredDataDirective<'a>),
     ContainerDirective(ContainerDirective<'a>),
-    BlockDirective(BlockDirective<'a>),
+    // BlockDirective(BlockDirective<'a>),
     BlockParameterName(BlockParameterName<'a>),
     BlockParameterValue(BlockParameterValue<'a>),
     DataIdentifier(DataIdentifier<'a>),
@@ -98,6 +105,12 @@ impl<'a> Display for Token<'a> {
             Token::TitleDirective(_) => TitleDirective::NAME,
             Token::SectionDirective(_) => SectionDirective::NAME,
             Token::SubSectionDirective(_) => SubSectionDirective::NAME,
+            Token::MetadataDirective(_) => MetadataDirective::NAME,
+            Token::ReferencesDirective(_) => ReferencesDirective::NAME,
+            Token::ParagraphDirective(_) => ParagraphDirective::NAME,
+            Token::ListDirective(_) => ListDirective::NAME,
+            Token::CodeDirective(_) => CodeDirective::NAME,
+            Token::UnknownBlockDirective(_) => UnknownBlockDirective::NAME,
             Token::BlockParametersStart(_) => BlockParametersStart::NAME,
             Token::BlockParametersEnd(_) => BlockParametersEnd::NAME,
             Token::BlockParameterNameValueSeperator(_) => BlockParameterNameValueSeperator::NAME,
@@ -118,9 +131,9 @@ impl<'a> Display for Token<'a> {
             Token::DelimitedContainerStart(_) => DelimitedContainerStart::NAME,
             Token::DelimitedContainerEnd(_) => DelimitedContainerEnd::NAME,
             Token::Unknown(_) => Unknown::NAME,
-            Token::StructuredDataDirective(_) => StructuredDataDirective::NAME,
+            // Token::StructuredDataDirective(_) => StructuredDataDirective::NAME,
             Token::ContainerDirective(_) => ContainerDirective::NAME,
-            Token::BlockDirective(_) => BlockDirective::NAME,
+            // Token::BlockDirective(_) => BlockDirective::NAME,
             Token::BlockParameterName(_) => BlockParameterName::NAME,
             Token::BlockParameterValue(_) => BlockParameterValue::NAME,
             Token::DataIdentifier(_) => DataIdentifier::NAME,
@@ -232,11 +245,11 @@ impl<'a> SpannedTokenKind<'a> {
         T::try_from(self.value).ok()
     }
 
-    pub fn is<T>(&self, candidate: T) -> bool
+    pub fn is<T>(&self) -> bool
     where
         T: TokenSpec<'a>,
     {
-        T::try_from(self.value).is_ok_and(|v| v == candidate)
+        T::try_from(self.value).is_ok()
     }
 }
 
@@ -246,6 +259,24 @@ impl<'a> SpannedTokenKind<'a> {
 pub trait TokenSpec<'a>: PartialEq + TryFrom<Token<'a>> {
     const NAME: &'static str;
 }
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct MetadataDirective;
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ReferencesDirective;
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ParagraphDirective;
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ListDirective;
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct CodeDirective;
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct UnknownBlockDirective<'a>(pub &'a str);
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct EndOfInput;
@@ -316,14 +347,14 @@ pub struct DelimitedContainerStart;
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct DelimitedContainerEnd;
 
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct StructuredDataDirective<'a>(pub &'a str);
+// #[derive(Clone, Copy, Debug, PartialEq)]
+// pub struct StructuredDataDirective<'a>(pub &'a str);
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct ContainerDirective<'a>(pub &'a str);
 
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct BlockDirective<'a>(pub &'a str);
+// #[derive(Clone, Copy, Debug, PartialEq)]
+// pub struct BlockDirective<'a>(pub &'a str);
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct BlockParameterName<'a>(pub &'a str);
@@ -445,16 +476,16 @@ impl<'a> TryFrom<Token<'a>> for Code<'a> {
     }
 }
 
-impl<'a> TryFrom<Token<'a>> for StructuredDataDirective<'a> {
-    type Error = ();
+// impl<'a> TryFrom<Token<'a>> for StructuredDataDirective<'a> {
+//     type Error = ();
 
-    fn try_from(value: Token<'a>) -> Result<Self, Self::Error> {
-        match value {
-            Token::StructuredDataDirective(token) => Ok(token),
-            _ => Err(()),
-        }
-    }
-}
+//     fn try_from(value: Token<'a>) -> Result<Self, Self::Error> {
+//         match value {
+//             Token::StructuredDataDirective(token) => Ok(token),
+//             _ => Err(()),
+//         }
+//     }
+// }
 
 impl<'a> TryFrom<Token<'a>> for ContainerDirective<'a> {
     type Error = ();
@@ -467,16 +498,16 @@ impl<'a> TryFrom<Token<'a>> for ContainerDirective<'a> {
     }
 }
 
-impl<'a> TryFrom<Token<'a>> for BlockDirective<'a> {
-    type Error = ();
+// impl<'a> TryFrom<Token<'a>> for BlockDirective<'a> {
+//     type Error = ();
 
-    fn try_from(value: Token<'a>) -> Result<Self, Self::Error> {
-        match value {
-            Token::BlockDirective(token) => Ok(token),
-            _ => Err(()),
-        }
-    }
-}
+//     fn try_from(value: Token<'a>) -> Result<Self, Self::Error> {
+//         match value {
+//             Token::BlockDirective(token) => Ok(token),
+//             _ => Err(()),
+//         }
+//     }
+// }
 
 impl<'a> TryFrom<Token<'a>> for ListBullet {
     type Error = ();
@@ -751,6 +782,72 @@ impl<'a> TryFrom<Token<'a>> for Unknown<'a> {
     }
 }
 
+impl<'a> TryFrom<Token<'a>> for MetadataDirective {
+    type Error = ();
+
+    fn try_from(value: Token<'a>) -> Result<Self, Self::Error> {
+        match value {
+            Token::MetadataDirective(token) => Ok(token),
+            _ => Err(()),
+        }
+    }
+}
+
+impl<'a> TryFrom<Token<'a>> for ReferencesDirective {
+    type Error = ();
+
+    fn try_from(value: Token<'a>) -> Result<Self, Self::Error> {
+        match value {
+            Token::ReferencesDirective(token) => Ok(token),
+            _ => Err(()),
+        }
+    }
+}
+
+impl<'a> TryFrom<Token<'a>> for ParagraphDirective {
+    type Error = ();
+
+    fn try_from(value: Token<'a>) -> Result<Self, Self::Error> {
+        match value {
+            Token::ParagraphDirective(token) => Ok(token),
+            _ => Err(()),
+        }
+    }
+}
+
+impl<'a> TryFrom<Token<'a>> for ListDirective {
+    type Error = ();
+
+    fn try_from(value: Token<'a>) -> Result<Self, Self::Error> {
+        match value {
+            Token::ListDirective(token) => Ok(token),
+            _ => Err(()),
+        }
+    }
+}
+
+impl<'a> TryFrom<Token<'a>> for CodeDirective {
+    type Error = ();
+
+    fn try_from(value: Token<'a>) -> Result<Self, Self::Error> {
+        match value {
+            Token::CodeDirective(token) => Ok(token),
+            _ => Err(()),
+        }
+    }
+}
+
+impl<'a> TryFrom<Token<'a>> for UnknownBlockDirective<'a> {
+    type Error = ();
+
+    fn try_from(value: Token<'a>) -> Result<Self, Self::Error> {
+        match value {
+            Token::UnknownBlockDirective(token) => Ok(token),
+            _ => Err(()),
+        }
+    }
+}
+
 impl<'a> TokenSpec<'a> for EndOfInput {
     const NAME: &'static str = "end of input";
 }
@@ -847,17 +944,17 @@ impl<'a> TokenSpec<'a> for Unknown<'a> {
     const NAME: &'static str = "unknown";
 }
 
-impl<'a> TokenSpec<'a> for StructuredDataDirective<'a> {
-    const NAME: &'static str = "structured data directive";
-}
+// impl<'a> TokenSpec<'a> for StructuredDataDirective<'a> {
+//     const NAME: &'static str = "structured data directive";
+// }
 
 impl<'a> TokenSpec<'a> for ContainerDirective<'a> {
     const NAME: &'static str = "container directive";
 }
 
-impl<'a> TokenSpec<'a> for BlockDirective<'a> {
-    const NAME: &'static str = "block directive";
-}
+// impl<'a> TokenSpec<'a> for BlockDirective<'a> {
+//     const NAME: &'static str = "block directive";
+// }
 
 impl<'a> TokenSpec<'a> for BlockParameterName<'a> {
     const NAME: &'static str = "block parameter name";
@@ -893,6 +990,30 @@ impl<'a> TokenSpec<'a> for Code<'a> {
 
 impl<'a> TokenSpec<'a> for ListBullet {
     const NAME: &'static str = "list bullet";
+}
+
+impl<'a> TokenSpec<'a> for MetadataDirective {
+    const NAME: &'static str = "metadata directive";
+}
+
+impl<'a> TokenSpec<'a> for ReferencesDirective {
+    const NAME: &'static str = "references directive";
+}
+
+impl<'a> TokenSpec<'a> for ParagraphDirective {
+    const NAME: &'static str = "paragraph directive";
+}
+
+impl<'a> TokenSpec<'a> for ListDirective {
+    const NAME: &'static str = "list directive";
+}
+
+impl<'a> TokenSpec<'a> for CodeDirective {
+    const NAME: &'static str = "code directive";
+}
+
+impl<'a> TokenSpec<'a> for UnknownBlockDirective<'a> {
+    const NAME: &'static str = "unknown block directive";
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -966,7 +1087,7 @@ impl<'a> Tokeniser<'a> {
         // let lexeme = &self.scanner.input[start..scan_match.end.index];
 
         SpannedTokenKind {
-            value: scan_match.value,
+            value: scan_match.token,
             position,
         }
     }
@@ -987,7 +1108,7 @@ impl<'a> Tokeniser<'a> {
         self.token_count += 1;
 
         SpannedTokenKind {
-            value: scan_match.value,
+            value: scan_match.token,
             position,
         }
     }
@@ -1104,7 +1225,7 @@ impl<'a> Scanner<'a> {
 // matching text vs the sub text we are interested in
 // e.g escaped chars
 pub struct ScanMatch<'a> {
-    value: Token<'a>,
+    token: Token<'a>,
     // TODO: Store a position instead of a head
     end: ReadHead<'a>,
 }
@@ -1130,7 +1251,7 @@ fn match_list_bullet<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
     }
 
     Some(ScanMatch {
-        value: Token::ListBullet(ListBullet(space_count)),
+        token: Token::ListBullet(ListBullet(space_count)),
         end: head,
     })
 }
@@ -1172,7 +1293,7 @@ fn match_markup_text_space<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
     }
 
     Some(ScanMatch {
-        value: Token::MarkupTextSpace(MarkupTextSpace),
+        token: Token::MarkupTextSpace(MarkupTextSpace),
         end: head,
     })
 }
@@ -1218,7 +1339,7 @@ fn match_list_markup_text_space<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'
     }
 
     Some(ScanMatch {
-        value: Token::MarkupTextSpace(MarkupTextSpace),
+        token: Token::MarkupTextSpace(MarkupTextSpace),
         end: head,
     })
 }
@@ -1243,7 +1364,7 @@ fn match_title_text_space<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
     }
 
     Some(ScanMatch {
-        value: Token::TitleTextSpace(TitleTextSpace),
+        token: Token::TitleTextSpace(TitleTextSpace),
         end: head,
     })
 }
@@ -1258,7 +1379,7 @@ fn match_parameters_start<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
     }
 
     Some(ScanMatch {
-        value: Token::BlockParametersStart(BlockParametersStart),
+        token: Token::BlockParametersStart(BlockParametersStart),
         end: head,
     })
 }
@@ -1273,7 +1394,7 @@ fn match_parameters_end<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
     }
 
     Some(ScanMatch {
-        value: Token::BlockParametersEnd(BlockParametersEnd),
+        token: Token::BlockParametersEnd(BlockParametersEnd),
         end: head,
     })
 }
@@ -1288,7 +1409,7 @@ fn match_parameter_name_value_seperator<'a>(scanner: &Scanner<'a>) -> Option<Sca
     }
 
     Some(ScanMatch {
-        value: Token::BlockParameterNameValueSeperator(BlockParameterNameValueSeperator),
+        token: Token::BlockParameterNameValueSeperator(BlockParameterNameValueSeperator),
         end: head,
     })
 }
@@ -1303,7 +1424,7 @@ fn match_raw_delimiter<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
     }
 
     Some(ScanMatch {
-        value: Token::RawDelimiter(RawDelimiter),
+        token: Token::RawDelimiter(RawDelimiter),
         end: head,
     })
 }
@@ -1318,7 +1439,7 @@ fn match_link_opening_delimiter<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'
     }
 
     Some(ScanMatch {
-        value: Token::LinkOpeningDelimiter(LinkOpeningDelimiter),
+        token: Token::LinkOpeningDelimiter(LinkOpeningDelimiter),
         end: head,
     })
 }
@@ -1333,7 +1454,7 @@ fn match_link_closing_delimiter<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'
     }
 
     Some(ScanMatch {
-        value: Token::LinkClosingDelimiter(LinkClosingDelimiter),
+        token: Token::LinkClosingDelimiter(LinkClosingDelimiter),
         end: head,
     })
 }
@@ -1348,7 +1469,7 @@ fn match_link_to_reference_joiner<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch
     }
 
     Some(ScanMatch {
-        value: Token::LinkToReferenceJoiner(LinkToReferenceJoiner),
+        token: Token::LinkToReferenceJoiner(LinkToReferenceJoiner),
         end: head,
     })
 }
@@ -1363,7 +1484,7 @@ fn match_strong_delimiter<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
     }
 
     Some(ScanMatch {
-        value: Token::StrongDelimiter(StrongDelimiter),
+        token: Token::StrongDelimiter(StrongDelimiter),
         end: head,
     })
 }
@@ -1378,7 +1499,7 @@ fn match_emphasis_delimiter<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> 
     }
 
     Some(ScanMatch {
-        value: Token::EmphasisDelimiter(EmphasisDelimiter),
+        token: Token::EmphasisDelimiter(EmphasisDelimiter),
         end: head,
     })
 }
@@ -1393,7 +1514,7 @@ fn match_strikethrough_delimiter<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<
     }
 
     Some(ScanMatch {
-        value: Token::StrikethroughDelimiter(StrikethroughDelimiter),
+        token: Token::StrikethroughDelimiter(StrikethroughDelimiter),
         end: head,
     })
 }
@@ -1411,7 +1532,7 @@ fn match_code_delimiter<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
     }
 
     Some(ScanMatch {
-        value: Token::CodeDelimiter(CodeDelimiter),
+        token: Token::CodeDelimiter(CodeDelimiter),
         end: head,
     })
 }
@@ -1428,7 +1549,7 @@ fn match_code_block<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
             let i2 = head.index;
             let text = &scanner.input[i1..i2];
             return Some(ScanMatch {
-                value: Token::Code(Code(text)),
+                token: Token::Code(Code(text)),
                 end: head,
             });
         } else if head.current == None {
@@ -1456,7 +1577,7 @@ fn match_blockbreak<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
 
     if new_line_count > 1 {
         Some(ScanMatch {
-            value: Token::BlockBreak(BlockBreak),
+            token: Token::BlockBreak(BlockBreak),
             end: head,
         })
     } else {
@@ -1474,7 +1595,7 @@ fn match_linebreak<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
     if head.current == Some(NEW_LINE) {
         head.read_next_char();
         Some(ScanMatch {
-            value: Token::LineBreak(LineBreak),
+            token: Token::LineBreak(LineBreak),
             end: head,
         })
     } else {
@@ -1491,7 +1612,7 @@ fn match_end_of_input<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
 
     if head.current == None {
         Some(ScanMatch {
-            value: Token::EndOfInput(EndOfInput),
+            token: Token::EndOfInput(EndOfInput),
             end: head,
         })
     } else {
@@ -1520,7 +1641,7 @@ fn match_escaped_markup_text<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>>
     let text = &scanner.input[i1..i2];
 
     Some(ScanMatch {
-        value: Token::MarkupText(MarkupText(text)),
+        token: Token::MarkupText(MarkupText(text)),
         end: head,
     })
 }
@@ -1544,7 +1665,7 @@ fn match_raw_fragment<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
         None
     } else {
         Some(ScanMatch {
-            value: Token::RawFragment(RawFragment(text)),
+            token: Token::RawFragment(RawFragment(text)),
             end: head,
         })
     }
@@ -1574,7 +1695,7 @@ fn match_data_value<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
     } else {
         Some(ScanMatch {
             //TODO: meh amounts of ceremony here
-            value: Token::DataValue(DataValue(text)),
+            token: Token::DataValue(DataValue(text)),
             end: head,
         })
     }
@@ -1596,7 +1717,7 @@ fn match_markup_text<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
         None
     } else {
         Some(ScanMatch {
-            value: Token::MarkupText(MarkupText(text)),
+            token: Token::MarkupText(MarkupText(text)),
             end: head,
         })
     }
@@ -1618,7 +1739,7 @@ fn match_title_text<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
         None
     } else {
         Some(ScanMatch {
-            value: Token::TitleText(TitleText(text)),
+            token: Token::TitleText(TitleText(text)),
             end: head,
         })
     }
@@ -1648,7 +1769,7 @@ fn match_parameter_value<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
     }
 
     Some(ScanMatch {
-        value: Token::BlockParameterValue(BlockParameterValue(text)),
+        token: Token::BlockParameterValue(BlockParameterValue(text)),
         end: head,
     })
 }
@@ -1677,7 +1798,7 @@ fn match_parameter_name<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
     }
 
     Some(ScanMatch {
-        value: Token::BlockParameterName(BlockParameterName(text)),
+        token: Token::BlockParameterName(BlockParameterName(text)),
         end: head,
     })
 }
@@ -1706,7 +1827,7 @@ fn match_data_identifier<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
     }
 
     Some(ScanMatch {
-        value: Token::DataIdentifier(DataIdentifier(text)),
+        token: Token::DataIdentifier(DataIdentifier(text)),
         end: head,
     })
 }
@@ -1725,7 +1846,7 @@ fn match_data_key_value_seperator<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch
     }
 
     Some(ScanMatch {
-        value: Token::DataKeyValueSeperator(DataKeyValueSeperator),
+        token: Token::DataKeyValueSeperator(DataKeyValueSeperator),
         end: head,
     })
 }
@@ -1744,11 +1865,12 @@ fn match_data_list_seperator<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>>
     }
 
     Some(ScanMatch {
-        value: Token::DataListSeperator(DataListSeperator),
+        token: Token::DataListSeperator(DataListSeperator),
         end: head,
     })
 }
 
+//TODO: This should probably be seperate functions for references, metadata
 fn match_data_directive<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
     let mut head = scanner.read_head.clone();
 
@@ -1766,10 +1888,14 @@ fn match_data_directive<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
     let i2 = head.index;
     let text = &scanner.input[i1..i2];
 
-    Some(ScanMatch {
-        value: Token::StructuredDataDirective(StructuredDataDirective(text)),
-        end: head,
-    })
+    let token = match text {
+        "metadata" => Token::MetadataDirective(MetadataDirective),
+        "references" => Token::ReferencesDirective(ReferencesDirective),
+        //TODO: Specialise
+        _ => Token::Unknown(Unknown(text)),
+    };
+
+    Some(ScanMatch { token, end: head })
 }
 
 fn match_container_directive<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
@@ -1790,11 +1916,12 @@ fn match_container_directive<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>>
     let text = &scanner.input[i1..i2];
 
     Some(ScanMatch {
-        value: Token::ContainerDirective(ContainerDirective(text)),
+        token: Token::ContainerDirective(ContainerDirective(text)),
         end: head,
     })
 }
 
+//TODO: should be seperate match functions?
 fn match_block_directive<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
     let mut head = scanner.read_head.clone();
 
@@ -1812,10 +1939,14 @@ fn match_block_directive<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
     let i2 = head.index;
     let text = &scanner.input[i1..i2];
 
-    Some(ScanMatch {
-        value: Token::BlockDirective(BlockDirective(text)),
-        end: head,
-    })
+    let token = match text {
+        "paragraph" => Token::ParagraphDirective(ParagraphDirective),
+        "list" => Token::ListDirective(ListDirective),
+        "code" => Token::CodeDirective(CodeDirective),
+        _ => Token::UnknownBlockDirective(UnknownBlockDirective(text)),
+    };
+
+    Some(ScanMatch { token, end: head })
 }
 
 fn match_subsection_directive<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
@@ -1844,7 +1975,7 @@ fn match_subsection_directive<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>
     }
 
     Some(ScanMatch {
-        value: Token::SubSectionDirective(SubSectionDirective),
+        token: Token::SubSectionDirective(SubSectionDirective),
         end: head,
     })
 }
@@ -1869,7 +2000,7 @@ fn match_section_directive<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
     }
 
     Some(ScanMatch {
-        value: Token::SectionDirective(SectionDirective),
+        token: Token::SectionDirective(SectionDirective),
         end: head,
     })
 }
@@ -1888,7 +2019,7 @@ fn match_title_directive<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
     }
 
     Some(ScanMatch {
-        value: Token::TitleDirective(TitleDirective),
+        token: Token::TitleDirective(TitleDirective),
         end: head,
     })
 }
@@ -1910,7 +2041,7 @@ fn match_container_start<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
     }
 
     Some(ScanMatch {
-        value: Token::DelimitedContainerStart(DelimitedContainerStart),
+        token: Token::DelimitedContainerStart(DelimitedContainerStart),
         end: head,
     })
 }
@@ -1932,7 +2063,7 @@ fn match_container_end<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
     }
 
     Some(ScanMatch {
-        value: Token::DelimitedContainerEnd(DelimitedContainerEnd),
+        token: Token::DelimitedContainerEnd(DelimitedContainerEnd),
         end: head,
     })
 }
@@ -1950,7 +2081,7 @@ fn match_unknown<'a>(scanner: &Scanner<'a>) -> ScanMatch<'a> {
     let text = &scanner.input[i1..i2];
 
     ScanMatch {
-        value: Token::Unknown(Unknown(text)),
+        token: Token::Unknown(Unknown(text)),
         end: head,
     }
 }
