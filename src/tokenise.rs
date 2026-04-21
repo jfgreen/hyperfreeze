@@ -96,6 +96,8 @@ pub enum Token<'a> {
     ListBullet(ListBullet),
 }
 
+//TODO: this should be dynamic and include token value
+// Can we just derive this instead
 impl<'a> Display for Token<'a> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         let name = match self {

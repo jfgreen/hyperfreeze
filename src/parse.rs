@@ -534,8 +534,6 @@ fn parse_block(tokeniser: &mut Tokeniser) -> ParseResult<Block> {
 }
 
 fn parse_paragraph(tokeniser: &mut Tokeniser) -> ParseResult<Block> {
-    //TODO: extract const for para block directive
-
     if tokeniser.peek().is::<ParagraphDirective>() {
         tokeniser.advance();
         tokeniser.advance().expect::<LineBreak>()?;
@@ -653,13 +651,11 @@ fn parse_text_runs(tokeniser: &mut Tokeniser) -> ParseResult<Box<[TextRun]>> {
     loop {
         let run = match tokeniser.peek().value {
             Token::MarkupText(_) | Token::MarkupTextSpace(_) => parse_plain_text_run(tokeniser)?,
-            //TODO: Could group style delimiters into sub enum
-            Token::StrongDelimiter(_)
-            | Token::EmphasisDelimiter(_)
-            | Token::StrikethroughDelimiter(_) => parse_styled_text_run(tokeniser)?,
+            Token::StrikethroughDelimiter(_) => parse_strikethrough_text_run(tokeniser)?,
+            Token::EmphasisDelimiter(_) => parse_emphasised_text_run(tokeniser)?,
+            Token::StrongDelimiter(_) => parse_strong_text_run(tokeniser)?,
             Token::RawDelimiter(_) => parse_raw_text_run(tokeniser)?,
             Token::LinkOpeningDelimiter(_) => parse_linked_text_run(tokeniser)?,
-
             _ => break,
         };
         text_runs.push(run);
@@ -676,68 +672,6 @@ fn parse_plain_text_run(tokeniser: &mut Tokeniser) -> ParseResult<TextRun> {
         text: run,
         style: Style::None,
     };
-
-    Ok(run)
-}
-
-//TODO: easier to just have three very simmilar functions for
-// parse_strong_text_run
-// parse_emphasised_text_run
-// parse_strikethrough_text_run
-fn parse_styled_text_run(tokeniser: &mut Tokeniser) -> ParseResult<TextRun> {
-    let opening_delimiter = tokeniser.advance();
-    let run_start = opening_delimiter.position;
-
-    //TODO: Could we have an 'expect one of' method
-    // would have synergies with 'is one of'
-    let style = match opening_delimiter.value {
-        Token::StrongDelimiter(_) => Style::Strong,
-        Token::EmphasisDelimiter(_) => Style::Emphasis,
-        Token::StrikethroughDelimiter(_) => Style::Strikethrough,
-        _ => {
-            let message = format!(
-                "expected: {}, {} or {} but got: {}",
-                StrongDelimiter::NAME,
-                EmphasisDelimiter::NAME,
-                StrikethroughDelimiter::NAME,
-                opening_delimiter.value
-            );
-            return parse_err!(UnexpectedToken(message), opening_delimiter.position);
-        }
-    };
-
-    let run = parse_markup_text(tokeniser)?;
-
-    let next = tokeniser.peek();
-
-    //TODO: Combine with above one?
-    match opening_delimiter.value {
-        Token::StrongDelimiter(_) => {
-            next.expect::<StrongDelimiter>()?;
-        }
-        Token::EmphasisDelimiter(_) => {
-            next.expect::<EmphasisDelimiter>()?;
-        }
-        Token::StrikethroughDelimiter(_) => {
-            next.expect::<StrikethroughDelimiter>()?;
-        }
-        _ => {
-            let message = format!("expected: {}, got: {}", opening_delimiter.value, next.value);
-            return parse_err!(UnexpectedToken(message), next.position);
-        }
-    };
-
-    tokeniser.advance();
-
-    if run.starts_with(SPACE) || run.ends_with(SPACE) {
-        return parse_err!(LooseDelimiter, run_start);
-    }
-
-    if run.is_empty() {
-        return parse_err!(EmptyDelimitedText, run_start);
-    }
-
-    let run = TextRun { text: run, style };
 
     Ok(run)
 }
@@ -806,6 +740,84 @@ fn parse_linked_text_run(tokeniser: &mut Tokeniser) -> ParseResult<TextRun> {
         text: run,
         style: Style::Link(identifier.into()),
     })
+}
+
+fn parse_strong_text_run(tokeniser: &mut Tokeniser) -> ParseResult<TextRun> {
+    let next = tokeniser.peek();
+    let run_start = next.position;
+
+    tokeniser.advance().expect::<StrongDelimiter>()?;
+
+    let run = parse_markup_text(tokeniser)?;
+
+    tokeniser.advance().expect::<StrongDelimiter>()?;
+
+    if let Err(error) = validate_styled_text_run(&run) {
+        return parse_err!(error, run_start);
+    }
+
+    let run = TextRun {
+        text: run,
+        style: Style::Strong,
+    };
+
+    Ok(run)
+}
+
+fn parse_emphasised_text_run(tokeniser: &mut Tokeniser) -> ParseResult<TextRun> {
+    let next = tokeniser.peek();
+    let run_start = next.position;
+
+    tokeniser.advance().expect::<EmphasisDelimiter>()?;
+
+    let run = parse_markup_text(tokeniser)?;
+
+    tokeniser.advance().expect::<EmphasisDelimiter>()?;
+
+    if let Err(error) = validate_styled_text_run(&run) {
+        return parse_err!(error, run_start);
+    }
+
+    let run = TextRun {
+        text: run,
+        style: Style::Emphasis,
+    };
+
+    Ok(run)
+}
+
+fn parse_strikethrough_text_run(tokeniser: &mut Tokeniser) -> ParseResult<TextRun> {
+    let next = tokeniser.peek();
+    let run_start = next.position;
+
+    tokeniser.advance().expect::<StrikethroughDelimiter>()?;
+
+    let run = parse_markup_text(tokeniser)?;
+
+    tokeniser.advance().expect::<StrikethroughDelimiter>()?;
+
+    if let Err(error) = validate_styled_text_run(&run) {
+        return parse_err!(error, run_start);
+    }
+
+    let run = TextRun {
+        text: run,
+        style: Style::Strikethrough,
+    };
+
+    Ok(run)
+}
+
+fn validate_styled_text_run(run: &str) -> Result<(), ErrorKind> {
+    if run.starts_with(SPACE) || run.ends_with(SPACE) {
+        return Err(LooseDelimiter);
+    }
+
+    if run.is_empty() {
+        return Err(EmptyDelimitedText);
+    }
+
+    Ok(())
 }
 
 fn parse_markup_text(tokeniser: &mut Tokeniser) -> ParseResult<String> {
