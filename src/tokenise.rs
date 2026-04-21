@@ -201,30 +201,12 @@ impl<'a> SpannedTokenKind<'a> {
         })
     }
 
-    // If we specialised tokens for each kind of header
-    // then we could remove 'expected: T' and just expect based on the type
-    // alsoe
-    //
-    // That would remove the need to store expected value in error?
-    // as it would always be a unit type?
-    //
-    // And also remove the need to make tokens implement partialeq
-    pub fn expect<T>(&self, expected: T) -> Result<(), UnexpectedTokenError<'a, T>>
+    //TODO: Redundant?
+    pub fn expect<T>(&self) -> Result<(), UnexpectedTokenError<'a, T>>
     where
         T: TokenSpec<'a>,
     {
-        if let Ok(token) = T::try_from(self.value)
-            && token == expected
-        {
-            Ok(())
-        } else {
-            //TODO: we should have a way to pass the whole expected value?
-            Err(UnexpectedTokenError::<'a, T> {
-                expected: PhantomData::<T>,
-                actual: self.value,
-                position: self.position,
-            })
-        }
+        self.extract().map(|_| ())
     }
 
     //TODO: naming rather off
@@ -232,8 +214,8 @@ impl<'a> SpannedTokenKind<'a> {
     where
         T: TokenSpec<'a>,
     {
-        T::try_from(self.value).ok().map(|tok| Spanned {
-            value: tok,
+        T::try_from(self.value).ok().map(|token| Spanned {
+            value: token,
             position: self.position,
         })
     }

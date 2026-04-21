@@ -146,28 +146,28 @@ fn parse_document(tokeniser: &mut Tokeniser) -> ParseResult<Document> {
 }
 
 fn parse_document_title(tokeniser: &mut Tokeniser) -> ParseResult<String> {
-    tokeniser.advance().expect(TitleDirective)?;
+    tokeniser.advance().expect::<TitleDirective>()?;
 
     let title = parse_header_text(tokeniser)?;
 
     if !tokeniser.peek().is::<EndOfInput>() {
-        tokeniser.advance().expect(BlockBreak)?;
+        tokeniser.advance().expect::<BlockBreak>()?;
     }
 
     Ok(title)
 }
 
 fn parse_metadata(tokeniser: &mut Tokeniser, metadata: &mut Metadata) -> ParseResult<()> {
-    tokeniser.advance().expect(MetadataDirective)?;
+    tokeniser.advance().expect::<MetadataDirective>()?;
 
-    tokeniser.advance().expect(LineBreak)?;
+    tokeniser.advance().expect::<LineBreak>()?;
 
     tokeniser.push_mode(ScanMode::StructuredData);
 
     while let Some(identifier_token) = tokeniser.peek().is_kind() {
         let DataIdentifier(key) = identifier_token.value;
         tokeniser.advance();
-        tokeniser.advance().expect(DataKeyValueSeperator)?;
+        tokeniser.advance().expect::<DataKeyValueSeperator>()?;
 
         match key {
             "id" => {
@@ -183,14 +183,14 @@ fn parse_metadata(tokeniser: &mut Tokeniser, metadata: &mut Metadata) -> ParseRe
 
         let next = tokeniser.peek();
         if !(next.is::<EndOfInput>() || next.is::<BlockBreak>()) {
-            tokeniser.advance().expect(LineBreak)?;
+            tokeniser.advance().expect::<LineBreak>()?;
         }
     }
 
     tokeniser.pop_mode();
 
     if !tokeniser.peek().is::<EndOfInput>() {
-        tokeniser.advance().expect(BlockBreak)?;
+        tokeniser.advance().expect::<BlockBreak>()?;
     }
 
     Ok(())
@@ -198,9 +198,9 @@ fn parse_metadata(tokeniser: &mut Tokeniser, metadata: &mut Metadata) -> ParseRe
 
 //TODO: parse_references and parse_metadata _should_ share mechanics
 fn parse_references(tokeniser: &mut Tokeniser) -> ParseResult<Box<[Reference]>> {
-    tokeniser.advance().expect(ReferencesDirective)?;
+    tokeniser.advance().expect::<ReferencesDirective>()?;
 
-    tokeniser.advance().expect(LineBreak)?;
+    tokeniser.advance().expect::<LineBreak>()?;
 
     tokeniser.push_mode(ScanMode::StructuredData);
 
@@ -208,7 +208,7 @@ fn parse_references(tokeniser: &mut Tokeniser) -> ParseResult<Box<[Reference]>> 
 
     while let Some(DataIdentifier(id)) = tokeniser.peek().value_into() {
         tokeniser.advance();
-        tokeniser.advance().expect(DataKeyValueSeperator)?;
+        tokeniser.advance().expect::<DataKeyValueSeperator>()?;
 
         //  TODO: Can we lose the need to qualify the token module
         // Just lost the tag concept entirely?
@@ -220,7 +220,7 @@ fn parse_references(tokeniser: &mut Tokeniser) -> ParseResult<Box<[Reference]>> 
         // and let the caller handle instead?
         let next = tokeniser.peek();
         if !(next.is::<EndOfInput>() || next.is::<BlockBreak>()) {
-            tokeniser.advance().expect(LineBreak)?;
+            tokeniser.advance().expect::<LineBreak>()?;
         }
 
         references.push(Reference {
@@ -232,7 +232,7 @@ fn parse_references(tokeniser: &mut Tokeniser) -> ParseResult<Box<[Reference]>> 
     tokeniser.pop_mode();
 
     if !tokeniser.peek().is::<EndOfInput>() {
-        tokeniser.advance().expect(BlockBreak)?;
+        tokeniser.advance().expect::<BlockBreak>()?;
     }
 
     let references = references.into_boxed_slice();
@@ -337,14 +337,16 @@ fn parse_element(tokeniser: &mut Tokeniser) -> ParseResult<Element> {
 
 // TODO: Ensure containers can not hold sections
 fn parse_container(tokeniser: &mut Tokeniser) -> ParseResult<Container> {
-    tokeniser.advance().expect(ContainerDirective("info"))?;
+    // TODO: Actually check container directive name
+    // TODO: We should have specialised types for container directive
+    tokeniser.advance().expect::<ContainerDirective>()?;
 
     let next = tokeniser.peek();
     if next.is::<BlockBreak>() {
         return parse_err!(EmptyContainer, next.position);
     }
 
-    tokeniser.advance().expect(LineBreak)?;
+    tokeniser.advance().expect::<LineBreak>()?;
 
     let next = tokeniser.peek();
     if next.is::<EndOfInput>() {
@@ -359,7 +361,7 @@ fn parse_container(tokeniser: &mut Tokeniser) -> ParseResult<Container> {
     if tokeniser.peek().is::<DelimitedContainerStart>() {
         tokeniser.advance();
 
-        tokeniser.advance().expect(LineBreak)?;
+        tokeniser.advance().expect::<LineBreak>()?;
 
         //TODO: use expect and into instead to specialise error?
         let next = tokeniser.peek();
@@ -372,10 +374,10 @@ fn parse_container(tokeniser: &mut Tokeniser) -> ParseResult<Container> {
             blocks.push(block);
         }
 
-        tokeniser.advance().expect(DelimitedContainerEnd)?;
+        tokeniser.advance().expect::<DelimitedContainerEnd>()?;
 
         if !tokeniser.peek().is::<EndOfInput>() {
-            tokeniser.advance().expect(BlockBreak)?;
+            tokeniser.advance().expect::<BlockBreak>()?;
         }
     } else {
         let block = parse_block(tokeniser)?;
@@ -391,11 +393,11 @@ fn parse_container(tokeniser: &mut Tokeniser) -> ParseResult<Container> {
 }
 
 fn parse_section(tokeniser: &mut Tokeniser) -> ParseResult<Section> {
-    tokeniser.advance().expect(SectionDirective)?;
+    tokeniser.advance().expect::<SectionDirective>()?;
 
     let name = parse_header_text(tokeniser)?;
 
-    tokeniser.advance().expect(BlockBreak)?;
+    tokeniser.advance().expect::<BlockBreak>()?;
 
     let mut elements = Vec::new();
 
@@ -439,11 +441,11 @@ fn parse_section_element(tokeniser: &mut Tokeniser) -> ParseResult<SectionElemen
 }
 
 fn parse_subsection(tokeniser: &mut Tokeniser) -> ParseResult<SubSection> {
-    tokeniser.advance().expect(SubSectionDirective)?;
+    tokeniser.advance().expect::<SubSectionDirective>()?;
 
     let name = parse_header_text(tokeniser)?;
 
-    tokeniser.advance().expect(BlockBreak)?;
+    tokeniser.advance().expect::<BlockBreak>()?;
 
     let mut elements = Vec::new();
 
@@ -526,7 +528,7 @@ fn parse_block(tokeniser: &mut Tokeniser) -> ParseResult<Block> {
         tokeniser.advance();
     } else if !(next.is::<EndOfInput>() || next.is::<DelimitedContainerEnd>()) {
         // } else if next != EndOfInput && next != DelimitedContainerEnd {
-        tokeniser.advance().expect(BlockBreak)?;
+        tokeniser.advance().expect::<BlockBreak>()?;
     }
 
     Ok(block)
@@ -537,7 +539,7 @@ fn parse_paragraph(tokeniser: &mut Tokeniser) -> ParseResult<Block> {
 
     if tokeniser.peek().is::<ParagraphDirective>() {
         tokeniser.advance();
-        tokeniser.advance().expect(LineBreak)?;
+        tokeniser.advance().expect::<LineBreak>()?;
     }
 
     tokeniser.push_mode(ScanMode::Markup);
@@ -610,7 +612,7 @@ fn parse_list(tokeniser: &mut Tokeniser) -> ParseResult<Block> {
 
                 tokeniser
                     .advance()
-                    .expect(BlockParameterNameValueSeperator)?;
+                    .expect::<BlockParameterNameValueSeperator>()?;
 
                 tokeniser.push_mode(ScanMode::HeaderValue);
                 let BlockParameterValue(value) = tokeniser.advance().extract()?;
@@ -629,12 +631,12 @@ fn parse_list(tokeniser: &mut Tokeniser) -> ParseResult<Block> {
                 }
             }
 
-            tokeniser.advance().expect(BlockParametersEnd)?;
+            tokeniser.advance().expect::<BlockParametersEnd>()?;
         }
 
         tokeniser.pop_mode();
 
-        tokeniser.advance().expect(LineBreak)?;
+        tokeniser.advance().expect::<LineBreak>()?;
     }
 
     tokeniser.push_mode(ScanMode::ListMarkup);
@@ -720,13 +722,13 @@ fn parse_styled_text_run(tokeniser: &mut Tokeniser) -> ParseResult<TextRun> {
     //TODO: Combine with above one?
     // match opening_delimiter.value {
     //     TokenKind::StrongDelimiter(_) => {
-    //         tokeniser.advance().expect(StrongDelimiter)?;
+    //         tokeniser.advance().expect::<StrongDelimiter>()?;
     //     }
     //     TokenKind::EmphasisDelimiter(_) => {
-    //         tokeniser.advance().expect(EmphasisDelimiter)?;
+    //         tokeniser.advance().expect::<EmphasisDelimiter>()?;
     //     }
     //     TokenKind::StrikethroughDelimiter(_) => {
-    //         tokeniser.advance().expect(StrikethroughDelimiter)?;
+    //         tokeniser.advance().expect::<StrikethroughDelimiter>()?;
     //     }
     //     _ => return parse_err!(opening_delimiter),
     // };
@@ -747,7 +749,7 @@ fn parse_styled_text_run(tokeniser: &mut Tokeniser) -> ParseResult<TextRun> {
 fn parse_raw_text_run(tokeniser: &mut Tokeniser) -> ParseResult<TextRun> {
     let token = tokeniser.advance();
     let run_start = token.position;
-    token.expect(RawDelimiter)?;
+    token.expect::<RawDelimiter>()?;
 
     tokeniser.push_mode(ScanMode::Raw);
 
@@ -786,7 +788,7 @@ fn parse_raw_text_run(tokeniser: &mut Tokeniser) -> ParseResult<TextRun> {
 fn parse_linked_text_run(tokeniser: &mut Tokeniser) -> ParseResult<TextRun> {
     let token = tokeniser.advance();
     let start_of_run = token.position;
-    token.expect(LinkOpeningDelimiter)?;
+    token.expect::<LinkOpeningDelimiter>()?;
 
     let run = parse_markup_text(tokeniser)?;
 
@@ -794,11 +796,11 @@ fn parse_linked_text_run(tokeniser: &mut Tokeniser) -> ParseResult<TextRun> {
         return parse_err!(LooseDelimiter, start_of_run);
     }
 
-    tokeniser.advance().expect(LinkClosingDelimiter)?;
+    tokeniser.advance().expect::<LinkClosingDelimiter>()?;
 
     tokeniser.push_mode(ScanMode::LinkReference);
 
-    tokeniser.advance().expect(LinkToReferenceJoiner)?;
+    tokeniser.advance().expect::<LinkToReferenceJoiner>()?;
 
     let DataIdentifier(identifier) = tokeniser.advance().extract()?;
 
@@ -830,23 +832,23 @@ fn parse_markup_text(tokeniser: &mut Tokeniser) -> ParseResult<String> {
 }
 
 fn parse_code(tokeniser: &mut Tokeniser) -> ParseResult<Block> {
-    tokeniser.advance().expect(CodeDirective)?;
+    tokeniser.advance().expect::<CodeDirective>()?;
 
-    tokeniser.advance().expect(LineBreak)?;
+    tokeniser.advance().expect::<LineBreak>()?;
 
     tokeniser.push_mode(ScanMode::Code);
 
-    tokeniser.advance().expect(CodeDelimiter)?;
+    tokeniser.advance().expect::<CodeDelimiter>()?;
 
     tokeniser.pop_mode();
 
-    tokeniser.advance().expect(LineBreak)?;
+    tokeniser.advance().expect::<LineBreak>()?;
 
     tokeniser.push_mode(ScanMode::Code);
 
     let Code(code) = tokeniser.advance().extract()?;
 
-    tokeniser.advance().expect(CodeDelimiter)?;
+    tokeniser.advance().expect::<CodeDelimiter>()?;
 
     tokeniser.pop_mode();
 
