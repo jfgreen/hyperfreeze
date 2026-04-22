@@ -17,14 +17,13 @@ macro_rules! parse_err {
         Err(ParseError {
             kind: $error,
             //TODO: can we bake the +1 into token position?
-            input_column: $position.column + 1,
-            input_line: $position.row + 1,
+            input_column: $position.column,
+            input_line: $position.row,
             backtrace: Backtrace::capture(),
         })
     }};
 }
 
-//TODO: Replace UnexpectedToken with more specific errors
 #[derive(PartialEq, Eq, Debug)]
 enum ErrorKind {
     LooseDelimiter,
@@ -47,7 +46,8 @@ impl Display for ParseError {
         writeln!(
             f,
             "parsing error on line {} column {}",
-            self.input_line, self.input_column
+            self.input_line + 1,
+            self.input_column + 1
         )?;
 
         match &self.kind {
@@ -85,8 +85,8 @@ where
     fn from(err: UnexpectedTokenError<'a, T>) -> Self {
         ParseError {
             kind: UnexpectedToken(err.to_string()),
-            input_column: err.position.column + 1,
-            input_line: err.position.row + 1,
+            input_column: err.position.column,
+            input_line: err.position.row,
             backtrace: Backtrace::capture(),
         }
     }
@@ -163,7 +163,7 @@ fn parse_metadata(tokeniser: &mut Tokeniser, metadata: &mut Metadata) -> ParseRe
 
     tokeniser.push_mode(ScanMode::StructuredData);
 
-    while let Some(identifier_token) = tokeniser.peek().is_kind() {
+    while let Some(identifier_token) = tokeniser.peek().try_value() {
         let DataIdentifier(key) = identifier_token.value;
         tokeniser.advance();
         tokeniser.advance().expect::<DataKeyValueSeperator>()?;
@@ -279,39 +279,6 @@ fn parse_metadata_list(tokeniser: &mut Tokeniser) -> ParseResult<Box<[String]>> 
 
 fn parse_element(tokeniser: &mut Tokeniser) -> ParseResult<Element> {
     let next = tokeniser.peek();
-    //TODO: Ergonomics
-    // We never care about the value, so return a tag?
-
-    // if next.is_title_directive() {
-    //     parse_err!(TitleNotAtStart, next.position)
-    // } else if next.is_section_directive() {
-    //     let section = parse_section(tokeniser)?;
-    //     Ok(Element::Section(section))
-    // } else if next.is_container_directive() {
-    //     let container = parse_container(tokeniser)?;
-    //     Ok(Element::Container(container))
-    // } else if next.is_subsection_directive() {
-    //     todo!("reject subsection for not being inside a section");
-    // } else {
-    //     let block = parse_block(tokeniser)?;
-    //     Ok(Element::Block(block))
-    // }
-
-    // if next.is::<TitleDirective>() {
-    //     parse_err!(TitleNotAtStart, next.position)
-    // } else if next.is::<SectionDirective>() {
-    //     let section = parse_section(tokeniser)?;
-    //     Ok(Element::Section(section))
-    // } else if next.is::<ContainerDirective>() {
-    //     let container = parse_container(tokeniser)?;
-    //     Ok(Element::Container(container))
-    // } else if next.is::<SubSectionDirective>() {
-    //     todo!("reject subsection for not being inside a section");
-    // } else {
-    //     let block = parse_block(tokeniser)?;
-    //     Ok(Element::Block(block))
-    // }
-
     match next.value {
         Token::TitleDirective(_) => {
             parse_err!(TitleNotAtStart, next.position)
@@ -556,7 +523,7 @@ fn parse_list_level(
 ) -> ParseResult<Box<[ListItem]>> {
     let mut items = Vec::new();
 
-    while let Some(bullet_token) = tokeniser.peek().is_kind() {
+    while let Some(bullet_token) = tokeniser.peek().try_value() {
         let ListBullet(indent_count) = bullet_token.value;
 
         if indent_count % 2 != 0 {
@@ -2577,7 +2544,7 @@ mod test {
     fn error_specifies_correct_row_and_column() {
         let input = "Silly cat\ngoes *_*";
 
-        let expected = (7, 2);
+        let expected = (6, 1);
 
         let error = parse_str(input).unwrap_err();
         let actual = (error.input_column, error.input_line);

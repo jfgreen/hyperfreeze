@@ -96,51 +96,49 @@ pub enum Token<'a> {
     ListBullet(ListBullet),
 }
 
-//TODO: this should be dynamic and include token value
-// Can we just derive this instead
 impl<'a> Display for Token<'a> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         let name = match self {
-            Token::EndOfInput(_) => EndOfInput::NAME,
-            Token::TitleDirective(_) => TitleDirective::NAME,
-            Token::SectionDirective(_) => SectionDirective::NAME,
-            Token::SubSectionDirective(_) => SubSectionDirective::NAME,
-            Token::MetadataDirective(_) => MetadataDirective::NAME,
-            Token::ReferencesDirective(_) => ReferencesDirective::NAME,
-            Token::ParagraphDirective(_) => ParagraphDirective::NAME,
-            Token::ListDirective(_) => ListDirective::NAME,
-            Token::CodeDirective(_) => CodeDirective::NAME,
-            Token::UnknownBlockDirective(_) => UnknownBlockDirective::NAME,
-            Token::BlockParametersStart(_) => BlockParametersStart::NAME,
-            Token::BlockParametersEnd(_) => BlockParametersEnd::NAME,
-            Token::BlockParameterNameValueSeperator(_) => BlockParameterNameValueSeperator::NAME,
-            Token::BlockBreak(_) => BlockBreak::NAME,
-            Token::DataListSeperator(_) => DataListSeperator::NAME,
-            Token::DataKeyValueSeperator(_) => DataKeyValueSeperator::NAME,
-            Token::TitleTextSpace(_) => TitleTextSpace::NAME,
-            Token::LineBreak(_) => LineBreak::NAME,
-            Token::StrongDelimiter(_) => StrongDelimiter::NAME,
-            Token::EmphasisDelimiter(_) => EmphasisDelimiter::NAME,
-            Token::StrikethroughDelimiter(_) => StrikethroughDelimiter::NAME,
-            Token::RawDelimiter(_) => RawDelimiter::NAME,
-            Token::MarkupTextSpace(_) => MarkupTextSpace::NAME,
-            Token::LinkOpeningDelimiter(_) => LinkOpeningDelimiter::NAME,
-            Token::LinkClosingDelimiter(_) => LinkClosingDelimiter::NAME,
-            Token::LinkToReferenceJoiner(_) => LinkToReferenceJoiner::NAME,
-            Token::CodeDelimiter(_) => CodeDelimiter::NAME,
-            Token::DelimitedContainerStart(_) => DelimitedContainerStart::NAME,
-            Token::DelimitedContainerEnd(_) => DelimitedContainerEnd::NAME,
-            Token::Unknown(_) => Unknown::NAME,
-            Token::ContainerDirective(_) => ContainerDirective::NAME,
-            Token::BlockParameterName(_) => BlockParameterName::NAME,
-            Token::BlockParameterValue(_) => BlockParameterValue::NAME,
-            Token::DataIdentifier(_) => DataIdentifier::NAME,
-            Token::DataValue(_) => DataValue::NAME,
-            Token::TitleText(_) => TitleText::NAME,
-            Token::MarkupText(_) => MarkupText::NAME,
-            Token::RawFragment(_) => RawFragment::NAME,
-            Token::Code(_) => Code::NAME,
-            Token::ListBullet(_) => ListBullet::NAME,
+            Token::EndOfInput(t) => t.to_string(),
+            Token::TitleDirective(t) => t.to_string(),
+            Token::SectionDirective(t) => t.to_string(),
+            Token::SubSectionDirective(t) => t.to_string(),
+            Token::MetadataDirective(t) => t.to_string(),
+            Token::ReferencesDirective(t) => t.to_string(),
+            Token::ParagraphDirective(t) => t.to_string(),
+            Token::ListDirective(t) => t.to_string(),
+            Token::CodeDirective(t) => t.to_string(),
+            Token::UnknownBlockDirective(t) => t.to_string(),
+            Token::BlockParametersStart(t) => t.to_string(),
+            Token::BlockParametersEnd(t) => t.to_string(),
+            Token::BlockParameterNameValueSeperator(t) => t.to_string(),
+            Token::BlockBreak(t) => t.to_string(),
+            Token::DataListSeperator(t) => t.to_string(),
+            Token::DataKeyValueSeperator(t) => t.to_string(),
+            Token::TitleTextSpace(t) => t.to_string(),
+            Token::LineBreak(t) => t.to_string(),
+            Token::StrongDelimiter(t) => t.to_string(),
+            Token::EmphasisDelimiter(t) => t.to_string(),
+            Token::StrikethroughDelimiter(t) => t.to_string(),
+            Token::RawDelimiter(t) => t.to_string(),
+            Token::MarkupTextSpace(t) => t.to_string(),
+            Token::LinkOpeningDelimiter(t) => t.to_string(),
+            Token::LinkClosingDelimiter(t) => t.to_string(),
+            Token::LinkToReferenceJoiner(t) => t.to_string(),
+            Token::CodeDelimiter(t) => t.to_string(),
+            Token::DelimitedContainerStart(t) => t.to_string(),
+            Token::DelimitedContainerEnd(t) => t.to_string(),
+            Token::Unknown(t) => t.to_string(),
+            Token::ContainerDirective(t) => t.to_string(),
+            Token::BlockParameterName(t) => t.to_string(),
+            Token::BlockParameterValue(t) => t.to_string(),
+            Token::DataIdentifier(t) => t.to_string(),
+            Token::DataValue(t) => t.to_string(),
+            Token::TitleText(t) => t.to_string(),
+            Token::MarkupText(t) => t.to_string(),
+            Token::RawFragment(t) => t.to_string(),
+            Token::Code(t) => t.to_string(),
+            Token::ListBullet(t) => t.to_string(),
         };
         write!(f, "{name}")
     }
@@ -191,8 +189,10 @@ impl<'a> SpannedTokenKind<'a> {
         })
     }
 
-    //TODO: naming rather off
-    pub fn is_kind<T>(&self) -> Option<Spanned<T>>
+    // TODO: naming of these next two funcs is still a bit off...
+    // TODO: Do we need both?
+
+    pub fn try_value<T>(&self) -> Option<Spanned<T>>
     where
         T: TokenSpec<'a>,
     {
@@ -942,6 +942,247 @@ impl<'a> TokenSpec<'a> for CodeDirective {
 
 impl<'a> TokenSpec<'a> for UnknownBlockDirective<'a> {
     const NAME: &'static str = "unknown block directive";
+}
+
+//TODO: these should contain value for value tokens
+impl<'a> Display for EndOfInput {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.write_str(Self::NAME)
+    }
+}
+
+impl<'a> Display for TitleDirective {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.write_str(Self::NAME)
+    }
+}
+
+impl<'a> Display for SectionDirective {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.write_str(Self::NAME)
+    }
+}
+
+impl<'a> Display for SubSectionDirective {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.write_str(Self::NAME)
+    }
+}
+
+impl<'a> Display for BlockParametersStart {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.write_str(Self::NAME)
+    }
+}
+
+impl<'a> Display for BlockParametersEnd {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.write_str(Self::NAME)
+    }
+}
+
+impl<'a> Display for BlockParameterNameValueSeperator {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.write_str(Self::NAME)
+    }
+}
+
+impl<'a> Display for BlockBreak {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.write_str(Self::NAME)
+    }
+}
+
+impl<'a> Display for DataListSeperator {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.write_str(Self::NAME)
+    }
+}
+
+impl<'a> Display for DataKeyValueSeperator {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.write_str(Self::NAME)
+    }
+}
+
+impl<'a> Display for TitleTextSpace {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.write_str(Self::NAME)
+    }
+}
+
+impl<'a> Display for LineBreak {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.write_str(Self::NAME)
+    }
+}
+
+impl<'a> Display for StrongDelimiter {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.write_str(Self::NAME)
+    }
+}
+
+impl<'a> Display for EmphasisDelimiter {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.write_str(Self::NAME)
+    }
+}
+
+impl<'a> Display for StrikethroughDelimiter {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.write_str(Self::NAME)
+    }
+}
+
+impl<'a> Display for RawDelimiter {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.write_str(Self::NAME)
+    }
+}
+
+impl<'a> Display for MarkupTextSpace {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.write_str(Self::NAME)
+    }
+}
+
+impl<'a> Display for LinkOpeningDelimiter {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.write_str(Self::NAME)
+    }
+}
+
+impl<'a> Display for LinkClosingDelimiter {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.write_str(Self::NAME)
+    }
+}
+
+impl<'a> Display for LinkToReferenceJoiner {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.write_str(Self::NAME)
+    }
+}
+
+impl<'a> Display for CodeDelimiter {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.write_str(Self::NAME)
+    }
+}
+
+impl<'a> Display for DelimitedContainerStart {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.write_str(Self::NAME)
+    }
+}
+
+impl<'a> Display for DelimitedContainerEnd {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.write_str(Self::NAME)
+    }
+}
+
+impl<'a> Display for Unknown<'a> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.write_str(Self::NAME)
+    }
+}
+
+impl<'a> Display for ContainerDirective<'a> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.write_str(Self::NAME)
+    }
+}
+
+impl<'a> Display for BlockParameterName<'a> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.write_str(Self::NAME)
+    }
+}
+
+impl<'a> Display for BlockParameterValue<'a> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.write_str(Self::NAME)
+    }
+}
+
+impl<'a> Display for DataIdentifier<'a> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.write_str(Self::NAME)
+    }
+}
+
+impl<'a> Display for DataValue<'a> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.write_str(Self::NAME)
+    }
+}
+
+impl<'a> Display for TitleText<'a> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.write_str(Self::NAME)
+    }
+}
+
+impl<'a> Display for MarkupText<'a> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.write_str(Self::NAME)
+    }
+}
+
+impl<'a> Display for RawFragment<'a> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.write_str(Self::NAME)
+    }
+}
+
+impl<'a> Display for Code<'a> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.write_str(Self::NAME)
+    }
+}
+
+impl<'a> Display for ListBullet {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.write_str(Self::NAME)
+    }
+}
+
+impl<'a> Display for MetadataDirective {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.write_str(Self::NAME)
+    }
+}
+
+impl<'a> Display for ReferencesDirective {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.write_str(Self::NAME)
+    }
+}
+
+impl<'a> Display for ParagraphDirective {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.write_str(Self::NAME)
+    }
+}
+
+impl<'a> Display for ListDirective {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.write_str(Self::NAME)
+    }
+}
+
+impl<'a> Display for CodeDirective {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.write_str(Self::NAME)
+    }
+}
+
+impl<'a> Display for UnknownBlockDirective<'a> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.write_str(Self::NAME)
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
