@@ -23,7 +23,7 @@ enum ErrorKind {
     UnexpectedToken(String),
     UnknownMetadata(String),
     UnevenListIndent(usize),
-    UnknownBlock(String),
+    UnknownDirective(String),
     ContainerMissingStart,
     EmptyContainer,
     UnterminatedRawTextRun,
@@ -50,6 +50,8 @@ impl ParseError {
     }
 
     fn write_message(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
+        use ErrorKind::*;
+
         match &self.kind {
             LooseDelimiter => {
                 write!(f, "delimited text cant have leading/trailing whitespace")
@@ -78,8 +80,8 @@ impl ParseError {
             UnevenListIndent(count) => {
                 write!(f, "list indent of {} is not even", count)
             }
-            UnknownBlock(name) => {
-                write!(f, "unknown block '{}'", name)
+            UnknownDirective(name) => {
+                write!(f, "unknown directive'{}'", name)
             }
             ContainerMissingStart => {
                 write!(f, "delimited container end with no preceeding start")
@@ -108,7 +110,7 @@ where
 {
     fn from(err: UnexpectedTokenError<'a, T>) -> Self {
         ParseError {
-            kind: UnexpectedToken(err.to_string()),
+            kind: ErrorKind::UnexpectedToken(err.to_string()),
             input_column: err.position.column,
             input_line: err.position.row,
             backtrace: Backtrace::capture(),
@@ -129,7 +131,7 @@ macro_rules! parse_err {
 
 type ParseResult<T> = Result<T, ParseError>;
 
-use ErrorKind::*;
+// use ErrorKind::*;
 
 const SPACE: char = ' ';
 
@@ -211,7 +213,12 @@ fn parse_metadata(tokeniser: &mut Tokeniser, metadata: &mut Metadata) -> ParseRe
                 let tags = parse_metadata_list(tokeniser)?;
                 metadata.tags = Some(tags);
             }
-            _ => return parse_err!(UnknownMetadata(key.to_string()), identifier_token.position),
+            _ => {
+                return parse_err!(
+                    ErrorKind::UnknownMetadata(key.to_string()),
+                    identifier_token.position
+                );
+            }
         };
 
         if tokeniser.peek().is::<LineBreak>() {
@@ -305,13 +312,13 @@ fn parse_element(tokeniser: &mut Tokeniser) -> ParseResult<Element> {
     let next = tokeniser.peek();
     match next.value {
         Token::TitleDirective => {
-            parse_err!(TitleNotAtStart, next.position)
+            parse_err!(ErrorKind::TitleNotAtStart, next.position)
         }
         Token::SectionDirective => {
             let section = parse_section(tokeniser)?;
             Ok(Element::Section(section))
         }
-        Token::ContainerDirective(_) => {
+        Token::InfoContainerDirective => {
             let container = parse_container(tokeniser)?;
             Ok(Element::Container(container))
         }
@@ -327,20 +334,18 @@ fn parse_element(tokeniser: &mut Tokeniser) -> ParseResult<Element> {
 
 // TODO: Ensure containers can not hold sections
 fn parse_container(tokeniser: &mut Tokeniser) -> ParseResult<Container> {
-    // TODO: Actually check container directive name
-    // TODO: We should have specialised types for container directive
-    tokeniser.advance().expect::<ContainerDirective>()?;
+    tokeniser.advance().expect::<InfoContainerDirective>()?;
 
     let next = tokeniser.peek();
     if next.is::<BlockBreak>() {
-        return parse_err!(EmptyContainer, next.position);
+        return parse_err!(ErrorKind::EmptyContainer, next.position);
     }
 
     tokeniser.advance().expect::<LineBreak>()?;
 
     let next = tokeniser.peek();
     if next.is::<EndOfInput>() {
-        return parse_err!(EmptyContainer, next.position);
+        return parse_err!(ErrorKind::EmptyContainer, next.position);
     }
 
     //TODO: Support other kinds of container
@@ -356,7 +361,7 @@ fn parse_container(tokeniser: &mut Tokeniser) -> ParseResult<Container> {
         //TODO: use expect and into instead to specialise error?
         let next = tokeniser.peek();
         if next.is::<DelimitedContainerEnd>() {
-            return parse_err!(EmptyContainer, next.position);
+            return parse_err!(ErrorKind::EmptyContainer, next.position);
         }
 
         while !tokeniser.peek().is::<DelimitedContainerEnd>() {
@@ -413,13 +418,13 @@ fn parse_section_element(tokeniser: &mut Tokeniser) -> ParseResult<SectionElemen
     let peeked = tokeniser.peek();
     match peeked.value {
         Token::TitleDirective => {
-            parse_err!(TitleNotAtStart, peeked.position)
+            parse_err!(ErrorKind::TitleNotAtStart, peeked.position)
         }
         Token::SubSectionDirective => {
             let subsection = parse_subsection(tokeniser)?;
             Ok(SectionElement::SubSection(subsection))
         }
-        Token::ContainerDirective(_) => {
+        Token::InfoContainerDirective => {
             let container = parse_container(tokeniser)?;
             Ok(SectionElement::Container(container))
         }
@@ -469,7 +474,7 @@ fn parse_subsection_element(tokeniser: &mut Tokeniser) -> ParseResult<SubSection
         Token::SubSectionDirective => {
             todo!("not allow")
         }
-        Token::ContainerDirective(_) => {
+        Token::InfoContainerDirective => {
             let container = parse_container(tokeniser)?;
             Ok(SubSectionElement::Container(container))
         }
@@ -491,13 +496,13 @@ fn parse_block(tokeniser: &mut Tokeniser) -> ParseResult<Block> {
         Token::ListDirective => parse_list(tokeniser)?,
         Token::CodeDirective => parse_code(tokeniser)?,
         Token::MetadataDirective => {
-            return parse_err!(MetadataNotAtStart, next.position);
+            return parse_err!(ErrorKind::MetadataNotAtStart, next.position);
         }
         Token::ReferencesDirective => {
-            return parse_err!(ReferencesOutOfPlace, next.position);
+            return parse_err!(ErrorKind::ReferencesOutOfPlace, next.position);
         }
-        Token::UnknownBlockDirective(UnknownBlockDirective(name)) => {
-            return parse_err!(UnknownBlock(name.into()), next.position);
+        Token::UnknownDirective(UnknownDirective(name)) => {
+            return parse_err!(ErrorKind::UnknownDirective(name.into()), next.position);
         }
         //TODO: Easier way to have 'is markup'
         Token::MarkupText(_)
@@ -508,7 +513,7 @@ fn parse_block(tokeniser: &mut Tokeniser) -> ParseResult<Block> {
         | Token::StrongDelimiter
         | Token::StrikethroughDelimiter => parse_paragraph(tokeniser)?,
         Token::DelimitedContainerEnd => {
-            return parse_err!(ContainerMissingStart, next.position);
+            return parse_err!(ErrorKind::ContainerMissingStart, next.position);
         }
         _ => todo!("write tests for this"),
     };
@@ -551,7 +556,10 @@ fn parse_list_level(
         let ListBullet(indent_count) = bullet_token.value;
 
         if indent_count % 2 != 0 {
-            return parse_err!(UnevenListIndent(indent_count), bullet_token.position);
+            return parse_err!(
+                ErrorKind::UnevenListIndent(indent_count),
+                bullet_token.position
+            );
         }
 
         let depth = indent_count / 2;
@@ -570,7 +578,7 @@ fn parse_list_level(
             break;
         } else {
             return parse_err!(
-                MissingListLevel((current_depth, depth)),
+                ErrorKind::MissingListLevel((current_depth, depth)),
                 bullet_token.position
             );
         };
@@ -687,7 +695,7 @@ fn parse_raw_text_run(tokeniser: &mut Tokeniser) -> ParseResult<TextRun> {
         } else if next.is::<RawDelimiter>() {
             break;
         } else {
-            return parse_err!(UnterminatedRawTextRun, next.position);
+            return parse_err!(ErrorKind::UnterminatedRawTextRun, next.position);
         }
     }
 
@@ -695,7 +703,7 @@ fn parse_raw_text_run(tokeniser: &mut Tokeniser) -> ParseResult<TextRun> {
     tokeniser.pop_mode();
 
     if run.is_empty() {
-        return parse_err!(EmptyDelimitedText, run_start);
+        return parse_err!(ErrorKind::EmptyDelimitedText, run_start);
     }
 
     let run = TextRun {
@@ -714,7 +722,7 @@ fn parse_linked_text_run(tokeniser: &mut Tokeniser) -> ParseResult<TextRun> {
     let run = parse_markup_text(tokeniser)?;
 
     if run.starts_with(SPACE) || run.ends_with(SPACE) {
-        return parse_err!(LooseDelimiter, start_of_run);
+        return parse_err!(ErrorKind::LooseDelimiter, start_of_run);
     }
 
     tokeniser.advance().expect::<LinkClosingDelimiter>()?;
@@ -801,11 +809,11 @@ fn parse_strikethrough_text_run(tokeniser: &mut Tokeniser) -> ParseResult<TextRu
 
 fn validate_styled_text_run(run: &str) -> Result<(), ErrorKind> {
     if run.starts_with(SPACE) || run.ends_with(SPACE) {
-        return Err(LooseDelimiter);
+        return Err(ErrorKind::LooseDelimiter);
     }
 
     if run.is_empty() {
-        return Err(EmptyDelimitedText);
+        return Err(ErrorKind::EmptyDelimitedText);
     }
 
     Ok(())
@@ -1371,16 +1379,34 @@ mod test {
     fn explicit_paragraph_with_block_break_before_text_is_rejected() {
         let input = "#paragraph\n\nCats go meeow!";
 
-        let expected = UnexpectedToken("expected: linebreak, got: block break".into());
+        let expected = ErrorKind::UnexpectedToken("expected: linebreak, got: block break".into());
 
         assert_parse_fails(input, expected);
     }
 
     #[test]
-    fn unknown_block_is_rejected() {
+    fn unknown_block_directive_is_rejected() {
         let input = "#meowograph\nMeow?";
 
-        let expected = UnknownBlock("meowograph".into());
+        let expected = ErrorKind::UnknownDirective("#meowograph".into());
+
+        assert_parse_fails(input, expected);
+    }
+
+    #[test]
+    fn unknown_data_directive_is_rejected() {
+        let input = "@mrerps\nPurrRR!";
+
+        let expected = ErrorKind::UnknownDirective("@mrerps".into());
+
+        assert_parse_fails(input, expected);
+    }
+
+    #[test]
+    fn unknown_container_directive_is_rejected() {
+        let input = "!meeps\nMorps!";
+
+        let expected = ErrorKind::UnknownDirective("!meeps".into());
 
         assert_parse_fails(input, expected);
     }
@@ -1390,7 +1416,7 @@ mod test {
         let input = "#\nHi";
 
         //TODO: Maybe a specific error for empty block name would be better?
-        let expected = UnknownBlock("".into());
+        let expected = ErrorKind::UnknownDirective("#".into());
 
         assert_parse_fails(input, expected);
     }
@@ -1399,7 +1425,7 @@ mod test {
     fn block_without_new_line_is_rejected() {
         let input = "#paragraph";
 
-        let expected = UnexpectedToken("expected: linebreak, got: end of input".into());
+        let expected = ErrorKind::UnexpectedToken("expected: linebreak, got: end of input".into());
 
         assert_parse_fails(input, expected);
     }
@@ -1527,7 +1553,8 @@ mod test {
             "ever so surprising\n"
         );
 
-        let expected = UnexpectedToken("expected: block break, got: paragraph directive".into());
+        let expected =
+            ErrorKind::UnexpectedToken("expected: block break, got: paragraph directive".into());
 
         assert_parse_fails(input, expected);
     }
@@ -1851,7 +1878,7 @@ mod test {
     fn empty_emphasis() {
         let input = "Rules cats must follow: __.";
 
-        let expected = EmptyDelimitedText;
+        let expected = ErrorKind::EmptyDelimitedText;
 
         assert_parse_fails(input, expected);
     }
@@ -1860,7 +1887,7 @@ mod test {
     fn empty_raw() {
         let input = "Robot cat says: ``!.";
 
-        let expected = EmptyDelimitedText;
+        let expected = ErrorKind::EmptyDelimitedText;
 
         assert_parse_fails(input, expected);
     }
@@ -1869,7 +1896,7 @@ mod test {
     fn raw_with_double_linebreak() {
         let input = "`Erm...\n\nmeow?`";
 
-        let expected = UnterminatedRawTextRun;
+        let expected = ErrorKind::UnterminatedRawTextRun;
 
         assert_parse_fails(input, expected);
     }
@@ -1878,7 +1905,7 @@ mod test {
     fn raw_with_double_linebreak_containing_whitespace() {
         let input = "`Erm...\n \nmeow?`";
 
-        let expected = UnterminatedRawTextRun;
+        let expected = ErrorKind::UnterminatedRawTextRun;
 
         assert_parse_fails(input, expected);
     }
@@ -1888,8 +1915,9 @@ mod test {
         let input = "~Erm...\n\nmeow?~";
 
         //TODO: Would be much better to have a specific error for unterminated style delimiter
-        let expected =
-            UnexpectedToken("expected: strikethrough delimiter, got: block break".into());
+        let expected = ErrorKind::UnexpectedToken(
+            "expected: strikethrough delimiter, got: block break".into(),
+        );
 
         assert_parse_fails(input, expected);
     }
@@ -1898,8 +1926,9 @@ mod test {
     fn unmatched_emphasis_1() {
         let input = "_.";
 
-        let expected =
-            UnexpectedToken("expected: emphasis delimiter, got: end of input".to_string());
+        let expected = ErrorKind::UnexpectedToken(
+            "expected: emphasis delimiter, got: end of input".to_string(),
+        );
 
         assert_parse_fails(input, expected);
     }
@@ -1908,8 +1937,9 @@ mod test {
     fn unmatched_emphasis_2() {
         let input = "meow _meow.";
 
-        let expected =
-            UnexpectedToken("expected: emphasis delimiter, got: end of input".to_string());
+        let expected = ErrorKind::UnexpectedToken(
+            "expected: emphasis delimiter, got: end of input".to_string(),
+        );
 
         assert_parse_fails(input, expected);
     }
@@ -1918,8 +1948,9 @@ mod test {
     fn unmatched_emphasis_3() {
         let input = "meow meow_";
 
-        let expected =
-            UnexpectedToken("expected: emphasis delimiter, got: end of input".to_string());
+        let expected = ErrorKind::UnexpectedToken(
+            "expected: emphasis delimiter, got: end of input".to_string(),
+        );
 
         assert_parse_fails(input, expected);
     }
@@ -1929,8 +1960,9 @@ mod test {
         let input = "_*meow!*_";
 
         //TODO: We should have an explicit error for nested styled text
-        let expected =
-            UnexpectedToken("expected: emphasis delimiter, got: strong delimiter".into());
+        let expected = ErrorKind::UnexpectedToken(
+            "expected: emphasis delimiter, got: strong delimiter".into(),
+        );
 
         assert_parse_fails(input, expected);
     }
@@ -1939,7 +1971,7 @@ mod test {
     fn loose_strong_delimiter_start() {
         let input = "* meow meow*";
 
-        let expected = LooseDelimiter;
+        let expected = ErrorKind::LooseDelimiter;
 
         assert_parse_fails(input, expected);
     }
@@ -1948,7 +1980,7 @@ mod test {
     fn loose_strong_delimiter_end() {
         let input = "*meow meow *";
 
-        let expected = LooseDelimiter;
+        let expected = ErrorKind::LooseDelimiter;
 
         assert_parse_fails(input, expected);
     }
@@ -1957,8 +1989,9 @@ mod test {
     fn raw_immediately_in_emphasis() {
         let input = "_``_";
 
-        let expected =
-            UnexpectedToken("expected: emphasis delimiter, got: raw delimiter".to_string());
+        let expected = ErrorKind::UnexpectedToken(
+            "expected: emphasis delimiter, got: raw delimiter".to_string(),
+        );
 
         assert_parse_fails(input, expected);
     }
@@ -1967,8 +2000,9 @@ mod test {
     fn raw_within_in_emphasis() {
         let input = "_a``a_";
 
-        let expected =
-            UnexpectedToken("expected: emphasis delimiter, got: raw delimiter".to_string());
+        let expected = ErrorKind::UnexpectedToken(
+            "expected: emphasis delimiter, got: raw delimiter".to_string(),
+        );
 
         assert_parse_fails(input, expected);
     }
@@ -2077,7 +2111,7 @@ mod test {
     fn doc_metadata_with_unknown_identifier_is_rejected() {
         let input = "@metadata\nkibble: yes please\n";
 
-        let expected = UnknownMetadata(String::from("kibble"));
+        let expected = ErrorKind::UnknownMetadata(String::from("kibble"));
 
         assert_parse_fails(input, expected);
     }
@@ -2091,7 +2125,7 @@ mod test {
             "id: 01.23\n"
         );
 
-        let expected = MetadataNotAtStart;
+        let expected = ErrorKind::MetadataNotAtStart;
 
         assert_parse_fails(input, expected);
     }
@@ -2158,7 +2192,7 @@ mod test {
             "/Some Document Title"
         );
 
-        let expected = TitleNotAtStart;
+        let expected = ErrorKind::TitleNotAtStart;
 
         assert_parse_fails(input, expected);
     }
@@ -2171,7 +2205,7 @@ mod test {
             "/Some Document Title"
         );
 
-        let expected = TitleNotAtStart;
+        let expected = ErrorKind::TitleNotAtStart;
 
         assert_parse_fails(input, expected);
     }
@@ -2185,7 +2219,7 @@ mod test {
             "/Some Document Title"
         );
 
-        let expected = TitleNotAtStart;
+        let expected = ErrorKind::TitleNotAtStart;
 
         assert_parse_fails(input, expected);
     }
@@ -2232,7 +2266,7 @@ mod test {
     fn container_missing_start_is_rejected() {
         let input = "Silly cat\n<<<";
 
-        let expected = ContainerMissingStart;
+        let expected = ErrorKind::ContainerMissingStart;
 
         assert_parse_fails(input, expected);
     }
@@ -2241,7 +2275,7 @@ mod test {
     fn empty_container_is_rejected() {
         let input = "!info\n";
 
-        let expected = EmptyContainer;
+        let expected = ErrorKind::EmptyContainer;
 
         assert_parse_fails(input, expected);
     }
@@ -2250,7 +2284,7 @@ mod test {
     fn detactched_container_is_rejected() {
         let input = "!info\n\ncats!";
 
-        let expected = EmptyContainer;
+        let expected = ErrorKind::EmptyContainer;
 
         assert_parse_fails(input, expected);
     }
@@ -2264,7 +2298,7 @@ mod test {
             "<<<"
         );
 
-        let expected = UnexpectedToken("expected: linebreak, got: markup text".into());
+        let expected = ErrorKind::UnexpectedToken("expected: linebreak, got: markup text".into());
 
         assert_parse_fails(input, expected);
     }
@@ -2278,7 +2312,7 @@ mod test {
             "<<<toy"
         );
 
-        let expected = UnexpectedToken("expected: block break, got: markup text".into());
+        let expected = ErrorKind::UnexpectedToken("expected: block break, got: markup text".into());
 
         assert_parse_fails(input, expected);
     }
@@ -2293,7 +2327,7 @@ mod test {
             "toy"
         );
 
-        let expected = UnexpectedToken("expected: block break, got: linebreak".into());
+        let expected = ErrorKind::UnexpectedToken("expected: block break, got: linebreak".into());
 
         assert_parse_fails(input, expected);
     }
@@ -2515,7 +2549,8 @@ mod test {
 
         //TODO: Could we have more helpful, more specific error messages
         // e.g. UnterminatedEmphasis
-        let expected = UnexpectedToken("expected: emphasis delimiter, got: linebreak".into());
+        let expected =
+            ErrorKind::UnexpectedToken("expected: emphasis delimiter, got: linebreak".into());
 
         assert_parse_fails(input, expected);
     }
@@ -2524,7 +2559,7 @@ mod test {
     fn list_with_uneven_spaces() {
         let input = "-foo\n -bar";
 
-        let expected = UnevenListIndent(1);
+        let expected = ErrorKind::UnevenListIndent(1);
 
         assert_parse_fails(input, expected);
     }
@@ -2536,7 +2571,7 @@ mod test {
             "    - Wagyu beef because it is oh so tender\n",
         );
 
-        let expected = MissingListLevel((0, 2));
+        let expected = ErrorKind::MissingListLevel((0, 2));
 
         assert_parse_fails(input, expected);
     }
@@ -2646,7 +2681,7 @@ mod test {
             "We like [ petting cats ]@ripley_2020 a lot.\n",
         );
 
-        let expected = LooseDelimiter;
+        let expected = ErrorKind::LooseDelimiter;
         assert_parse_fails(input, expected);
     }
 
@@ -2660,7 +2695,7 @@ mod test {
             "ripley_2020: https://example.com"
         );
 
-        let expected = ReferencesOutOfPlace;
+        let expected = ErrorKind::ReferencesOutOfPlace;
 
         assert_parse_fails(input, expected);
     }

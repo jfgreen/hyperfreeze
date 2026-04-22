@@ -60,8 +60,7 @@ pub enum Token<'a> {
     ParagraphDirective,
     ListDirective,
     CodeDirective,
-    //TODO: Could just be 'unknown directive' and include more cases?
-    UnknownBlockDirective(UnknownBlockDirective<'a>),
+    InfoContainerDirective,
     BlockParametersStart,
     BlockParametersEnd,
     //TODO: This name is meh - just call it what it is: equals sign?
@@ -83,8 +82,8 @@ pub enum Token<'a> {
     //TODO: More rubbish naming
     DelimitedContainerStart,
     DelimitedContainerEnd,
+    UnknownDirective(UnknownDirective<'a>),
     Unknown(Unknown<'a>),
-    ContainerDirective(ContainerDirective<'a>),
     BlockParameterName(BlockParameterName<'a>),
     BlockParameterValue(BlockParameterValue<'a>),
     DataIdentifier(DataIdentifier<'a>),
@@ -108,6 +107,7 @@ impl<'a> Display for Token<'a> {
             Token::ParagraphDirective => ParagraphDirective::NAME.into(),
             Token::ListDirective => ListDirective::NAME.into(),
             Token::CodeDirective => CodeDirective::NAME.into(),
+            Token::InfoContainerDirective => InfoContainerDirective::NAME.into(),
             Token::BlockParametersStart => BlockParametersStart::NAME.into(),
             Token::BlockParametersEnd => BlockParametersEnd::NAME.into(),
             Token::BlockParameterNameValueSeperator => {
@@ -129,9 +129,8 @@ impl<'a> Display for Token<'a> {
             Token::CodeDelimiter => CodeDelimiter::NAME.into(),
             Token::DelimitedContainerStart => DelimitedContainerStart::NAME.into(),
             Token::DelimitedContainerEnd => DelimitedContainerEnd::NAME.into(),
-            Token::UnknownBlockDirective(t) => t.to_string(),
+            Token::UnknownDirective(t) => t.to_string(),
             Token::Unknown(t) => t.to_string(),
-            Token::ContainerDirective(t) => t.to_string(),
             Token::BlockParameterName(t) => t.to_string(),
             Token::BlockParameterValue(t) => t.to_string(),
             Token::DataIdentifier(t) => t.to_string(),
@@ -242,7 +241,10 @@ pub struct ListDirective;
 pub struct CodeDirective;
 
 #[derive(Clone, Copy, Debug)]
-pub struct UnknownBlockDirective<'a>(pub &'a str);
+pub struct InfoContainerDirective;
+
+#[derive(Clone, Copy, Debug)]
+pub struct UnknownDirective<'a>(pub &'a str);
 
 #[derive(Clone, Copy, Debug)]
 pub struct EndOfInput;
@@ -431,17 +433,6 @@ impl<'a> TryFrom<Token<'a>> for Code<'a> {
     fn try_from(value: Token<'a>) -> Result<Self, Self::Error> {
         match value {
             Token::Code(token) => Ok(token),
-            _ => Err(()),
-        }
-    }
-}
-
-impl<'a> TryFrom<Token<'a>> for ContainerDirective<'a> {
-    type Error = ();
-
-    fn try_from(value: Token<'a>) -> Result<Self, Self::Error> {
-        match value {
-            Token::ContainerDirective(token) => Ok(token),
             _ => Err(()),
         }
     }
@@ -775,12 +766,23 @@ impl<'a> TryFrom<Token<'a>> for CodeDirective {
     }
 }
 
-impl<'a> TryFrom<Token<'a>> for UnknownBlockDirective<'a> {
+impl<'a> TryFrom<Token<'a>> for InfoContainerDirective {
     type Error = ();
 
     fn try_from(value: Token<'a>) -> Result<Self, Self::Error> {
         match value {
-            Token::UnknownBlockDirective(token) => Ok(token),
+            Token::InfoContainerDirective => Ok(Self),
+            _ => Err(()),
+        }
+    }
+}
+
+impl<'a> TryFrom<Token<'a>> for UnknownDirective<'a> {
+    type Error = ();
+
+    fn try_from(value: Token<'a>) -> Result<Self, Self::Error> {
+        match value {
+            Token::UnknownDirective(token) => Ok(token),
             _ => Err(()),
         }
     }
@@ -882,10 +884,6 @@ impl<'a> TokenSpec<'a> for Unknown<'a> {
     const NAME: &'static str = "unknown";
 }
 
-impl<'a> TokenSpec<'a> for ContainerDirective<'a> {
-    const NAME: &'static str = "container directive";
-}
-
 impl<'a> TokenSpec<'a> for BlockParameterName<'a> {
     const NAME: &'static str = "block parameter name";
 }
@@ -942,7 +940,11 @@ impl<'a> TokenSpec<'a> for CodeDirective {
     const NAME: &'static str = "code directive";
 }
 
-impl<'a> TokenSpec<'a> for UnknownBlockDirective<'a> {
+impl<'a> TokenSpec<'a> for InfoContainerDirective {
+    const NAME: &'static str = "code directive";
+}
+
+impl<'a> TokenSpec<'a> for UnknownDirective<'a> {
     const NAME: &'static str = "unknown block directive";
 }
 
@@ -1091,12 +1093,6 @@ impl<'a> Display for Unknown<'a> {
     }
 }
 
-impl<'a> Display for ContainerDirective<'a> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        f.write_str(Self::NAME)
-    }
-}
-
 impl<'a> Display for BlockParameterName<'a> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         f.write_str(Self::NAME)
@@ -1181,7 +1177,7 @@ impl<'a> Display for CodeDirective {
     }
 }
 
-impl<'a> Display for UnknownBlockDirective<'a> {
+impl<'a> Display for UnknownDirective<'a> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         f.write_str(Self::NAME)
     }
@@ -2045,13 +2041,14 @@ fn match_data_list_seperator<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>>
 fn match_data_directive<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
     let mut head = scanner.read_head.clone();
 
+    let i1 = head.index;
+
     if head.current == Some(AT_SIGN) {
         head.read_next_char()
     } else {
         return None;
     }
 
-    let i1 = head.index;
     while head.current.is_some_and(|c| c.is_alphanumeric()) {
         head.read_next_char();
     }
@@ -2060,10 +2057,9 @@ fn match_data_directive<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
     let text = &scanner.input[i1..i2];
 
     let token = match text {
-        "metadata" => Token::MetadataDirective,
-        "references" => Token::ReferencesDirective,
-        //TODO: Specialise
-        _ => Token::Unknown(Unknown(text)),
+        "@metadata" => Token::MetadataDirective,
+        "@references" => Token::ReferencesDirective,
+        _ => Token::UnknownDirective(UnknownDirective(text)),
     };
 
     Some(ScanMatch { token, end: head })
@@ -2072,37 +2068,14 @@ fn match_data_directive<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
 fn match_container_directive<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
     let mut head = scanner.read_head.clone();
 
+    let i1 = head.index;
+
     if head.current == Some(EXCLAMATION_MARK) {
         head.read_next_char()
     } else {
         return None;
     }
 
-    let i1 = head.index;
-    while head.current.is_some_and(|c| c.is_alphanumeric()) {
-        head.read_next_char();
-    }
-
-    let i2 = head.index;
-    let text = &scanner.input[i1..i2];
-
-    Some(ScanMatch {
-        token: Token::ContainerDirective(ContainerDirective(text)),
-        end: head,
-    })
-}
-
-//TODO: should be seperate match functions?
-fn match_block_directive<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
-    let mut head = scanner.read_head.clone();
-
-    if head.current == Some(HASH) {
-        head.read_next_char()
-    } else {
-        return None;
-    }
-
-    let i1 = head.index;
     while head.current.is_some_and(|c| c.is_alphanumeric()) {
         head.read_next_char();
     }
@@ -2111,10 +2084,37 @@ fn match_block_directive<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
     let text = &scanner.input[i1..i2];
 
     let token = match text {
-        "paragraph" => Token::ParagraphDirective,
-        "list" => Token::ListDirective,
-        "code" => Token::CodeDirective,
-        _ => Token::UnknownBlockDirective(UnknownBlockDirective(text)),
+        "!info" => Token::InfoContainerDirective,
+        _ => Token::UnknownDirective(UnknownDirective(text)),
+    };
+
+    Some(ScanMatch { token, end: head })
+}
+
+//TODO: should be seperate match functions?
+fn match_block_directive<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
+    let mut head = scanner.read_head.clone();
+
+    let i1 = head.index;
+
+    if head.current == Some(HASH) {
+        head.read_next_char()
+    } else {
+        return None;
+    }
+
+    while head.current.is_some_and(|c| c.is_alphanumeric()) {
+        head.read_next_char();
+    }
+
+    let i2 = head.index;
+    let text = &scanner.input[i1..i2];
+
+    let token = match text {
+        "#paragraph" => Token::ParagraphDirective,
+        "#list" => Token::ListDirective,
+        "#code" => Token::CodeDirective,
+        _ => Token::UnknownDirective(UnknownDirective(text)),
     };
 
     Some(ScanMatch { token, end: head })
