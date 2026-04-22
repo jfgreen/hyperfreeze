@@ -1,5 +1,5 @@
 use std::backtrace::{Backtrace, BacktraceStatus};
-use std::fmt::Display;
+use std::fmt::{self, Display};
 
 use crate::document::*;
 use crate::tokenise::*;
@@ -10,18 +10,6 @@ pub struct ParseError {
     input_column: u32,
     input_line: u32,
     backtrace: Backtrace,
-}
-
-macro_rules! parse_err {
-    ($error:expr, $position:expr) => {{
-        Err(ParseError {
-            kind: $error,
-            //TODO: can we bake the +1 into token position?
-            input_column: $position.column,
-            input_line: $position.row,
-            backtrace: Backtrace::capture(),
-        })
-    }};
 }
 
 #[derive(PartialEq, Eq, Debug)]
@@ -42,39 +30,75 @@ enum ErrorKind {
 }
 
 impl Display for ParseError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.write_position(f)?;
+        self.write_message(f)?;
+        self.write_backtrace(f)?;
+        Ok(())
+    }
+}
+
+impl ParseError {
+    fn write_position(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
         writeln!(
             f,
             "parsing error on line {} column {}",
             self.input_line + 1,
             self.input_column + 1
         )?;
+        Ok(())
+    }
 
+    fn write_message(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
         match &self.kind {
-            LooseDelimiter => write!(f, "delimited text cant have leading/trailing whitespace"),
-            EmptyDelimitedText => write!(f, "delimited text cant be empty"),
-            UnknownMetadata(key) => write!(f, "unknown metadata '{}'", key),
+            LooseDelimiter => {
+                write!(f, "delimited text cant have leading/trailing whitespace")
+            }
+            EmptyDelimitedText => {
+                write!(f, "delimited text cant be empty")
+            }
+            UnknownMetadata(key) => {
+                write!(f, "unknown metadata '{}'", key)
+            }
             MissingListLevel((from, to)) => {
                 write!(f, "list indent skipped from {} to {}", from, to)
             }
-            TitleNotAtStart => write!(f, "document title is not at start of document"),
-            MetadataNotAtStart => write!(f, "document metadata is not at start of document"),
-            ReferencesOutOfPlace => write!(f, "references not in at start of document"),
-            UnexpectedToken(message) => write!(f, "unexpected token, {}", message),
-            UnevenListIndent(count) => write!(f, "list indent of {} is not even", count),
-            UnknownBlock(name) => write!(f, "unknown block '{}'", name),
-            ContainerMissingStart => write!(f, "delimited container end with no preceeding start"),
-            EmptyContainer => write!(f, "empty container,"),
-            UnterminatedRawTextRun => write!(f, "unterminated raw text run"),
-        }?;
+            TitleNotAtStart => {
+                write!(f, "document title is not at start of document")
+            }
+            MetadataNotAtStart => {
+                write!(f, "document metadata is not at start of document")
+            }
+            ReferencesOutOfPlace => {
+                write!(f, "references not in at start of document")
+            }
+            UnexpectedToken(message) => {
+                write!(f, "unexpected token, {}", message)
+            }
+            UnevenListIndent(count) => {
+                write!(f, "list indent of {} is not even", count)
+            }
+            UnknownBlock(name) => {
+                write!(f, "unknown block '{}'", name)
+            }
+            ContainerMissingStart => {
+                write!(f, "delimited container end with no preceeding start")
+            }
+            EmptyContainer => {
+                write!(f, "empty container,")
+            }
+            UnterminatedRawTextRun => {
+                write!(f, "unterminated raw text run")
+            }
+        }
+    }
 
-        if self.backtrace.status() == BacktraceStatus::Captured {
+    fn write_backtrace(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
+        Ok(if self.backtrace.status() == BacktraceStatus::Captured {
             writeln!(f)?;
             writeln!(f, "Parse backtrace:")?;
             writeln!(f, "{}", self.backtrace)?;
-        }
-
-        Ok(())
+        })
     }
 }
 
@@ -90,6 +114,17 @@ where
             backtrace: Backtrace::capture(),
         }
     }
+}
+
+macro_rules! parse_err {
+    ($error:expr, $position:expr) => {{
+        Err(ParseError {
+            kind: $error,
+            input_column: $position.column,
+            input_line: $position.row,
+            backtrace: Backtrace::capture(),
+        })
+    }};
 }
 
 type ParseResult<T> = Result<T, ParseError>;
@@ -158,7 +193,6 @@ fn parse_document_title(tokeniser: &mut Tokeniser) -> ParseResult<String> {
 
 fn parse_metadata(tokeniser: &mut Tokeniser, metadata: &mut Metadata) -> ParseResult<()> {
     tokeniser.advance().expect::<MetadataDirective>()?;
-
     tokeniser.advance().expect::<LineBreak>()?;
 
     tokeniser.push_mode(ScanMode::StructuredData);
@@ -180,9 +214,8 @@ fn parse_metadata(tokeniser: &mut Tokeniser, metadata: &mut Metadata) -> ParseRe
             _ => return parse_err!(UnknownMetadata(key.to_string()), identifier_token.position),
         };
 
-        let next = tokeniser.peek();
-        if !(next.is::<EndOfInput>() || next.is::<BlockBreak>()) {
-            tokeniser.advance().expect::<LineBreak>()?;
+        if tokeniser.peek().is::<LineBreak>() {
+            tokeniser.advance();
         }
     }
 
@@ -195,10 +228,8 @@ fn parse_metadata(tokeniser: &mut Tokeniser, metadata: &mut Metadata) -> ParseRe
     Ok(())
 }
 
-//TODO: parse_references and parse_metadata _should_ share mechanics
 fn parse_references(tokeniser: &mut Tokeniser) -> ParseResult<Box<[Reference]>> {
     tokeniser.advance().expect::<ReferencesDirective>()?;
-
     tokeniser.advance().expect::<LineBreak>()?;
 
     tokeniser.push_mode(ScanMode::StructuredData);
@@ -209,17 +240,10 @@ fn parse_references(tokeniser: &mut Tokeniser) -> ParseResult<Box<[Reference]>> 
         tokeniser.advance();
         tokeniser.advance().expect::<DataKeyValueSeperator>()?;
 
-        //  TODO: Can we lose the need to qualify the token module
-        // Just lost the tag concept entirely?
         let DataValue(link) = tokeniser.advance().expect()?;
 
-        // TODO: This is a common pattern - macro? Or refactor to not
-        // need these delimiter tokens?
-        // TODO: Or, Could we simply abandon if we dont have a line break
-        // and let the caller handle instead?
-        let next = tokeniser.peek();
-        if !(next.is::<EndOfInput>() || next.is::<BlockBreak>()) {
-            tokeniser.advance().expect::<LineBreak>()?;
+        if tokeniser.peek().is::<LineBreak>() {
+            tokeniser.advance();
         }
 
         references.push(Reference {
