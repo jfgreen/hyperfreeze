@@ -304,10 +304,10 @@ fn parse_metadata_list(tokeniser: &mut Tokeniser) -> ParseResult<Box<[String]>> 
 fn parse_element(tokeniser: &mut Tokeniser) -> ParseResult<Element> {
     let next = tokeniser.peek();
     match next.value {
-        Token::TitleDirective(_) => {
+        Token::TitleDirective => {
             parse_err!(TitleNotAtStart, next.position)
         }
-        Token::SectionDirective(_) => {
+        Token::SectionDirective => {
             let section = parse_section(tokeniser)?;
             Ok(Element::Section(section))
         }
@@ -315,7 +315,7 @@ fn parse_element(tokeniser: &mut Tokeniser) -> ParseResult<Element> {
             let container = parse_container(tokeniser)?;
             Ok(Element::Container(container))
         }
-        Token::SubSectionDirective(_) => {
+        Token::SubSectionDirective => {
             todo!("reject subsection for not being inside a section");
         }
         _ => {
@@ -412,10 +412,10 @@ fn parse_section_element(tokeniser: &mut Tokeniser) -> ParseResult<SectionElemen
     //TODO: Very simmilar to parse_element, possible re-use?
     let peeked = tokeniser.peek();
     match peeked.value {
-        Token::TitleDirective(_) => {
+        Token::TitleDirective => {
             parse_err!(TitleNotAtStart, peeked.position)
         }
-        Token::SubSectionDirective(_) => {
+        Token::SubSectionDirective => {
             let subsection = parse_subsection(tokeniser)?;
             Ok(SectionElement::SubSection(subsection))
         }
@@ -466,7 +466,7 @@ fn parse_subsection_element(tokeniser: &mut Tokeniser) -> ParseResult<SubSection
         // TitleDirective => {
         //     parse_err!(TitleNotAtStart, token.position)
         // }
-        Token::SubSectionDirective(_) => {
+        Token::SubSectionDirective => {
             todo!("not allow")
         }
         Token::ContainerDirective(_) => {
@@ -487,13 +487,13 @@ fn parse_block(tokeniser: &mut Tokeniser) -> ParseResult<Block> {
     let next = tokeniser.peek();
     let block = match next.value {
         Token::ListBullet(_) => parse_list(tokeniser)?,
-        Token::ParagraphDirective(_) => parse_paragraph(tokeniser)?,
-        Token::ListDirective(_) => parse_list(tokeniser)?,
-        Token::CodeDirective(_) => parse_code(tokeniser)?,
-        Token::MetadataDirective(_) => {
+        Token::ParagraphDirective => parse_paragraph(tokeniser)?,
+        Token::ListDirective => parse_list(tokeniser)?,
+        Token::CodeDirective => parse_code(tokeniser)?,
+        Token::MetadataDirective => {
             return parse_err!(MetadataNotAtStart, next.position);
         }
-        Token::ReferencesDirective(_) => {
+        Token::ReferencesDirective => {
             return parse_err!(ReferencesOutOfPlace, next.position);
         }
         Token::UnknownBlockDirective(UnknownBlockDirective(name)) => {
@@ -501,13 +501,13 @@ fn parse_block(tokeniser: &mut Tokeniser) -> ParseResult<Block> {
         }
         //TODO: Easier way to have 'is markup'
         Token::MarkupText(_)
-        | Token::MarkupTextSpace(_)
-        | Token::LinkOpeningDelimiter(_)
-        | Token::RawDelimiter(_)
-        | Token::EmphasisDelimiter(_)
-        | Token::StrongDelimiter(_)
-        | Token::StrikethroughDelimiter(_) => parse_paragraph(tokeniser)?,
-        Token::DelimitedContainerEnd(_) => {
+        | Token::MarkupTextSpace
+        | Token::LinkOpeningDelimiter
+        | Token::RawDelimiter
+        | Token::EmphasisDelimiter
+        | Token::StrongDelimiter
+        | Token::StrikethroughDelimiter => parse_paragraph(tokeniser)?,
+        Token::DelimitedContainerEnd => {
             return parse_err!(ContainerMissingStart, next.position);
         }
         _ => todo!("write tests for this"),
@@ -641,12 +641,12 @@ fn parse_text_runs(tokeniser: &mut Tokeniser) -> ParseResult<Box<[TextRun]>> {
     //TODO: Ergonomics
     loop {
         let run = match tokeniser.peek().value {
-            Token::MarkupText(_) | Token::MarkupTextSpace(_) => parse_plain_text_run(tokeniser)?,
-            Token::StrikethroughDelimiter(_) => parse_strikethrough_text_run(tokeniser)?,
-            Token::EmphasisDelimiter(_) => parse_emphasised_text_run(tokeniser)?,
-            Token::StrongDelimiter(_) => parse_strong_text_run(tokeniser)?,
-            Token::RawDelimiter(_) => parse_raw_text_run(tokeniser)?,
-            Token::LinkOpeningDelimiter(_) => parse_linked_text_run(tokeniser)?,
+            Token::MarkupText(_) | Token::MarkupTextSpace => parse_plain_text_run(tokeniser)?,
+            Token::StrikethroughDelimiter => parse_strikethrough_text_run(tokeniser)?,
+            Token::EmphasisDelimiter => parse_emphasised_text_run(tokeniser)?,
+            Token::StrongDelimiter => parse_strong_text_run(tokeniser)?,
+            Token::RawDelimiter => parse_raw_text_run(tokeniser)?,
+            Token::LinkOpeningDelimiter => parse_linked_text_run(tokeniser)?,
             _ => break,
         };
         text_runs.push(run);

@@ -51,38 +51,38 @@ const MARKUP_CHARS: &[char; 10] = &[
 
 #[derive(Clone, Copy, Debug)]
 pub enum Token<'a> {
-    EndOfInput(EndOfInput),
-    TitleDirective(TitleDirective),
-    SectionDirective(SectionDirective),
-    SubSectionDirective(SubSectionDirective),
-    MetadataDirective(MetadataDirective),
-    ReferencesDirective(ReferencesDirective),
-    ParagraphDirective(ParagraphDirective),
-    ListDirective(ListDirective),
-    CodeDirective(CodeDirective),
+    EndOfInput,
+    TitleDirective,
+    SectionDirective,
+    SubSectionDirective,
+    MetadataDirective,
+    ReferencesDirective,
+    ParagraphDirective,
+    ListDirective,
+    CodeDirective,
     //TODO: Could just be 'unknown directive' and include more cases?
     UnknownBlockDirective(UnknownBlockDirective<'a>),
-    BlockParametersStart(BlockParametersStart),
-    BlockParametersEnd(BlockParametersEnd),
+    BlockParametersStart,
+    BlockParametersEnd,
     //TODO: This name is meh - just call it what it is: equals sign?
-    BlockParameterNameValueSeperator(BlockParameterNameValueSeperator),
-    BlockBreak(BlockBreak),
-    DataListSeperator(DataListSeperator),
-    DataKeyValueSeperator(DataKeyValueSeperator),
-    TitleTextSpace(TitleTextSpace),
-    LineBreak(LineBreak),
-    StrongDelimiter(StrongDelimiter),
-    EmphasisDelimiter(EmphasisDelimiter),
-    StrikethroughDelimiter(StrikethroughDelimiter),
-    RawDelimiter(RawDelimiter),
-    MarkupTextSpace(MarkupTextSpace),
-    LinkOpeningDelimiter(LinkOpeningDelimiter),
-    LinkClosingDelimiter(LinkClosingDelimiter),
-    LinkToReferenceJoiner(LinkToReferenceJoiner),
-    CodeDelimiter(CodeDelimiter),
+    BlockParameterNameValueSeperator,
+    BlockBreak,
+    DataListSeperator,
+    DataKeyValueSeperator,
+    TitleTextSpace,
+    LineBreak,
+    StrongDelimiter,
+    EmphasisDelimiter,
+    StrikethroughDelimiter,
+    RawDelimiter,
+    MarkupTextSpace,
+    LinkOpeningDelimiter,
+    LinkClosingDelimiter,
+    LinkToReferenceJoiner,
+    CodeDelimiter,
     //TODO: More rubbish naming
-    DelimitedContainerStart(DelimitedContainerStart),
-    DelimitedContainerEnd(DelimitedContainerEnd),
+    DelimitedContainerStart,
+    DelimitedContainerEnd,
     Unknown(Unknown<'a>),
     ContainerDirective(ContainerDirective<'a>),
     BlockParameterName(BlockParameterName<'a>),
@@ -99,35 +99,37 @@ pub enum Token<'a> {
 impl<'a> Display for Token<'a> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         let name = match self {
-            Token::EndOfInput(t) => t.to_string(),
-            Token::TitleDirective(t) => t.to_string(),
-            Token::SectionDirective(t) => t.to_string(),
-            Token::SubSectionDirective(t) => t.to_string(),
-            Token::MetadataDirective(t) => t.to_string(),
-            Token::ReferencesDirective(t) => t.to_string(),
-            Token::ParagraphDirective(t) => t.to_string(),
-            Token::ListDirective(t) => t.to_string(),
-            Token::CodeDirective(t) => t.to_string(),
+            Token::EndOfInput => EndOfInput::NAME.into(),
+            Token::TitleDirective => TitleDirective::NAME.into(),
+            Token::SectionDirective => SectionDirective::NAME.into(),
+            Token::SubSectionDirective => SubSectionDirective::NAME.into(),
+            Token::MetadataDirective => MetadataDirective::NAME.into(),
+            Token::ReferencesDirective => ReferencesDirective::NAME.into(),
+            Token::ParagraphDirective => ParagraphDirective::NAME.into(),
+            Token::ListDirective => ListDirective::NAME.into(),
+            Token::CodeDirective => CodeDirective::NAME.into(),
+            Token::BlockParametersStart => BlockParametersStart::NAME.into(),
+            Token::BlockParametersEnd => BlockParametersEnd::NAME.into(),
+            Token::BlockParameterNameValueSeperator => {
+                BlockParameterNameValueSeperator::NAME.into()
+            }
+            Token::BlockBreak => BlockBreak::NAME.into(),
+            Token::DataListSeperator => DataListSeperator::NAME.into(),
+            Token::DataKeyValueSeperator => DataKeyValueSeperator::NAME.into(),
+            Token::TitleTextSpace => TitleTextSpace::NAME.into(),
+            Token::LineBreak => LineBreak::NAME.into(),
+            Token::StrongDelimiter => StrongDelimiter::NAME.into(),
+            Token::EmphasisDelimiter => EmphasisDelimiter::NAME.into(),
+            Token::StrikethroughDelimiter => StrikethroughDelimiter::NAME.into(),
+            Token::RawDelimiter => RawDelimiter::NAME.into(),
+            Token::MarkupTextSpace => MarkupTextSpace::NAME.into(),
+            Token::LinkOpeningDelimiter => LinkOpeningDelimiter::NAME.into(),
+            Token::LinkClosingDelimiter => LinkClosingDelimiter::NAME.into(),
+            Token::LinkToReferenceJoiner => LinkToReferenceJoiner::NAME.into(),
+            Token::CodeDelimiter => CodeDelimiter::NAME.into(),
+            Token::DelimitedContainerStart => DelimitedContainerStart::NAME.into(),
+            Token::DelimitedContainerEnd => DelimitedContainerEnd::NAME.into(),
             Token::UnknownBlockDirective(t) => t.to_string(),
-            Token::BlockParametersStart(t) => t.to_string(),
-            Token::BlockParametersEnd(t) => t.to_string(),
-            Token::BlockParameterNameValueSeperator(t) => t.to_string(),
-            Token::BlockBreak(t) => t.to_string(),
-            Token::DataListSeperator(t) => t.to_string(),
-            Token::DataKeyValueSeperator(t) => t.to_string(),
-            Token::TitleTextSpace(t) => t.to_string(),
-            Token::LineBreak(t) => t.to_string(),
-            Token::StrongDelimiter(t) => t.to_string(),
-            Token::EmphasisDelimiter(t) => t.to_string(),
-            Token::StrikethroughDelimiter(t) => t.to_string(),
-            Token::RawDelimiter(t) => t.to_string(),
-            Token::MarkupTextSpace(t) => t.to_string(),
-            Token::LinkOpeningDelimiter(t) => t.to_string(),
-            Token::LinkClosingDelimiter(t) => t.to_string(),
-            Token::LinkToReferenceJoiner(t) => t.to_string(),
-            Token::CodeDelimiter(t) => t.to_string(),
-            Token::DelimitedContainerStart(t) => t.to_string(),
-            Token::DelimitedContainerEnd(t) => t.to_string(),
             Token::Unknown(t) => t.to_string(),
             Token::ContainerDirective(t) => t.to_string(),
             Token::BlockParameterName(t) => t.to_string(),
@@ -461,7 +463,7 @@ impl<'a> TryFrom<Token<'a>> for LineBreak {
 
     fn try_from(value: Token<'a>) -> Result<Self, Self::Error> {
         match value {
-            Token::LineBreak(token) => Ok(token),
+            Token::LineBreak => Ok(Self),
             _ => Err(()),
         }
     }
@@ -472,7 +474,7 @@ impl<'a> TryFrom<Token<'a>> for TitleDirective {
 
     fn try_from(value: Token<'a>) -> Result<Self, Self::Error> {
         match value {
-            Token::TitleDirective(token) => Ok(token),
+            Token::TitleDirective => Ok(Self),
             _ => Err(()),
         }
     }
@@ -483,7 +485,7 @@ impl<'a> TryFrom<Token<'a>> for BlockBreak {
 
     fn try_from(value: Token<'a>) -> Result<Self, Self::Error> {
         match value {
-            Token::BlockBreak(token) => Ok(token),
+            Token::BlockBreak => Ok(Self),
             _ => Err(()),
         }
     }
@@ -494,7 +496,7 @@ impl<'a> TryFrom<Token<'a>> for DataKeyValueSeperator {
 
     fn try_from(value: Token<'a>) -> Result<Self, Self::Error> {
         match value {
-            Token::DataKeyValueSeperator(token) => Ok(token),
+            Token::DataKeyValueSeperator => Ok(Self),
             _ => Err(()),
         }
     }
@@ -505,7 +507,7 @@ impl<'a> TryFrom<Token<'a>> for DelimitedContainerEnd {
 
     fn try_from(value: Token<'a>) -> Result<Self, Self::Error> {
         match value {
-            Token::DelimitedContainerEnd(token) => Ok(token),
+            Token::DelimitedContainerEnd => Ok(Self),
             _ => Err(()),
         }
     }
@@ -516,7 +518,7 @@ impl<'a> TryFrom<Token<'a>> for SectionDirective {
 
     fn try_from(value: Token<'a>) -> Result<Self, Self::Error> {
         match value {
-            Token::SectionDirective(token) => Ok(token),
+            Token::SectionDirective => Ok(Self),
             _ => Err(()),
         }
     }
@@ -527,7 +529,7 @@ impl<'a> TryFrom<Token<'a>> for SubSectionDirective {
 
     fn try_from(value: Token<'a>) -> Result<Self, Self::Error> {
         match value {
-            Token::SubSectionDirective(token) => Ok(token),
+            Token::SubSectionDirective => Ok(Self),
             _ => Err(()),
         }
     }
@@ -538,7 +540,7 @@ impl<'a> TryFrom<Token<'a>> for BlockParameterNameValueSeperator {
 
     fn try_from(value: Token<'a>) -> Result<Self, Self::Error> {
         match value {
-            Token::BlockParameterNameValueSeperator(token) => Ok(token),
+            Token::BlockParameterNameValueSeperator => Ok(Self),
             _ => Err(()),
         }
     }
@@ -549,7 +551,7 @@ impl<'a> TryFrom<Token<'a>> for BlockParametersEnd {
 
     fn try_from(value: Token<'a>) -> Result<Self, Self::Error> {
         match value {
-            Token::BlockParametersEnd(token) => Ok(token),
+            Token::BlockParametersEnd => Ok(Self),
             _ => Err(()),
         }
     }
@@ -560,7 +562,7 @@ impl<'a> TryFrom<Token<'a>> for RawDelimiter {
 
     fn try_from(value: Token<'a>) -> Result<Self, Self::Error> {
         match value {
-            Token::RawDelimiter(token) => Ok(token),
+            Token::RawDelimiter => Ok(Self),
             _ => Err(()),
         }
     }
@@ -571,7 +573,7 @@ impl<'a> TryFrom<Token<'a>> for LinkOpeningDelimiter {
 
     fn try_from(value: Token<'a>) -> Result<Self, Self::Error> {
         match value {
-            Token::LinkOpeningDelimiter(token) => Ok(token),
+            Token::LinkOpeningDelimiter => Ok(Self),
             _ => Err(()),
         }
     }
@@ -582,7 +584,7 @@ impl<'a> TryFrom<Token<'a>> for LinkClosingDelimiter {
 
     fn try_from(value: Token<'a>) -> Result<Self, Self::Error> {
         match value {
-            Token::LinkClosingDelimiter(token) => Ok(token),
+            Token::LinkClosingDelimiter => Ok(Self),
             _ => Err(()),
         }
     }
@@ -593,7 +595,7 @@ impl<'a> TryFrom<Token<'a>> for LinkToReferenceJoiner {
 
     fn try_from(value: Token<'a>) -> Result<Self, Self::Error> {
         match value {
-            Token::LinkToReferenceJoiner(token) => Ok(token),
+            Token::LinkToReferenceJoiner => Ok(Self),
             _ => Err(()),
         }
     }
@@ -604,7 +606,7 @@ impl<'a> TryFrom<Token<'a>> for CodeDelimiter {
 
     fn try_from(value: Token<'a>) -> Result<Self, Self::Error> {
         match value {
-            Token::CodeDelimiter(token) => Ok(token),
+            Token::CodeDelimiter => Ok(Self),
             _ => Err(()),
         }
     }
@@ -615,7 +617,7 @@ impl<'a> TryFrom<Token<'a>> for StrongDelimiter {
 
     fn try_from(value: Token<'a>) -> Result<Self, Self::Error> {
         match value {
-            Token::StrongDelimiter(token) => Ok(token),
+            Token::StrongDelimiter => Ok(Self),
             _ => Err(()),
         }
     }
@@ -626,7 +628,7 @@ impl<'a> TryFrom<Token<'a>> for EmphasisDelimiter {
 
     fn try_from(value: Token<'a>) -> Result<Self, Self::Error> {
         match value {
-            Token::EmphasisDelimiter(token) => Ok(token),
+            Token::EmphasisDelimiter => Ok(Self),
             _ => Err(()),
         }
     }
@@ -637,7 +639,7 @@ impl<'a> TryFrom<Token<'a>> for StrikethroughDelimiter {
 
     fn try_from(value: Token<'a>) -> Result<Self, Self::Error> {
         match value {
-            Token::StrikethroughDelimiter(token) => Ok(token),
+            Token::StrikethroughDelimiter => Ok(Self),
             _ => Err(()),
         }
     }
@@ -648,7 +650,7 @@ impl<'a> TryFrom<Token<'a>> for EndOfInput {
 
     fn try_from(value: Token<'a>) -> Result<Self, Self::Error> {
         match value {
-            Token::EndOfInput(token) => Ok(token),
+            Token::EndOfInput => Ok(Self),
             _ => Err(()),
         }
     }
@@ -659,7 +661,7 @@ impl<'a> TryFrom<Token<'a>> for BlockParametersStart {
 
     fn try_from(value: Token<'a>) -> Result<Self, Self::Error> {
         match value {
-            Token::BlockParametersStart(token) => Ok(token),
+            Token::BlockParametersStart => Ok(Self),
             _ => Err(()),
         }
     }
@@ -670,7 +672,7 @@ impl<'a> TryFrom<Token<'a>> for DataListSeperator {
 
     fn try_from(value: Token<'a>) -> Result<Self, Self::Error> {
         match value {
-            Token::DataListSeperator(token) => Ok(token),
+            Token::DataListSeperator => Ok(Self),
             _ => Err(()),
         }
     }
@@ -681,7 +683,7 @@ impl<'a> TryFrom<Token<'a>> for TitleTextSpace {
 
     fn try_from(value: Token<'a>) -> Result<Self, Self::Error> {
         match value {
-            Token::TitleTextSpace(token) => Ok(token),
+            Token::TitleTextSpace => Ok(Self),
             _ => Err(()),
         }
     }
@@ -691,7 +693,7 @@ impl<'a> TryFrom<Token<'a>> for MarkupTextSpace {
 
     fn try_from(value: Token<'a>) -> Result<Self, Self::Error> {
         match value {
-            Token::MarkupTextSpace(token) => Ok(token),
+            Token::MarkupTextSpace => Ok(Self),
             _ => Err(()),
         }
     }
@@ -701,7 +703,7 @@ impl<'a> TryFrom<Token<'a>> for DelimitedContainerStart {
 
     fn try_from(value: Token<'a>) -> Result<Self, Self::Error> {
         match value {
-            Token::DelimitedContainerStart(token) => Ok(token),
+            Token::DelimitedContainerStart => Ok(Self),
             _ => Err(()),
         }
     }
@@ -723,7 +725,7 @@ impl<'a> TryFrom<Token<'a>> for MetadataDirective {
 
     fn try_from(value: Token<'a>) -> Result<Self, Self::Error> {
         match value {
-            Token::MetadataDirective(token) => Ok(token),
+            Token::MetadataDirective => Ok(Self),
             _ => Err(()),
         }
     }
@@ -734,7 +736,7 @@ impl<'a> TryFrom<Token<'a>> for ReferencesDirective {
 
     fn try_from(value: Token<'a>) -> Result<Self, Self::Error> {
         match value {
-            Token::ReferencesDirective(token) => Ok(token),
+            Token::ReferencesDirective => Ok(Self),
             _ => Err(()),
         }
     }
@@ -745,7 +747,7 @@ impl<'a> TryFrom<Token<'a>> for ParagraphDirective {
 
     fn try_from(value: Token<'a>) -> Result<Self, Self::Error> {
         match value {
-            Token::ParagraphDirective(token) => Ok(token),
+            Token::ParagraphDirective => Ok(Self),
             _ => Err(()),
         }
     }
@@ -756,7 +758,7 @@ impl<'a> TryFrom<Token<'a>> for ListDirective {
 
     fn try_from(value: Token<'a>) -> Result<Self, Self::Error> {
         match value {
-            Token::ListDirective(token) => Ok(token),
+            Token::ListDirective => Ok(Self),
             _ => Err(()),
         }
     }
@@ -767,7 +769,7 @@ impl<'a> TryFrom<Token<'a>> for CodeDirective {
 
     fn try_from(value: Token<'a>) -> Result<Self, Self::Error> {
         match value {
-            Token::CodeDirective(token) => Ok(token),
+            Token::CodeDirective => Ok(Self),
             _ => Err(()),
         }
     }
@@ -1462,7 +1464,7 @@ fn match_markup_text_space<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
     }
 
     Some(ScanMatch {
-        token: Token::MarkupTextSpace(MarkupTextSpace),
+        token: Token::MarkupTextSpace,
         end: head,
     })
 }
@@ -1508,7 +1510,7 @@ fn match_list_markup_text_space<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'
     }
 
     Some(ScanMatch {
-        token: Token::MarkupTextSpace(MarkupTextSpace),
+        token: Token::MarkupTextSpace,
         end: head,
     })
 }
@@ -1533,7 +1535,7 @@ fn match_title_text_space<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
     }
 
     Some(ScanMatch {
-        token: Token::TitleTextSpace(TitleTextSpace),
+        token: Token::TitleTextSpace,
         end: head,
     })
 }
@@ -1548,7 +1550,7 @@ fn match_parameters_start<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
     }
 
     Some(ScanMatch {
-        token: Token::BlockParametersStart(BlockParametersStart),
+        token: Token::BlockParametersStart,
         end: head,
     })
 }
@@ -1563,7 +1565,7 @@ fn match_parameters_end<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
     }
 
     Some(ScanMatch {
-        token: Token::BlockParametersEnd(BlockParametersEnd),
+        token: Token::BlockParametersEnd,
         end: head,
     })
 }
@@ -1578,7 +1580,7 @@ fn match_parameter_name_value_seperator<'a>(scanner: &Scanner<'a>) -> Option<Sca
     }
 
     Some(ScanMatch {
-        token: Token::BlockParameterNameValueSeperator(BlockParameterNameValueSeperator),
+        token: Token::BlockParameterNameValueSeperator,
         end: head,
     })
 }
@@ -1593,7 +1595,7 @@ fn match_raw_delimiter<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
     }
 
     Some(ScanMatch {
-        token: Token::RawDelimiter(RawDelimiter),
+        token: Token::RawDelimiter,
         end: head,
     })
 }
@@ -1608,7 +1610,7 @@ fn match_link_opening_delimiter<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'
     }
 
     Some(ScanMatch {
-        token: Token::LinkOpeningDelimiter(LinkOpeningDelimiter),
+        token: Token::LinkOpeningDelimiter,
         end: head,
     })
 }
@@ -1623,7 +1625,7 @@ fn match_link_closing_delimiter<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'
     }
 
     Some(ScanMatch {
-        token: Token::LinkClosingDelimiter(LinkClosingDelimiter),
+        token: Token::LinkClosingDelimiter,
         end: head,
     })
 }
@@ -1638,7 +1640,7 @@ fn match_link_to_reference_joiner<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch
     }
 
     Some(ScanMatch {
-        token: Token::LinkToReferenceJoiner(LinkToReferenceJoiner),
+        token: Token::LinkToReferenceJoiner,
         end: head,
     })
 }
@@ -1653,7 +1655,7 @@ fn match_strong_delimiter<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
     }
 
     Some(ScanMatch {
-        token: Token::StrongDelimiter(StrongDelimiter),
+        token: Token::StrongDelimiter,
         end: head,
     })
 }
@@ -1668,7 +1670,7 @@ fn match_emphasis_delimiter<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> 
     }
 
     Some(ScanMatch {
-        token: Token::EmphasisDelimiter(EmphasisDelimiter),
+        token: Token::EmphasisDelimiter,
         end: head,
     })
 }
@@ -1683,7 +1685,7 @@ fn match_strikethrough_delimiter<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<
     }
 
     Some(ScanMatch {
-        token: Token::StrikethroughDelimiter(StrikethroughDelimiter),
+        token: Token::StrikethroughDelimiter,
         end: head,
     })
 }
@@ -1701,7 +1703,7 @@ fn match_code_delimiter<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
     }
 
     Some(ScanMatch {
-        token: Token::CodeDelimiter(CodeDelimiter),
+        token: Token::CodeDelimiter,
         end: head,
     })
 }
@@ -1746,7 +1748,7 @@ fn match_blockbreak<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
 
     if new_line_count > 1 {
         Some(ScanMatch {
-            token: Token::BlockBreak(BlockBreak),
+            token: Token::BlockBreak,
             end: head,
         })
     } else {
@@ -1764,7 +1766,7 @@ fn match_linebreak<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
     if head.current == Some(NEW_LINE) {
         head.read_next_char();
         Some(ScanMatch {
-            token: Token::LineBreak(LineBreak),
+            token: Token::LineBreak,
             end: head,
         })
     } else {
@@ -1781,7 +1783,7 @@ fn match_end_of_input<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
 
     if head.current == None {
         Some(ScanMatch {
-            token: Token::EndOfInput(EndOfInput),
+            token: Token::EndOfInput,
             end: head,
         })
     } else {
@@ -2015,7 +2017,7 @@ fn match_data_key_value_seperator<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch
     }
 
     Some(ScanMatch {
-        token: Token::DataKeyValueSeperator(DataKeyValueSeperator),
+        token: Token::DataKeyValueSeperator,
         end: head,
     })
 }
@@ -2034,7 +2036,7 @@ fn match_data_list_seperator<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>>
     }
 
     Some(ScanMatch {
-        token: Token::DataListSeperator(DataListSeperator),
+        token: Token::DataListSeperator,
         end: head,
     })
 }
@@ -2058,8 +2060,8 @@ fn match_data_directive<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
     let text = &scanner.input[i1..i2];
 
     let token = match text {
-        "metadata" => Token::MetadataDirective(MetadataDirective),
-        "references" => Token::ReferencesDirective(ReferencesDirective),
+        "metadata" => Token::MetadataDirective,
+        "references" => Token::ReferencesDirective,
         //TODO: Specialise
         _ => Token::Unknown(Unknown(text)),
     };
@@ -2109,9 +2111,9 @@ fn match_block_directive<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
     let text = &scanner.input[i1..i2];
 
     let token = match text {
-        "paragraph" => Token::ParagraphDirective(ParagraphDirective),
-        "list" => Token::ListDirective(ListDirective),
-        "code" => Token::CodeDirective(CodeDirective),
+        "paragraph" => Token::ParagraphDirective,
+        "list" => Token::ListDirective,
+        "code" => Token::CodeDirective,
         _ => Token::UnknownBlockDirective(UnknownBlockDirective(text)),
     };
 
@@ -2144,7 +2146,7 @@ fn match_subsection_directive<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>
     }
 
     Some(ScanMatch {
-        token: Token::SubSectionDirective(SubSectionDirective),
+        token: Token::SubSectionDirective,
         end: head,
     })
 }
@@ -2169,7 +2171,7 @@ fn match_section_directive<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
     }
 
     Some(ScanMatch {
-        token: Token::SectionDirective(SectionDirective),
+        token: Token::SectionDirective,
         end: head,
     })
 }
@@ -2188,7 +2190,7 @@ fn match_title_directive<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
     }
 
     Some(ScanMatch {
-        token: Token::TitleDirective(TitleDirective),
+        token: Token::TitleDirective,
         end: head,
     })
 }
@@ -2210,7 +2212,7 @@ fn match_container_start<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
     }
 
     Some(ScanMatch {
-        token: Token::DelimitedContainerStart(DelimitedContainerStart),
+        token: Token::DelimitedContainerStart,
         end: head,
     })
 }
@@ -2232,7 +2234,7 @@ fn match_container_end<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
     }
 
     Some(ScanMatch {
-        token: Token::DelimitedContainerEnd(DelimitedContainerEnd),
+        token: Token::DelimitedContainerEnd,
         end: head,
     })
 }
