@@ -82,6 +82,8 @@ pub enum Token<'a> {
     //TODO: More rubbish naming
     DelimitedContainerStart,
     DelimitedContainerEnd,
+    // TODO: dont need the indirection here?
+    // just have values in place?
     UnknownDirective(UnknownDirective<'a>),
     Unknown(Unknown<'a>),
     BlockParameterName(BlockParameterName<'a>),
