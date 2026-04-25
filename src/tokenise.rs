@@ -84,17 +84,18 @@ pub enum Token<'a> {
     DelimitedContainerEnd,
     // TODO: dont need the indirection here?
     // just have values in place?
-    UnknownDirective(UnknownDirective<'a>),
-    Unknown(Unknown<'a>),
-    BlockParameterName(BlockParameterName<'a>),
-    BlockParameterValue(BlockParameterValue<'a>),
-    DataIdentifier(DataIdentifier<'a>),
-    DataValue(DataValue<'a>),
-    TitleText(TitleText<'a>),
-    MarkupText(MarkupText<'a>),
-    RawFragment(RawFragment<'a>),
-    Code(Code<'a>),
-    ListBullet(ListBullet),
+    UnknownDirective(&'a str),
+    Unknown(&'a str),
+    BlockParameterName(&'a str),
+    BlockParameterValue(&'a str),
+    DataIdentifier(&'a str),
+    DataValue(&'a str),
+    TitleText(&'a str),
+    MarkupText(&'a str),
+    RawFragment(&'a str),
+    Code(&'a str),
+    //TODO: alias usize
+    ListBullet(usize),
 }
 
 impl<'a> Display for Token<'a> {
@@ -131,6 +132,7 @@ impl<'a> Display for Token<'a> {
             Token::CodeDelimiter => CodeDelimiter::NAME.into(),
             Token::DelimitedContainerStart => DelimitedContainerStart::NAME.into(),
             Token::DelimitedContainerEnd => DelimitedContainerEnd::NAME.into(),
+            //TODO: add name to these
             Token::UnknownDirective(t) => t.to_string(),
             Token::Unknown(t) => t.to_string(),
             Token::BlockParameterName(t) => t.to_string(),
@@ -357,7 +359,7 @@ impl<'a> TryFrom<Token<'a>> for DataValue<'a> {
 
     fn try_from(value: Token<'a>) -> Result<Self, Self::Error> {
         match value {
-            Token::DataValue(token) => Ok(token),
+            Token::DataValue(token) => Ok(Self(token)),
             _ => Err(()),
         }
     }
@@ -368,7 +370,7 @@ impl<'a> TryFrom<Token<'a>> for DataIdentifier<'a> {
 
     fn try_from(value: Token<'a>) -> Result<Self, Self::Error> {
         match value {
-            Token::DataIdentifier(token) => Ok(token),
+            Token::DataIdentifier(token) => Ok(Self(token)),
             _ => Err(()),
         }
     }
@@ -379,7 +381,7 @@ impl<'a> TryFrom<Token<'a>> for TitleText<'a> {
 
     fn try_from(value: Token<'a>) -> Result<Self, Self::Error> {
         match value {
-            Token::TitleText(token) => Ok(token),
+            Token::TitleText(token) => Ok(Self(token)),
             _ => Err(()),
         }
     }
@@ -390,7 +392,7 @@ impl<'a> TryFrom<Token<'a>> for BlockParameterName<'a> {
 
     fn try_from(value: Token<'a>) -> Result<Self, Self::Error> {
         match value {
-            Token::BlockParameterName(token) => Ok(token),
+            Token::BlockParameterName(token) => Ok(Self(token)),
             _ => Err(()),
         }
     }
@@ -401,7 +403,7 @@ impl<'a> TryFrom<Token<'a>> for BlockParameterValue<'a> {
 
     fn try_from(value: Token<'a>) -> Result<Self, Self::Error> {
         match value {
-            Token::BlockParameterValue(token) => Ok(token),
+            Token::BlockParameterValue(token) => Ok(Self(token)),
             _ => Err(()),
         }
     }
@@ -412,7 +414,7 @@ impl<'a> TryFrom<Token<'a>> for RawFragment<'a> {
 
     fn try_from(value: Token<'a>) -> Result<Self, Self::Error> {
         match value {
-            Token::RawFragment(token) => Ok(token),
+            Token::RawFragment(token) => Ok(Self(token)),
             _ => Err(()),
         }
     }
@@ -423,7 +425,7 @@ impl<'a> TryFrom<Token<'a>> for MarkupText<'a> {
 
     fn try_from(value: Token<'a>) -> Result<Self, Self::Error> {
         match value {
-            Token::MarkupText(token) => Ok(token),
+            Token::MarkupText(token) => Ok(Self(token)),
             _ => Err(()),
         }
     }
@@ -434,7 +436,7 @@ impl<'a> TryFrom<Token<'a>> for Code<'a> {
 
     fn try_from(value: Token<'a>) -> Result<Self, Self::Error> {
         match value {
-            Token::Code(token) => Ok(token),
+            Token::Code(token) => Ok(Self(token)),
             _ => Err(()),
         }
     }
@@ -445,7 +447,7 @@ impl<'a> TryFrom<Token<'a>> for ListBullet {
 
     fn try_from(value: Token<'a>) -> Result<Self, Self::Error> {
         match value {
-            Token::ListBullet(token) => Ok(token),
+            Token::ListBullet(token) => Ok(Self(token)),
             _ => Err(()),
         }
     }
@@ -707,7 +709,7 @@ impl<'a> TryFrom<Token<'a>> for Unknown<'a> {
 
     fn try_from(value: Token<'a>) -> Result<Self, Self::Error> {
         match value {
-            Token::Unknown(token) => Ok(token),
+            Token::Unknown(token) => Ok(Self(token)),
             _ => Err(()),
         }
     }
@@ -784,7 +786,7 @@ impl<'a> TryFrom<Token<'a>> for UnknownDirective<'a> {
 
     fn try_from(value: Token<'a>) -> Result<Self, Self::Error> {
         match value {
-            Token::UnknownDirective(token) => Ok(token),
+            Token::UnknownDirective(token) => Ok(Self(token)),
             _ => Err(()),
         }
     }
@@ -1420,7 +1422,7 @@ fn match_list_bullet<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
     }
 
     Some(ScanMatch {
-        token: Token::ListBullet(ListBullet(space_count)),
+        token: Token::ListBullet(space_count),
         end: head,
     })
 }
@@ -1718,7 +1720,7 @@ fn match_code_block<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
             let i2 = head.index;
             let text = &scanner.input[i1..i2];
             return Some(ScanMatch {
-                token: Token::Code(Code(text)),
+                token: Token::Code(text),
                 end: head,
             });
         } else if head.current == None {
@@ -1810,7 +1812,7 @@ fn match_escaped_markup_text<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>>
     let text = &scanner.input[i1..i2];
 
     Some(ScanMatch {
-        token: Token::MarkupText(MarkupText(text)),
+        token: Token::MarkupText(text),
         end: head,
     })
 }
@@ -1834,7 +1836,7 @@ fn match_raw_fragment<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
         None
     } else {
         Some(ScanMatch {
-            token: Token::RawFragment(RawFragment(text)),
+            token: Token::RawFragment(text),
             end: head,
         })
     }
@@ -1864,7 +1866,7 @@ fn match_data_value<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
     } else {
         Some(ScanMatch {
             //TODO: meh amounts of ceremony here
-            token: Token::DataValue(DataValue(text)),
+            token: Token::DataValue(text),
             end: head,
         })
     }
@@ -1886,7 +1888,7 @@ fn match_markup_text<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
         None
     } else {
         Some(ScanMatch {
-            token: Token::MarkupText(MarkupText(text)),
+            token: Token::MarkupText(text),
             end: head,
         })
     }
@@ -1908,7 +1910,7 @@ fn match_title_text<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
         None
     } else {
         Some(ScanMatch {
-            token: Token::TitleText(TitleText(text)),
+            token: Token::TitleText(text),
             end: head,
         })
     }
@@ -1938,7 +1940,7 @@ fn match_parameter_value<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
     }
 
     Some(ScanMatch {
-        token: Token::BlockParameterValue(BlockParameterValue(text)),
+        token: Token::BlockParameterValue(text),
         end: head,
     })
 }
@@ -1967,7 +1969,7 @@ fn match_parameter_name<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
     }
 
     Some(ScanMatch {
-        token: Token::BlockParameterName(BlockParameterName(text)),
+        token: Token::BlockParameterName(text),
         end: head,
     })
 }
@@ -1996,7 +1998,7 @@ fn match_data_identifier<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
     }
 
     Some(ScanMatch {
-        token: Token::DataIdentifier(DataIdentifier(text)),
+        token: Token::DataIdentifier(text),
         end: head,
     })
 }
@@ -2061,7 +2063,7 @@ fn match_data_directive<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
     let token = match text {
         "@metadata" => Token::MetadataDirective,
         "@references" => Token::ReferencesDirective,
-        _ => Token::UnknownDirective(UnknownDirective(text)),
+        _ => Token::UnknownDirective(text),
     };
 
     Some(ScanMatch { token, end: head })
@@ -2087,7 +2089,7 @@ fn match_container_directive<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>>
 
     let token = match text {
         "!info" => Token::InfoContainerDirective,
-        _ => Token::UnknownDirective(UnknownDirective(text)),
+        _ => Token::UnknownDirective(text),
     };
 
     Some(ScanMatch { token, end: head })
@@ -2116,7 +2118,7 @@ fn match_block_directive<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
         "#paragraph" => Token::ParagraphDirective,
         "#list" => Token::ListDirective,
         "#code" => Token::CodeDirective,
-        _ => Token::UnknownDirective(UnknownDirective(text)),
+        _ => Token::UnknownDirective(text),
     };
 
     Some(ScanMatch { token, end: head })
@@ -2254,7 +2256,7 @@ fn match_unknown<'a>(scanner: &Scanner<'a>) -> ScanMatch<'a> {
     let text = &scanner.input[i1..i2];
 
     ScanMatch {
-        token: Token::Unknown(Unknown(text)),
+        token: Token::Unknown(text),
         end: head,
     }
 }

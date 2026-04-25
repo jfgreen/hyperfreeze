@@ -277,7 +277,7 @@ fn parse_header_text(tokeniser: &mut Tokeniser) -> ParseResult<String> {
     loop {
         let next = tokeniser.peek();
         match next.value {
-            Token::TitleText(TitleText(text)) => {
+            Token::TitleText(text) => {
                 title.push_str(text);
                 tokeniser.advance();
             }
@@ -500,7 +500,7 @@ fn parse_block(tokeniser: &mut Tokeniser) -> ParseResult<Block> {
         Token::ReferencesDirective => {
             return parse_err!(ErrorKind::ReferencesOutOfPlace, next.position);
         }
-        Token::UnknownDirective(UnknownDirective(name)) => {
+        Token::UnknownDirective(name) => {
             let err = ErrorKind::UnknownDirective(name.into());
             return parse_err!(err, next.position);
         }
