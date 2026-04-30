@@ -530,6 +530,7 @@ fn is_markup(token: Token) -> bool {
             | Token::EmphasisDelimiter
             | Token::StrongDelimiter
             | Token::StrikethroughDelimiter
+            | Token::MarkupText(_)
     )
 }
 
@@ -2301,7 +2302,8 @@ mod test {
             "<<<"
         );
 
-        let expected = ErrorKind::UnexpectedToken("expected: linebreak, got: markup text".into());
+        let expected =
+            ErrorKind::UnexpectedToken("expected: linebreak, got: markup text 'squeek'".into());
 
         assert_parse_fails(input, expected);
     }
@@ -2315,7 +2317,8 @@ mod test {
             "<<<toy"
         );
 
-        let expected = ErrorKind::UnexpectedToken("expected: block break, got: markup text".into());
+        let expected =
+            ErrorKind::UnexpectedToken("expected: block break, got: markup text 'toy'".into());
 
         assert_parse_fails(input, expected);
     }
