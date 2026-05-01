@@ -96,11 +96,12 @@ impl ParseError {
     }
 
     fn write_backtrace(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        Ok(if self.backtrace.status() == BacktraceStatus::Captured {
+        if self.backtrace.status() == BacktraceStatus::Captured {
             writeln!(f)?;
             writeln!(f, "Parse backtrace:")?;
             writeln!(f, "{}", self.backtrace)?;
-        })
+        }
+        Ok(())
     }
 }
 

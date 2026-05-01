@@ -318,9 +318,6 @@ pub struct DelimitedContainerStart;
 pub struct DelimitedContainerEnd;
 
 #[derive(Clone, Copy, Debug)]
-pub struct ContainerDirective<'a>(pub &'a str);
-
-#[derive(Clone, Copy, Debug)]
 pub struct BlockParameterName<'a>(pub &'a str);
 
 #[derive(Clone, Copy, Debug)]
@@ -951,145 +948,181 @@ impl<'a> TokenSpec<'a> for UnknownDirective<'a> {
 }
 
 //TODO: these should contain value for value tokens
-impl<'a> Display for EndOfInput {
+impl Display for EndOfInput {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         f.write_str(Self::NAME)
     }
 }
 
-impl<'a> Display for TitleDirective {
+impl Display for TitleDirective {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         f.write_str(Self::NAME)
     }
 }
 
-impl<'a> Display for SectionDirective {
+impl Display for SectionDirective {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         f.write_str(Self::NAME)
     }
 }
 
-impl<'a> Display for SubSectionDirective {
+impl Display for SubSectionDirective {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         f.write_str(Self::NAME)
     }
 }
 
-impl<'a> Display for BlockParametersStart {
+impl Display for BlockParametersStart {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         f.write_str(Self::NAME)
     }
 }
 
-impl<'a> Display for BlockParametersEnd {
+impl Display for BlockParametersEnd {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         f.write_str(Self::NAME)
     }
 }
 
-impl<'a> Display for BlockParameterNameValueSeperator {
+impl Display for BlockParameterNameValueSeperator {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         f.write_str(Self::NAME)
     }
 }
 
-impl<'a> Display for BlockBreak {
+impl Display for BlockBreak {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         f.write_str(Self::NAME)
     }
 }
 
-impl<'a> Display for DataListSeperator {
+impl Display for DataListSeperator {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         f.write_str(Self::NAME)
     }
 }
 
-impl<'a> Display for DataKeyValueSeperator {
+impl Display for DataKeyValueSeperator {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         f.write_str(Self::NAME)
     }
 }
 
-impl<'a> Display for TitleTextSpace {
+impl Display for TitleTextSpace {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         f.write_str(Self::NAME)
     }
 }
 
-impl<'a> Display for LineBreak {
+impl Display for LineBreak {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         f.write_str(Self::NAME)
     }
 }
 
-impl<'a> Display for StrongDelimiter {
+impl Display for StrongDelimiter {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         f.write_str(Self::NAME)
     }
 }
 
-impl<'a> Display for EmphasisDelimiter {
+impl Display for EmphasisDelimiter {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         f.write_str(Self::NAME)
     }
 }
 
-impl<'a> Display for StrikethroughDelimiter {
+impl Display for StrikethroughDelimiter {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         f.write_str(Self::NAME)
     }
 }
 
-impl<'a> Display for RawDelimiter {
+impl Display for RawDelimiter {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         f.write_str(Self::NAME)
     }
 }
 
-impl<'a> Display for MarkupTextSpace {
+impl Display for MarkupTextSpace {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         f.write_str(Self::NAME)
     }
 }
 
-impl<'a> Display for LinkOpeningDelimiter {
+impl Display for LinkOpeningDelimiter {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         f.write_str(Self::NAME)
     }
 }
 
-impl<'a> Display for LinkClosingDelimiter {
+impl Display for LinkClosingDelimiter {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         f.write_str(Self::NAME)
     }
 }
 
-impl<'a> Display for LinkToReferenceJoiner {
+impl Display for LinkToReferenceJoiner {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         f.write_str(Self::NAME)
     }
 }
 
-impl<'a> Display for CodeDelimiter {
+impl Display for CodeDelimiter {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         f.write_str(Self::NAME)
     }
 }
 
-impl<'a> Display for DelimitedContainerStart {
+impl Display for DelimitedContainerStart {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         f.write_str(Self::NAME)
     }
 }
 
-impl<'a> Display for DelimitedContainerEnd {
+impl Display for DelimitedContainerEnd {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.write_str(Self::NAME)
+    }
+}
+
+impl Display for ListBullet {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         f.write_str(Self::NAME)
     }
 }
 
 impl<'a> Display for Unknown<'a> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.write_str(Self::NAME)
+    }
+}
+
+impl Display for MetadataDirective {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.write_str(Self::NAME)
+    }
+}
+
+impl Display for ReferencesDirective {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.write_str(Self::NAME)
+    }
+}
+
+impl Display for ParagraphDirective {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.write_str(Self::NAME)
+    }
+}
+
+impl Display for ListDirective {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.write_str(Self::NAME)
+    }
+}
+
+impl Display for CodeDirective {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         f.write_str(Self::NAME)
     }
@@ -1138,42 +1171,6 @@ impl<'a> Display for RawFragment<'a> {
 }
 
 impl<'a> Display for Code<'a> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        f.write_str(Self::NAME)
-    }
-}
-
-impl<'a> Display for ListBullet {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        f.write_str(Self::NAME)
-    }
-}
-
-impl<'a> Display for MetadataDirective {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        f.write_str(Self::NAME)
-    }
-}
-
-impl<'a> Display for ReferencesDirective {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        f.write_str(Self::NAME)
-    }
-}
-
-impl<'a> Display for ParagraphDirective {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        f.write_str(Self::NAME)
-    }
-}
-
-impl<'a> Display for ListDirective {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        f.write_str(Self::NAME)
-    }
-}
-
-impl<'a> Display for CodeDirective {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         f.write_str(Self::NAME)
     }
@@ -1378,7 +1375,7 @@ impl<'a> Scanner<'a> {
 
     fn skip_while_on_empty_line(&mut self) {
         while self.is_on_empty_line() {
-            while self.input[self.read_head.index..].starts_with(&[SPACE, NEW_LINE]) {
+            while self.input[self.read_head.index..].starts_with([SPACE, NEW_LINE]) {
                 self.read_head.read_next_char();
             }
         }
@@ -1457,9 +1454,7 @@ fn match_markup_text_space<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
         return None;
     }
 
-    if head.current == None {
-        return None;
-    }
+    head.current?;
 
     Some(ScanMatch {
         token: Token::MarkupTextSpace,
@@ -1503,9 +1498,7 @@ fn match_list_markup_text_space<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'
         return None;
     }
 
-    if head.current == None {
-        return None;
-    }
+    head.current?;
 
     Some(ScanMatch {
         token: Token::MarkupTextSpace,
@@ -1721,7 +1714,7 @@ fn match_code_block<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
                 token: Token::Code(text),
                 end: head,
             });
-        } else if head.current == None {
+        } else if head.current.is_none() {
             return None;
         } else {
             head.read_next_char();
@@ -1779,7 +1772,7 @@ fn match_end_of_input<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
         head.read_next_char();
     }
 
-    if head.current == None {
+    if head.current.is_none() {
         Some(ScanMatch {
             token: Token::EndOfInput,
             end: head,
