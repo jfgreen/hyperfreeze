@@ -17,11 +17,40 @@ mod tokenise;
 
 // TODO:
 // Features to build
-// - References
+// - Footnotes
 // - Better error reporting -> what went wrong, where
 // - Consider enforcing a system for IDs, e.g J Decimal
 // - Consider enforcing basic metadata?
 // - Strip leading/trailing whitespace from para
+// - Consider: optional title and/or description on references
+// - Support other kinds of container (warn, etc)
+// - Support some kind of term (aka definiton) list
+// - Allow un-delimited code blocks
+// - Specific error for unterminated style delimiter
+// - Specific error for nested style delimiter
+// - Consider: Should a container have a title?
+// - Consider: ignorable indenting on delimited content
+// e.g
+// !info
+// >>>
+//   Some cats are actually quite naughty.
+//
+//   Yes.
+//
+//   #code
+//   ---
+//   def meow():
+//     print("MEooowww!")
+//   ---
+// <<<
+//
+// Robustness enhancements
+// - Ensure containers can not hold sections
+// - Test for doc that ends with escape '\'
+// - Test for leading whitespace like '    / Hello'
+// - Test for missing reference
+// - Test we cant have sections or sub sections in containers
+// - Test code block missing ending delimiter has an informative error
 //
 // Approaches to try out
 // - Fuzz testing

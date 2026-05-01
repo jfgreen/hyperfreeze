@@ -133,8 +133,18 @@ type ParseResult<T> = Result<T, ParseError>;
 
 const SPACE: char = ' ';
 
-// TODO: Ensure containers can not hold sections
-// TODO: Test for doc that ends with escape '\'
+fn is_markup(token: Token) -> bool {
+    matches!(
+        token,
+        Token::MarkupTextSpace
+            | Token::LinkOpeningDelimiter
+            | Token::RawDelimiter
+            | Token::EmphasisDelimiter
+            | Token::StrongDelimiter
+            | Token::StrikethroughDelimiter
+            | Token::MarkupText(_)
+    )
+}
 
 pub fn parse_str(input: &str) -> Result<Document, ParseError> {
     let tokeniser = &mut Tokeniser::new(input);
@@ -142,11 +152,10 @@ pub fn parse_str(input: &str) -> Result<Document, ParseError> {
 }
 
 fn parse_document(tokeniser: &mut Tokeniser) -> ParseResult<Document> {
-    let mut elements = Vec::new();
-
     let mut title = None;
     let mut metadata = Metadata::default();
     let mut references = Vec::new();
+    let mut elements = Vec::new();
 
     tokeniser.push_mode(ScanMode::BlockStart);
 
@@ -174,8 +183,8 @@ fn parse_document(tokeniser: &mut Tokeniser) -> ParseResult<Document> {
     Ok(Document {
         title,
         metadata,
-        contents: elements.into_boxed_slice(),
         references: references.into_boxed_slice(),
+        contents: elements.into_boxed_slice(),
     })
 }
 
@@ -334,7 +343,6 @@ fn parse_element(tokeniser: &mut Tokeniser) -> ParseResult<Element> {
     }
 }
 
-// TODO: Ensure containers can not hold sections
 fn parse_container(tokeniser: &mut Tokeniser) -> ParseResult<Container> {
     tokeniser.advance().expect::<InfoContainerDirective>()?;
 
@@ -350,7 +358,6 @@ fn parse_container(tokeniser: &mut Tokeniser) -> ParseResult<Container> {
         return parse_err!(ErrorKind::EmptyContainer, next.position);
     }
 
-    //TODO: Support other kinds of container
     let container_kind = ContainerKind::Info;
 
     let mut blocks = Vec::new();
@@ -360,7 +367,6 @@ fn parse_container(tokeniser: &mut Tokeniser) -> ParseResult<Container> {
 
         tokeniser.advance().expect::<LineBreak>()?;
 
-        //TODO: use expect and into instead to specialise error?
         let next = tokeniser.peek();
         if next.is::<DelimitedContainerEnd>() {
             return parse_err!(ErrorKind::EmptyContainer, next.position);
@@ -469,10 +475,9 @@ fn parse_subsection(tokeniser: &mut Tokeniser) -> ParseResult<SubSection> {
 fn parse_subsection_element(tokeniser: &mut Tokeniser) -> ParseResult<SubSectionElement> {
     let next = tokeniser.peek();
     match next.value {
-        // TODO: Test for this?
-        // TitleDirective => {
-        //     parse_err!(TitleNotAtStart, token.position)
-        // }
+        Token::TitleDirective => {
+            parse_err!(ErrorKind::TitleNotAtStart, next.position)
+        }
         Token::SubSectionDirective => {
             todo!("not allow")
         }
@@ -519,19 +524,6 @@ fn parse_block(tokeniser: &mut Tokeniser) -> ParseResult<Block> {
     }
 
     Ok(block)
-}
-
-fn is_markup(token: Token) -> bool {
-    matches!(
-        token,
-        Token::MarkupTextSpace
-            | Token::LinkOpeningDelimiter
-            | Token::RawDelimiter
-            | Token::EmphasisDelimiter
-            | Token::StrongDelimiter
-            | Token::StrikethroughDelimiter
-            | Token::MarkupText(_)
-    )
 }
 
 fn parse_paragraph(tokeniser: &mut Tokeniser) -> ParseResult<Block> {
@@ -595,7 +587,6 @@ fn parse_list_level(
     Ok(items)
 }
 
-//TODO: support some kind of term (aka definiton) list
 fn parse_list(tokeniser: &mut Tokeniser) -> ParseResult<Block> {
     let mut style = ListStyle::Unordered;
 
@@ -868,23 +859,7 @@ fn parse_code(tokeniser: &mut Tokeniser) -> ParseResult<Block> {
     Ok(block)
 }
 
-//TODO: Allow ignorable indenting on delimited content
-// e.g
-// !info
-// >>>
-//   Some cats are actually quite naughty.
-//
-//   Yes.
-//
-//   #code
-//   ---
-//   def meow():
-//     print("MEooowww!")
-//   ---
-// <<<
-
 //TODO: Implement a concat with auto newlines macro?
-//TODO: test for leading whitespace like '    / Hello'
 #[cfg(test)]
 mod test {
     use super::*;
@@ -1918,7 +1893,6 @@ mod test {
     fn strikethrough_with_double_linebreak() {
         let input = "~Erm...\n\nmeow?~";
 
-        //TODO: Would be much better to have a specific error for unterminated style delimiter
         let expected = ErrorKind::UnexpectedToken(
             "expected: strikethrough delimiter, got: block break".into(),
         );
@@ -1963,7 +1937,6 @@ mod test {
     fn nested_styled_text() {
         let input = "_*meow!*_";
 
-        //TODO: We should have an explicit error for nested styled text
         let expected = ErrorKind::UnexpectedToken(
             "expected: emphasis delimiter, got: strong delimiter".into(),
         );
@@ -2205,6 +2178,21 @@ mod test {
     fn doc_title_in_section() {
         let input = concat!(
             "// Some important document section\n",
+            "\n",
+            "/Some Document Title"
+        );
+
+        let expected = ErrorKind::TitleNotAtStart;
+
+        assert_parse_fails(input, expected);
+    }
+
+    #[test]
+    fn doc_title_in_sub_section() {
+        let input = concat!(
+            "// Some important document section\n",
+            "\n",
+            "/// Some important document sub section\n",
             "\n",
             "/Some Document Title"
         );
@@ -2553,8 +2541,6 @@ mod test {
     fn list_with_emphasis_over_multiple_points() {
         let input = "- f_oo\n  -ba_r";
 
-        //TODO: Could we have more helpful, more specific error messages
-        // e.g. UnterminatedEmphasis
         let expected =
             ErrorKind::UnexpectedToken("expected: emphasis delimiter, got: linebreak".into());
 
@@ -2780,11 +2766,6 @@ mod test {
 
         assert_parse_succeeds(input, expected);
     }
-
-    // TODO: test missing reference
-    // TODO: Allow un-delimited code blocks
-    // TODO: Test we cant have sections or sub sections in containers
-    // TODO: Test code block missing ending delimiter has an informative error
 
     #[test]
     fn code_block() {

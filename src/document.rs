@@ -1,14 +1,9 @@
-// TODO: Is trying to pull out certain elements upfront a bit unwieldy?
-// Easier just to have plain document tree?
-// But would have to do a second pass?
-// Compromise: store index of certain important elements?
-
 #[derive(PartialEq, Eq, Debug, Default)]
 pub struct Document {
     pub title: Option<String>,
     pub metadata: Metadata,
-    pub contents: Box<[Element]>,
     pub references: Box<[Reference]>,
+    pub contents: Box<[Element]>,
 }
 
 #[derive(PartialEq, Eq, Debug, Default)]
@@ -17,7 +12,6 @@ pub struct Metadata {
     pub tags: Option<Box<[String]>>,
 }
 
-//TODO: Might be nice to also have an optional title and/or description
 #[derive(PartialEq, Eq, Debug)]
 pub struct Reference {
     pub id: String,
@@ -44,7 +38,6 @@ pub enum SubSectionElement {
     Container(Container),
 }
 
-//TODO: Footnotes
 #[derive(PartialEq, Eq, Debug)]
 pub enum Block {
     Paragraph(Box<[TextRun]>),
@@ -52,7 +45,6 @@ pub enum Block {
     Code(String),
 }
 
-//TODO: Should a container have a title?
 #[derive(PartialEq, Eq, Debug)]
 pub struct Container {
     pub content: Box<[Block]>,
@@ -74,7 +66,6 @@ pub struct SubSection {
 #[derive(PartialEq, Eq, Debug)]
 pub enum ContainerKind {
     Info,
-    //TODO: Other kinds of alert
 }
 
 #[derive(PartialEq, Eq, Debug)]
