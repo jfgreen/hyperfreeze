@@ -792,7 +792,7 @@ impl<'a> TokenSpec<'a> for EndOfInput {
 }
 
 impl<'a> TokenSpec<'a> for TitleDirective {
-    const NAME: &'static str = "document directive";
+    const NAME: &'static str = "title directive";
 }
 
 impl<'a> TokenSpec<'a> for SectionDirective {
@@ -1184,6 +1184,7 @@ impl<'a> Display for UnknownDirective<'a> {
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum ScanMode {
+    //TODO: Should BlockStart be element start?
     BlockStart,
     Markup,
     ListMarkup,

@@ -6,7 +6,6 @@ use crate::document::*;
 pub fn render_html(document: &Document, out: &mut impl io::Write) -> io::Result<()> {
     //FIXME: Decide on if to enforce this, or to have a fallback?
     let title = &document.title;
-    let title = title.as_ref().expect("document should have title");
 
     writeln!(out, "<!DOCTYPE html>")?;
     writeln!(out, "<html>")?;

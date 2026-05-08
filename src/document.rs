@@ -1,6 +1,6 @@
 #[derive(PartialEq, Eq, Debug, Default)]
 pub struct Document {
-    pub title: Option<String>,
+    pub title: String,
     pub metadata: Metadata,
     pub references: Box<[Reference]>,
     pub contents: Box<[Element]>,

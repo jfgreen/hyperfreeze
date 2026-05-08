@@ -17,9 +17,11 @@ enum ErrorKind {
     LooseDelimiter,
     EmptyDelimitedText,
     MissingListLevel((usize, usize)),
-    TitleNotAtStart,
     MetadataNotAtStart,
     ReferencesOutOfPlace,
+    //TODO: these strings all have to be specific kinds of thing
+    // Can we use a newtype pattern, e.g TokenName('static str)?
+    // or if we need lexeme/value from input TokenDesc(String)
     UnexpectedToken(String),
     UnknownMetadata(String),
     UnevenListIndent(usize),
@@ -27,6 +29,8 @@ enum ErrorKind {
     ContainerMissingStart,
     EmptyContainer,
     UnterminatedRawTextRun,
+    UnexpectedBlockStart(String),
+    SubSectionNotNested,
 }
 
 impl Display for ParseError {
@@ -65,14 +69,11 @@ impl ParseError {
             MissingListLevel((from, to)) => {
                 write!(f, "list indent skipped from {} to {}", from, to)
             }
-            TitleNotAtStart => {
-                write!(f, "document title is not at start of document")
-            }
             MetadataNotAtStart => {
                 write!(f, "document metadata is not at start of document")
             }
             ReferencesOutOfPlace => {
-                write!(f, "references not in at start of document")
+                write!(f, "references not at start of document")
             }
             UnexpectedToken(message) => {
                 write!(f, "unexpected token, {}", message)
@@ -91,6 +92,12 @@ impl ParseError {
             }
             UnterminatedRawTextRun => {
                 write!(f, "unterminated raw text run")
+            }
+            UnexpectedBlockStart(actual) => {
+                write!(f, "expected start of block, got '{}'", actual)
+            }
+            SubSectionNotNested => {
+                write!(f, "subsection not inside an enclosing section")
             }
         }
     }
@@ -153,7 +160,6 @@ pub fn parse_str(input: &str) -> Result<Document, ParseError> {
 }
 
 fn parse_document(tokeniser: &mut Tokeniser) -> ParseResult<Document> {
-    let mut title = None;
     let mut metadata = Metadata::default();
     let mut references = Vec::new();
     let mut elements = Vec::new();
@@ -169,10 +175,7 @@ fn parse_document(tokeniser: &mut Tokeniser) -> ParseResult<Document> {
         references.extend(refs);
     }
 
-    if tokeniser.peek().is::<TitleDirective>() {
-        let heading = parse_document_title(tokeniser)?;
-        title = Some(heading);
-    }
+    let title = parse_document_title(tokeniser)?;
 
     while !tokeniser.peek().is::<EndOfInput>() {
         let element = parse_element(tokeniser)?;
@@ -323,9 +326,6 @@ fn parse_metadata_list(tokeniser: &mut Tokeniser) -> ParseResult<Box<[String]>> 
 fn parse_element(tokeniser: &mut Tokeniser) -> ParseResult<Element> {
     let next = tokeniser.peek();
     match next.value {
-        Token::TitleDirective => {
-            parse_err!(ErrorKind::TitleNotAtStart, next.position)
-        }
         Token::SectionDirective => {
             let section = parse_section(tokeniser)?;
             Ok(Element::Section(section))
@@ -335,7 +335,7 @@ fn parse_element(tokeniser: &mut Tokeniser) -> ParseResult<Element> {
             Ok(Element::Container(container))
         }
         Token::SubSectionDirective => {
-            todo!("reject subsection for not being inside a section");
+            parse_err!(ErrorKind::SubSectionNotNested, next.position)
         }
         _ => {
             let block = parse_block(tokeniser)?;
@@ -423,12 +423,8 @@ fn parse_section(tokeniser: &mut Tokeniser) -> ParseResult<Section> {
 }
 
 fn parse_section_element(tokeniser: &mut Tokeniser) -> ParseResult<SectionElement> {
-    //TODO: Very simmilar to parse_element, possible re-use?
     let peeked = tokeniser.peek();
     match peeked.value {
-        Token::TitleDirective => {
-            parse_err!(ErrorKind::TitleNotAtStart, peeked.position)
-        }
         Token::SubSectionDirective => {
             let subsection = parse_subsection(tokeniser)?;
             Ok(SectionElement::SubSection(subsection))
@@ -476,9 +472,6 @@ fn parse_subsection(tokeniser: &mut Tokeniser) -> ParseResult<SubSection> {
 fn parse_subsection_element(tokeniser: &mut Tokeniser) -> ParseResult<SubSectionElement> {
     let next = tokeniser.peek();
     match next.value {
-        Token::TitleDirective => {
-            parse_err!(ErrorKind::TitleNotAtStart, next.position)
-        }
         Token::SubSectionDirective => {
             todo!("not allow")
         }
@@ -514,7 +507,12 @@ fn parse_block(tokeniser: &mut Tokeniser) -> ParseResult<Block> {
             return parse_err!(ErrorKind::ContainerMissingStart, next.position);
         }
         t if is_markup(t) => parse_paragraph(tokeniser)?,
-        _ => todo!("write tests for this"),
+        other => {
+            return parse_err!(
+                ErrorKind::UnexpectedBlockStart(other.to_string()),
+                next.position
+            );
+        }
     };
 
     let next = tokeniser.peek();
@@ -905,7 +903,7 @@ mod test {
 
     macro_rules! document_field {
         (title $value:expr) => {
-            Some(String::from($value))
+            String::from($value)
         };
         (metadata $($token:tt)+) => {
             build_metadata!({} $($token)+)
@@ -1117,46 +1115,31 @@ mod test {
 
     macro_rules! info {
         ($($content:tt)*) => {
-            Document {
-                contents: Box::new([element!(info $($content)*)]),
-                ..Default::default()
-            }
+            Box::new([element!(info $($content)*)])
         }
     }
 
     macro_rules! list {
         ($($content:tt)*) => {
-            Document {
-                contents: Box::new([element!(list $($content)*)]),
-                ..Default::default()
-            }
+            Box::new([element!(list $($content)*)])
         }
     }
 
     macro_rules! ordered_list {
         ($($content:tt)*) => {
-            Document {
-                contents: Box::new([element!(ordered_list $($content)*)]),
-                ..Default::default()
-            }
+            Box::new([element!(ordered_list $($content)*)])
         }
     }
 
     macro_rules! paragraph {
         ($($content:tt)*) => {
-            Document {
-                contents: Box::new([element!(paragraph $($content)*)]),
-                ..Default::default()
-            }
+            Box::new([element!(paragraph $($content)*)])
         }
     }
 
     macro_rules! code {
         ($($content:tt)*) => {
-            Document {
-                contents: Box::new([element!(code $($content)*)]),
-                ..Default::default()
-            }
+            Box::new([element!(code $($content)*)])
         }
     }
 
@@ -1169,16 +1152,13 @@ mod test {
             ),*
             $(,)?
         ) => {
-            Document {
-                contents: Box::new(
-                    [$(element!(
-                        $element_type
-                        $(($element_name))?
-                        $($element_content)*
-                    ),)*]
-                ),
-                ..Default::default()
-            }
+            Box::new(
+                [$(element!(
+                    $element_type
+                    $(($element_name))?
+                    $($element_content)*
+                ),)*]
+            )
         }
     }
 
@@ -1224,28 +1204,36 @@ mod test {
         }
     }
 
-    fn assert_parse_succeeds<T: Into<Document>>(input: &'static str, expected: T) {
-        let expected = expected.into();
-        let result = parse_str(input);
+    // --
 
-        match result {
-            Ok(doc) => {
-                if doc != expected {
-                    eprintln!("Actual:\n{:#?}", doc);
-                    eprintln!("Expected:\n{:#?}", expected);
-                    panic!("Parsed document not what was expected")
-                }
-            }
-            Err(error) => {
-                eprintln!("{}", error);
-                panic!("parse unexpectedly failed")
-            }
+    fn parse_document_str(document: &'static str) -> ParseResult<Document> {
+        parse_str(&document)
+    }
+
+    fn parse_content_str(content: &'static str) -> ParseResult<Document> {
+        let content_with_title = "/ Some Document\n\n".to_string() + content;
+        parse_str(&content_with_title)
+    }
+
+    fn assert_document_eq(result: ParseResult<Document>, expected: Document) {
+        let doc = expect_successful_parse(result);
+        if doc != expected {
+            eprintln!("Actual:\n{:#?}", doc);
+            eprintln!("Expected:\n{:#?}", expected);
+            panic!("Parsed content not what was expected")
         }
     }
 
-    fn assert_parse_fails(input: &'static str, expected: ErrorKind) {
-        let result = parse_str(input);
+    fn assert_content_eq(result: ParseResult<Document>, expected: Box<[Element]>) {
+        let doc = expect_successful_parse(result);
+        if doc.contents != expected {
+            eprintln!("Actual:\n{:#?}", doc.contents);
+            eprintln!("Expected:\n{:#?}", expected);
+            panic!("Parsed content not what was expected")
+        }
+    }
 
+    fn assert_parse_fails(result: ParseResult<Document>, expected: ErrorKind) {
         match result {
             Ok(doc) => {
                 eprintln!("Expected parse to fail, but got doc:");
@@ -1261,6 +1249,16 @@ mod test {
 
                     panic!("Failed with wrong kind of error")
                 }
+            }
+        }
+    }
+
+    fn expect_successful_parse(result: ParseResult<Document>) -> Document {
+        match result {
+            Ok(doc) => doc,
+            Err(error) => {
+                eprintln!("{}", error);
+                panic!("parse unexpectedly failed")
             }
         }
     }
@@ -1335,7 +1333,8 @@ mod test {
             }
         );
 
-        assert_parse_succeeds(input, expected);
+        let result = parse_document_str(input);
+        assert_document_eq(result, expected);
     }
 
     #[test]
@@ -1344,7 +1343,8 @@ mod test {
 
         let expected = paragraph! { text("We like cats very much") };
 
-        assert_parse_succeeds(input, expected);
+        let result = parse_content_str(input);
+        assert_content_eq(result, expected);
     }
 
     #[test]
@@ -1353,7 +1353,8 @@ mod test {
 
         let expected = paragraph! { text("Cats go meeow!") };
 
-        assert_parse_succeeds(input, expected);
+        let result = parse_content_str(input);
+        assert_content_eq(result, expected);
     }
 
     #[test]
@@ -1362,7 +1363,8 @@ mod test {
 
         let expected = ErrorKind::UnexpectedToken("expected: linebreak, got: block break".into());
 
-        assert_parse_fails(input, expected);
+        let result = parse_content_str(input);
+        assert_parse_fails(result, expected);
     }
 
     #[test]
@@ -1371,7 +1373,8 @@ mod test {
 
         let expected = ErrorKind::UnknownDirective("#meowograph".into());
 
-        assert_parse_fails(input, expected);
+        let result = parse_content_str(input);
+        assert_parse_fails(result, expected);
     }
 
     #[test]
@@ -1380,7 +1383,8 @@ mod test {
 
         let expected = ErrorKind::UnknownDirective("@mrerps".into());
 
-        assert_parse_fails(input, expected);
+        let result = parse_content_str(input);
+        assert_parse_fails(result, expected);
     }
 
     #[test]
@@ -1389,7 +1393,8 @@ mod test {
 
         let expected = ErrorKind::UnknownDirective("!meeps".into());
 
-        assert_parse_fails(input, expected);
+        let result = parse_content_str(input);
+        assert_parse_fails(result, expected);
     }
 
     #[test]
@@ -1398,7 +1403,8 @@ mod test {
 
         let expected = ErrorKind::UnknownDirective("#".into());
 
-        assert_parse_fails(input, expected);
+        let result = parse_content_str(input);
+        assert_parse_fails(result, expected);
     }
 
     #[test]
@@ -1407,7 +1413,8 @@ mod test {
 
         let expected = ErrorKind::UnexpectedToken("expected: linebreak, got: end of input".into());
 
-        assert_parse_fails(input, expected);
+        let result = parse_content_str(input);
+        assert_parse_fails(result, expected);
     }
 
     #[test]
@@ -1416,7 +1423,8 @@ mod test {
 
         let expected = paragraph! { text("Nice kitty!") };
 
-        assert_parse_succeeds(input, expected);
+        let result = parse_content_str(input);
+        assert_content_eq(result, expected);
     }
 
     #[test]
@@ -1425,7 +1433,8 @@ mod test {
 
         let expected = paragraph! { text("Cats") };
 
-        assert_parse_succeeds(input, expected);
+        let result = parse_content_str(input);
+        assert_content_eq(result, expected);
     }
 
     #[test]
@@ -1434,7 +1443,8 @@ mod test {
 
         let expected = paragraph! { text("Cats") };
 
-        assert_parse_succeeds(input, expected);
+        let result = parse_content_str(input);
+        assert_content_eq(result, expected);
     }
 
     #[test]
@@ -1443,7 +1453,8 @@ mod test {
 
         let expected = paragraph! { text("Cats whiskers") };
 
-        assert_parse_succeeds(input, expected);
+        let result = parse_content_str(input);
+        assert_content_eq(result, expected);
     }
 
     #[test]
@@ -1455,7 +1466,8 @@ mod test {
             strong_text("whiskers"),
         };
 
-        assert_parse_succeeds(input, expected);
+        let result = parse_content_str(input);
+        assert_content_eq(result, expected);
     }
 
     #[test]
@@ -1467,7 +1479,8 @@ mod test {
             raw_text("nice whiskers"),
         };
 
-        assert_parse_succeeds(input, expected);
+        let result = parse_content_str(input);
+        assert_content_eq(result, expected);
     }
 
     #[test]
@@ -1475,7 +1488,8 @@ mod test {
         let input = "Cats    \n    whiskers";
         let expected = paragraph! { text("Cats whiskers") };
 
-        assert_parse_succeeds(input, expected);
+        let result = parse_content_str(input);
+        assert_content_eq(result, expected);
     }
 
     #[test]
@@ -1487,7 +1501,8 @@ mod test {
             paragraph { text("whiskers") }
         };
 
-        assert_parse_succeeds(input, expected);
+        let result = parse_content_str(input);
+        assert_content_eq(result, expected);
     }
 
     #[test]
@@ -1499,7 +1514,8 @@ mod test {
             paragraph { text("whiskers") }
         };
 
-        assert_parse_succeeds(input, expected);
+        let result = parse_content_str(input);
+        assert_content_eq(result, expected);
     }
 
     #[test]
@@ -1511,7 +1527,8 @@ mod test {
             paragraph { text("whiskers") }
         };
 
-        assert_parse_succeeds(input, expected);
+        let result = parse_content_str(input);
+        assert_content_eq(result, expected);
     }
 
     #[test]
@@ -1522,7 +1539,8 @@ mod test {
             paragraph { text("whiskers") }
         );
 
-        assert_parse_succeeds(input, expected);
+        let result = parse_content_str(input);
+        assert_content_eq(result, expected);
     }
 
     #[test]
@@ -1536,7 +1554,8 @@ mod test {
         let expected =
             ErrorKind::UnexpectedToken("expected: block break, got: paragraph directive".into());
 
-        assert_parse_fails(input, expected);
+        let result = parse_content_str(input);
+        assert_parse_fails(result, expected);
     }
 
     #[test]
@@ -1545,7 +1564,8 @@ mod test {
 
         let expected = paragraph! { text("A") };
 
-        assert_parse_succeeds(input, expected);
+        let result = parse_content_str(input);
+        assert_content_eq(result, expected);
     }
 
     #[test]
@@ -1554,7 +1574,8 @@ mod test {
 
         let expected = paragraph! { text("My cat does backflips _coolcat") };
 
-        assert_parse_succeeds(input, expected);
+        let result = parse_content_str(input);
+        assert_content_eq(result, expected);
     }
 
     #[test]
@@ -1563,7 +1584,8 @@ mod test {
 
         let expected = paragraph! { text("cat_case") };
 
-        assert_parse_succeeds(input, expected);
+        let result = parse_content_str(input);
+        assert_content_eq(result, expected);
     }
 
     #[test]
@@ -1572,7 +1594,8 @@ mod test {
 
         let expected = paragraph! { emphasised_text("cat_case") };
 
-        assert_parse_succeeds(input, expected);
+        let result = parse_content_str(input);
+        assert_content_eq(result, expected);
     }
 
     #[test]
@@ -1581,7 +1604,8 @@ mod test {
 
         let expected = paragraph! { raw_text("cat\\_case") };
 
-        assert_parse_succeeds(input, expected);
+        let result = parse_content_str(input);
+        assert_content_eq(result, expected);
     }
 
     #[test]
@@ -1594,7 +1618,8 @@ mod test {
             text(" them"),
         };
 
-        assert_parse_succeeds(input, expected);
+        let result = parse_content_str(input);
+        assert_content_eq(result, expected);
     }
 
     #[test]
@@ -1607,7 +1632,8 @@ mod test {
             text(" around"),
         };
 
-        assert_parse_succeeds(input, expected);
+        let result = parse_content_str(input);
+        assert_content_eq(result, expected);
     }
 
     #[test]
@@ -1620,7 +1646,8 @@ mod test {
             text(" right away."),
         };
 
-        assert_parse_succeeds(input, expected);
+        let result = parse_content_str(input);
+        assert_content_eq(result, expected);
     }
 
     #[test]
@@ -1633,7 +1660,8 @@ mod test {
             text("ww!"),
         };
 
-        assert_parse_succeeds(input, expected);
+        let result = parse_content_str(input);
+        assert_content_eq(result, expected);
     }
 
     #[test]
@@ -1642,7 +1670,8 @@ mod test {
 
         let expected = paragraph! { strong_text("me ow") };
 
-        assert_parse_succeeds(input, expected);
+        let result = parse_content_str(input);
+        assert_content_eq(result, expected);
     }
 
     #[test]
@@ -1655,7 +1684,8 @@ mod test {
             text(" magnificant"),
         };
 
-        assert_parse_succeeds(input, expected);
+        let result = parse_content_str(input);
+        assert_content_eq(result, expected);
     }
 
     #[test]
@@ -1668,7 +1698,8 @@ mod test {
             text("!"),
         };
 
-        assert_parse_succeeds(input, expected);
+        let result = parse_content_str(input);
+        assert_content_eq(result, expected);
     }
 
     #[test]
@@ -1681,7 +1712,8 @@ mod test {
             text("p!"),
         };
 
-        assert_parse_succeeds(input, expected);
+        let result = parse_content_str(input);
+        assert_content_eq(result, expected);
     }
 
     #[test]
@@ -1694,7 +1726,8 @@ mod test {
             text(" to true"),
         };
 
-        assert_parse_succeeds(input, expected);
+        let result = parse_content_str(input);
+        assert_content_eq(result, expected);
     }
 
     #[test]
@@ -1703,7 +1736,8 @@ mod test {
 
         let expected = paragraph! { raw_text("Keep your       distance") };
 
-        assert_parse_succeeds(input, expected);
+        let result = parse_content_str(input);
+        assert_content_eq(result, expected);
     }
 
     #[test]
@@ -1712,7 +1746,8 @@ mod test {
 
         let expected = paragraph! { raw_text("Great cats") };
 
-        assert_parse_succeeds(input, expected);
+        let result = parse_content_str(input);
+        assert_content_eq(result, expected);
     }
 
     #[test]
@@ -1721,7 +1756,8 @@ mod test {
 
         let expected = paragraph! { strikethrough_text("Great dogs") };
 
-        assert_parse_succeeds(input, expected);
+        let result = parse_content_str(input);
+        assert_content_eq(result, expected);
     }
 
     #[test]
@@ -1730,7 +1766,8 @@ mod test {
 
         let expected = paragraph! { raw_text(" Meow?") };
 
-        assert_parse_succeeds(input, expected);
+        let result = parse_content_str(input);
+        assert_content_eq(result, expected);
     }
 
     #[test]
@@ -1739,7 +1776,8 @@ mod test {
 
         let expected = paragraph! { raw_text("Meow ") };
 
-        assert_parse_succeeds(input, expected);
+        let result = parse_content_str(input);
+        assert_content_eq(result, expected);
     }
 
     #[test]
@@ -1748,7 +1786,8 @@ mod test {
 
         let expected = paragraph! { raw_text(" Meow") };
 
-        assert_parse_succeeds(input, expected);
+        let result = parse_content_str(input);
+        assert_content_eq(result, expected);
     }
 
     #[test]
@@ -1757,7 +1796,8 @@ mod test {
 
         let expected = paragraph! { raw_text("Meow ") };
 
-        assert_parse_succeeds(input, expected);
+        let result = parse_content_str(input);
+        assert_content_eq(result, expected);
     }
 
     #[test]
@@ -1766,7 +1806,8 @@ mod test {
 
         let expected = paragraph! { raw_text("Great cats assemble!") };
 
-        assert_parse_succeeds(input, expected);
+        let result = parse_content_str(input);
+        assert_content_eq(result, expected);
     }
 
     #[test]
@@ -1775,7 +1816,8 @@ mod test {
 
         let expected = paragraph! { text("Felines - fantastic!") };
 
-        assert_parse_succeeds(input, expected);
+        let result = parse_content_str(input);
+        assert_content_eq(result, expected);
     }
 
     #[test]
@@ -1784,7 +1826,8 @@ mod test {
 
         let expected = paragraph! { text("Cool kitty") };
 
-        assert_parse_succeeds(input, expected);
+        let result = parse_content_str(input);
+        assert_content_eq(result, expected);
     }
 
     #[test]
@@ -1797,7 +1840,8 @@ mod test {
             text(" cat.")
         };
 
-        assert_parse_succeeds(input, expected);
+        let result = parse_content_str(input);
+        assert_content_eq(result, expected);
     }
 
     #[test]
@@ -1806,7 +1850,8 @@ mod test {
 
         let expected = paragraph! { text("Cat cat") };
 
-        assert_parse_succeeds(input, expected);
+        let result = parse_content_str(input);
+        assert_content_eq(result, expected);
     }
 
     #[test]
@@ -1815,7 +1860,8 @@ mod test {
 
         let expected = paragraph! { strong_text("Cat cat") };
 
-        assert_parse_succeeds(input, expected);
+        let result = parse_content_str(input);
+        assert_content_eq(result, expected);
     }
 
     #[test]
@@ -1824,7 +1870,8 @@ mod test {
 
         let expected = paragraph! { raw_text("Cat   cat") };
 
-        assert_parse_succeeds(input, expected);
+        let result = parse_content_str(input);
+        assert_content_eq(result, expected);
     }
 
     #[test]
@@ -1833,7 +1880,8 @@ mod test {
 
         let expected = paragraph! { text("Cat cat") };
 
-        assert_parse_succeeds(input, expected);
+        let result = parse_content_str(input);
+        assert_content_eq(result, expected);
     }
 
     #[test]
@@ -1842,7 +1890,8 @@ mod test {
 
         let expected = paragraph! { strong_text("Cat cat") };
 
-        assert_parse_succeeds(input, expected);
+        let result = parse_content_str(input);
+        assert_content_eq(result, expected);
     }
 
     #[test]
@@ -1851,7 +1900,8 @@ mod test {
 
         let expected = paragraph! { raw_text("Cat   cat") };
 
-        assert_parse_succeeds(input, expected);
+        let result = parse_content_str(input);
+        assert_content_eq(result, expected);
     }
 
     #[test]
@@ -1860,7 +1910,8 @@ mod test {
 
         let expected = ErrorKind::EmptyDelimitedText;
 
-        assert_parse_fails(input, expected);
+        let result = parse_content_str(input);
+        assert_parse_fails(result, expected);
     }
 
     #[test]
@@ -1869,7 +1920,8 @@ mod test {
 
         let expected = ErrorKind::EmptyDelimitedText;
 
-        assert_parse_fails(input, expected);
+        let result = parse_content_str(input);
+        assert_parse_fails(result, expected);
     }
 
     #[test]
@@ -1878,7 +1930,8 @@ mod test {
 
         let expected = ErrorKind::UnterminatedRawTextRun;
 
-        assert_parse_fails(input, expected);
+        let result = parse_content_str(input);
+        assert_parse_fails(result, expected);
     }
 
     #[test]
@@ -1887,7 +1940,8 @@ mod test {
 
         let expected = ErrorKind::UnterminatedRawTextRun;
 
-        assert_parse_fails(input, expected);
+        let result = parse_content_str(input);
+        assert_parse_fails(result, expected);
     }
 
     #[test]
@@ -1898,7 +1952,8 @@ mod test {
             "expected: strikethrough delimiter, got: block break".into(),
         );
 
-        assert_parse_fails(input, expected);
+        let result = parse_content_str(input);
+        assert_parse_fails(result, expected);
     }
 
     #[test]
@@ -1909,7 +1964,8 @@ mod test {
             "expected: emphasis delimiter, got: end of input".to_string(),
         );
 
-        assert_parse_fails(input, expected);
+        let result = parse_content_str(input);
+        assert_parse_fails(result, expected);
     }
 
     #[test]
@@ -1920,7 +1976,8 @@ mod test {
             "expected: emphasis delimiter, got: end of input".to_string(),
         );
 
-        assert_parse_fails(input, expected);
+        let result = parse_content_str(input);
+        assert_parse_fails(result, expected);
     }
 
     #[test]
@@ -1931,7 +1988,8 @@ mod test {
             "expected: emphasis delimiter, got: end of input".to_string(),
         );
 
-        assert_parse_fails(input, expected);
+        let result = parse_content_str(input);
+        assert_parse_fails(result, expected);
     }
 
     #[test]
@@ -1942,7 +2000,8 @@ mod test {
             "expected: emphasis delimiter, got: strong delimiter".into(),
         );
 
-        assert_parse_fails(input, expected);
+        let result = parse_content_str(input);
+        assert_parse_fails(result, expected);
     }
 
     #[test]
@@ -1951,7 +2010,8 @@ mod test {
 
         let expected = ErrorKind::LooseDelimiter;
 
-        assert_parse_fails(input, expected);
+        let result = parse_content_str(input);
+        assert_parse_fails(result, expected);
     }
 
     #[test]
@@ -1960,7 +2020,8 @@ mod test {
 
         let expected = ErrorKind::LooseDelimiter;
 
-        assert_parse_fails(input, expected);
+        let result = parse_content_str(input);
+        assert_parse_fails(result, expected);
     }
 
     #[test]
@@ -1971,7 +2032,8 @@ mod test {
             "expected: emphasis delimiter, got: raw delimiter".to_string(),
         );
 
-        assert_parse_fails(input, expected);
+        let result = parse_content_str(input);
+        assert_parse_fails(result, expected);
     }
 
     #[test]
@@ -1982,7 +2044,8 @@ mod test {
             "expected: emphasis delimiter, got: raw delimiter".to_string(),
         );
 
-        assert_parse_fails(input, expected);
+        let result = parse_content_str(input);
+        assert_parse_fails(result, expected);
     }
 
     #[test]
@@ -1991,7 +2054,8 @@ mod test {
 
         let expected = paragraph!(text("Cats cats cats"));
 
-        assert_parse_succeeds(input, expected);
+        let result = parse_content_str(input);
+        assert_content_eq(result, expected);
     }
 
     #[test]
@@ -2000,7 +2064,8 @@ mod test {
 
         let expected = paragraph!(text("Cats cats cats"));
 
-        assert_parse_succeeds(input, expected);
+        let result = parse_content_str(input);
+        assert_content_eq(result, expected);
     }
 
     #[test]
@@ -2009,7 +2074,8 @@ mod test {
 
         let expected = paragraph!(text("Cats cats cats"));
 
-        assert_parse_succeeds(input, expected);
+        let result = parse_content_str(input);
+        assert_content_eq(result, expected);
     }
 
     #[test]
@@ -2018,7 +2084,8 @@ mod test {
 
         let expected = paragraph! { text("Cats are friends") };
 
-        assert_parse_succeeds(input, expected);
+        let result = parse_content_str(input);
+        assert_content_eq(result, expected);
     }
 
     #[test]
@@ -2027,7 +2094,8 @@ mod test {
 
         let expected = paragraph! { text("Feline friends") };
 
-        assert_parse_succeeds(input, expected);
+        let result = parse_content_str(input);
+        assert_content_eq(result, expected);
     }
 
     #[test]
@@ -2039,7 +2107,8 @@ mod test {
             text(" cat"),
         };
 
-        assert_parse_succeeds(input, expected);
+        let result = parse_content_str(input);
+        assert_content_eq(result, expected);
     }
 
     #[test]
@@ -2051,20 +2120,28 @@ mod test {
             paragraph { text("cat") }
         );
 
-        assert_parse_succeeds(input, expected);
+        let result = parse_content_str(input);
+        assert_content_eq(result, expected);
     }
 
     #[test]
     fn doc_metadata() {
-        let input = concat!("@metadata\n", "id: 12.03\n");
+        let input = concat!(
+            "@metadata\n",
+            "id: 12.03\n",
+            "\n",
+            "/ Document with metadata",
+        );
 
         let expected = document!(
+            title: "Document with metadata",
             metadata: {
                 id: "12.03"
             }
         );
 
-        assert_parse_succeeds(input, expected);
+        let result = parse_document_str(input);
+        assert_document_eq(result, expected);
     }
 
     #[test]
@@ -2073,16 +2150,20 @@ mod test {
             "@metadata\n",
             "id: feline.feasts.25\n",
             "tags: cooking | eating | nice-smells\n",
+            "\n",
+            "/ Document with metadata",
         );
 
         let expected = document!(
+            title: "Document with metadata",
             metadata: {
                 id:"feline.feasts.25",
                 tags: ["cooking", "eating", "nice-smells"],
             }
         );
 
-        assert_parse_succeeds(input, expected);
+        let result = parse_document_str(input);
+        assert_document_eq(result, expected);
     }
 
     #[test]
@@ -2091,12 +2172,15 @@ mod test {
 
         let expected = ErrorKind::UnknownMetadata(String::from("kibble"));
 
-        assert_parse_fails(input, expected);
+        let result = parse_document_str(input);
+        assert_parse_fails(result, expected);
     }
 
     #[test]
     fn doc_metadata_not_at_start_is_rejected() {
         let input = concat!(
+            "/ Some title\n",
+            "\n",
             "Helloo there. Metadata should not follow this.!\n",
             "\n",
             "@metadata\n",
@@ -2105,7 +2189,8 @@ mod test {
 
         let expected = ErrorKind::MetadataNotAtStart;
 
-        assert_parse_fails(input, expected);
+        let result = parse_document_str(input);
+        assert_parse_fails(result, expected);
     }
 
     #[test]
@@ -2116,7 +2201,8 @@ mod test {
             title: "Practical espionage for felines in urban settings"
         );
 
-        assert_parse_succeeds(input, expected);
+        let result = parse_document_str(input);
+        assert_document_eq(result, expected);
     }
 
     #[test]
@@ -2137,7 +2223,8 @@ mod test {
             }
         );
 
-        assert_parse_succeeds(input, expected);
+        let result = parse_document_str(input);
+        assert_document_eq(result, expected);
     }
 
     #[test]
@@ -2148,7 +2235,8 @@ mod test {
             title: "My Very Cool Document"
         );
 
-        assert_parse_succeeds(input, expected);
+        let result = parse_document_str(input);
+        assert_document_eq(result, expected);
     }
 
     #[test]
@@ -2159,7 +2247,8 @@ mod test {
             title: "Some Doc"
         );
 
-        assert_parse_succeeds(input, expected);
+        let result = parse_document_str(input);
+        assert_document_eq(result, expected);
     }
 
     #[test]
@@ -2170,27 +2259,37 @@ mod test {
             "/Some Document Title"
         );
 
-        let expected = ErrorKind::TitleNotAtStart;
+        let expected = ErrorKind::UnexpectedToken(
+            "expected: title directive, got: markup text 'Document'".into(),
+        );
 
-        assert_parse_fails(input, expected);
+        let result = parse_document_str(input);
+        assert_parse_fails(result, expected);
     }
 
     #[test]
     fn doc_title_in_section() {
         let input = concat!(
+            "/ Some Document Title\n",
+            "\n",
             "// Some important document section\n",
             "\n",
-            "/Some Document Title"
+            "/ Other Document Title"
         );
 
-        let expected = ErrorKind::TitleNotAtStart;
+        // TODO: we should put the lexeme into token so the error goes something like
+        // ErrorKind::UnexpectedBlockStart("title directive ('/')".into())
+        let expected = ErrorKind::UnexpectedBlockStart("title directive".into());
 
-        assert_parse_fails(input, expected);
+        let result = parse_document_str(input);
+        assert_parse_fails(result, expected);
     }
 
     #[test]
     fn doc_title_in_sub_section() {
         let input = concat!(
+            "/ Some Document Title\n",
+            "\n",
             "// Some important document section\n",
             "\n",
             "/// Some important document sub section\n",
@@ -2198,23 +2297,24 @@ mod test {
             "/Some Document Title"
         );
 
-        let expected = ErrorKind::TitleNotAtStart;
+        let expected = ErrorKind::UnexpectedBlockStart("title directive".into());
 
-        assert_parse_fails(input, expected);
+        let result = parse_document_str(input);
+        assert_parse_fails(result, expected);
     }
 
     #[test]
-    #[ignore]
-    fn doc_title_in_subsection() {
+    fn subsection_missing_parent() {
         let input = concat!(
-            "/// Some important document section\n",
+            "/Some Document Title\n",
             "\n",
-            "/Some Document Title"
+            "/// Some important document sub section\n",
         );
 
-        let expected = ErrorKind::TitleNotAtStart;
+        let expected = ErrorKind::SubSectionNotNested;
 
-        assert_parse_fails(input, expected);
+        let result = parse_document_str(input);
+        assert_parse_fails(result, expected);
     }
 
     #[test]
@@ -2233,7 +2333,8 @@ mod test {
             paragraph { text("...about the cats!") }
         ];
 
-        assert_parse_succeeds(input, expected);
+        let result = parse_content_str(input);
+        assert_content_eq(result, expected);
     }
 
     #[test]
@@ -2252,7 +2353,8 @@ mod test {
             }
         ];
 
-        assert_parse_succeeds(input, expected);
+        let result = parse_content_str(input);
+        assert_content_eq(result, expected);
     }
 
     #[test]
@@ -2261,7 +2363,8 @@ mod test {
 
         let expected = ErrorKind::ContainerMissingStart;
 
-        assert_parse_fails(input, expected);
+        let result = parse_content_str(input);
+        assert_parse_fails(result, expected);
     }
 
     #[test]
@@ -2270,7 +2373,8 @@ mod test {
 
         let expected = ErrorKind::EmptyContainer;
 
-        assert_parse_fails(input, expected);
+        let result = parse_content_str(input);
+        assert_parse_fails(result, expected);
     }
 
     #[test]
@@ -2279,7 +2383,8 @@ mod test {
 
         let expected = ErrorKind::EmptyContainer;
 
-        assert_parse_fails(input, expected);
+        let result = parse_content_str(input);
+        assert_parse_fails(result, expected);
     }
 
     #[test]
@@ -2294,7 +2399,8 @@ mod test {
         let expected =
             ErrorKind::UnexpectedToken("expected: linebreak, got: markup text 'squeek'".into());
 
-        assert_parse_fails(input, expected);
+        let result = parse_content_str(input);
+        assert_parse_fails(result, expected);
     }
 
     #[test]
@@ -2309,7 +2415,8 @@ mod test {
         let expected =
             ErrorKind::UnexpectedToken("expected: block break, got: markup text 'toy'".into());
 
-        assert_parse_fails(input, expected);
+        let result = parse_content_str(input);
+        assert_parse_fails(result, expected);
     }
 
     #[test]
@@ -2324,7 +2431,8 @@ mod test {
 
         let expected = ErrorKind::UnexpectedToken("expected: block break, got: linebreak".into());
 
-        assert_parse_fails(input, expected);
+        let result = parse_content_str(input);
+        assert_parse_fails(result, expected);
     }
 
     #[test]
@@ -2333,7 +2441,8 @@ mod test {
 
         let expected = paragraph! { text("Ripley - Cat") };
 
-        assert_parse_succeeds(input, expected);
+        let result = parse_content_str(input);
+        assert_content_eq(result, expected);
     }
 
     #[test]
@@ -2342,7 +2451,8 @@ mod test {
 
         let expected = paragraph! { text("Ripley - Cat") };
 
-        assert_parse_succeeds(input, expected);
+        let result = parse_content_str(input);
+        assert_content_eq(result, expected);
     }
 
     #[test]
@@ -2358,7 +2468,8 @@ mod test {
             paragraph { text("Wet food is much better")},
             paragraph { text("Water is important also")}
         };
-        assert_parse_succeeds(input, expected);
+        let result = parse_content_str(input);
+        assert_content_eq(result, expected);
     }
 
     #[test]
@@ -2376,7 +2487,8 @@ mod test {
             paragraph { text("Water is important also") }
         };
 
-        assert_parse_succeeds(input, expected);
+        let result = parse_content_str(input);
+        assert_content_eq(result, expected);
     }
 
     #[test]
@@ -2393,7 +2505,8 @@ mod test {
             paragraph { text("Wet food is much better")},
             paragraph { text("Water is important also")}
         };
-        assert_parse_succeeds(input, expected);
+        let result = parse_content_str(input);
+        assert_content_eq(result, expected);
     }
 
     #[test]
@@ -2402,7 +2515,8 @@ mod test {
 
         let expected = list! {paragraph { text("Meow - meow") }};
 
-        assert_parse_succeeds(input, expected);
+        let result = parse_content_str(input);
+        assert_content_eq(result, expected);
     }
 
     #[test]
@@ -2422,7 +2536,8 @@ mod test {
             paragraph { text("Water is important also") },
         };
 
-        assert_parse_succeeds(input, expected);
+        let result = parse_content_str(input);
+        assert_content_eq(result, expected);
     }
 
     #[test]
@@ -2448,7 +2563,8 @@ mod test {
             }
         };
 
-        assert_parse_succeeds(input, expected);
+        let result = parse_content_str(input);
+        assert_content_eq(result, expected);
     }
 
     #[test]
@@ -2469,7 +2585,8 @@ mod test {
             }
         };
 
-        assert_parse_succeeds(input, expected);
+        let result = parse_content_str(input);
+        assert_content_eq(result, expected);
     }
 
     #[test]
@@ -2492,7 +2609,8 @@ mod test {
             }
         };
 
-        assert_parse_succeeds(input, expected);
+        let result = parse_content_str(input);
+        assert_content_eq(result, expected);
     }
 
     #[test]
@@ -2508,7 +2626,8 @@ mod test {
             list { paragraph { text("baz") }}
         };
 
-        assert_parse_succeeds(input, expected);
+        let result = parse_content_str(input);
+        assert_content_eq(result, expected);
     }
 
     #[test]
@@ -2520,7 +2639,8 @@ mod test {
             paragraph { text("Bar")},
         };
 
-        assert_parse_succeeds(input, expected);
+        let result = parse_content_str(input);
+        assert_content_eq(result, expected);
     }
 
     #[test]
@@ -2535,7 +2655,8 @@ mod test {
             }
         };
 
-        assert_parse_succeeds(input, expected);
+        let result = parse_content_str(input);
+        assert_content_eq(result, expected);
     }
 
     #[test]
@@ -2545,7 +2666,8 @@ mod test {
         let expected =
             ErrorKind::UnexpectedToken("expected: emphasis delimiter, got: linebreak".into());
 
-        assert_parse_fails(input, expected);
+        let result = parse_content_str(input);
+        assert_parse_fails(result, expected);
     }
 
     #[test]
@@ -2554,7 +2676,8 @@ mod test {
 
         let expected = ErrorKind::UnevenListIndent(1);
 
-        assert_parse_fails(input, expected);
+        let result = parse_content_str(input);
+        assert_parse_fails(result, expected);
     }
 
     #[test]
@@ -2566,7 +2689,8 @@ mod test {
 
         let expected = ErrorKind::MissingListLevel((0, 2));
 
-        assert_parse_fails(input, expected);
+        let result = parse_content_str(input);
+        assert_parse_fails(result, expected);
     }
 
     #[test]
@@ -2589,16 +2713,22 @@ mod test {
             paragraph { text("Nice things to drink") }
         };
 
-        assert_parse_succeeds(input, expected);
+        let result = parse_content_str(input);
+        assert_content_eq(result, expected);
     }
 
     #[test]
     fn error_specifies_correct_row_and_column() {
-        let input = "Silly cat\ngoes *_*";
+        let input = concat!(
+            "/ Document with an silly cat error\n",
+            "\n",
+            "Silly cat\n",
+            "goes *_*"
+        );
 
-        let expected = (6, 1);
+        let expected = (6, 3);
 
-        let error = parse_str(input).unwrap_err();
+        let error = parse_document_str(input).unwrap_err();
         let actual = (error.input_column, error.input_line);
 
         assert_eq!(actual, expected);
@@ -2610,11 +2740,14 @@ mod test {
             "@references\n",
             "ripley_2020: https://example.com\n",
             "\n",
+            "/ Cat petting tips\n",
+            "\n",
             "For more info, consult [our guide on petting cats]@ripley_2020,\n",
             "created by our own in house experts.\n",
         );
 
         let expected = document!(
+            title: "Cat petting tips",
             contents: {
                 paragraph {
                     text("For more info, consult "),
@@ -2627,7 +2760,8 @@ mod test {
             }
         );
 
-        assert_parse_succeeds(input, expected);
+        let result = parse_document_str(input);
+        assert_document_eq(result, expected);
     }
 
     #[test]
@@ -2639,9 +2773,12 @@ mod test {
             "ripley_2022 :https://example.com/c\n",
             "ripley_2023 : https://example.com/d\n",
             "ripley_2024: https://example.com/e  \n",
+            "\n",
+            "/ Doc with lots of references",
         );
 
         let expected = document!(
+            title: "Doc with lots of references",
             references: {
                 ("ripley_2020", "https://example.com/a"),
                 ("ripley_2021", "https://example.com/b"),
@@ -2651,7 +2788,13 @@ mod test {
             }
         );
 
-        assert_parse_succeeds(input, expected);
+        let result = parse_document_str(input);
+        assert_document_eq(result, expected);
+
+        //TODO: I guess we should have assert for references and metadata also?
+        // e.g
+        // let result = parse_references_str(input);
+        // assert_references_eq(result, expected)
     }
 
     #[test]
@@ -2662,7 +2805,8 @@ mod test {
             text("C@ts are great @ that")
         };
 
-        assert_parse_succeeds(input, expected);
+        let result = parse_content_str(input);
+        assert_content_eq(result, expected);
     }
 
     #[test]
@@ -2671,16 +2815,22 @@ mod test {
             "@references\n",
             "ripley_2020: https://example.com\n",
             "\n",
+            "/ Some Title\n",
+            "\n",
             "We like [ petting cats ]@ripley_2020 a lot.\n",
         );
 
         let expected = ErrorKind::LooseDelimiter;
-        assert_parse_fails(input, expected);
+
+        let result = parse_document_str(input);
+        assert_parse_fails(result, expected);
     }
 
     #[test]
     fn references_after_content_rejected() {
         let input = concat!(
+            "/ Some Title\n",
+            "\n",
             "For more info, consult [our guide on petting cats]@ripley_2020,\n",
             "created by our own in house experts.\n",
             "\n",
@@ -2690,7 +2840,8 @@ mod test {
 
         let expected = ErrorKind::ReferencesOutOfPlace;
 
-        assert_parse_fails(input, expected);
+        let result = parse_document_str(input);
+        assert_parse_fails(result, expected);
     }
 
     #[test]
@@ -2747,7 +2898,8 @@ mod test {
             }
         };
 
-        assert_parse_succeeds(input, expected);
+        let result = parse_document_str(input);
+        assert_document_eq(result, expected);
     }
 
     #[test]
@@ -2765,7 +2917,8 @@ mod test {
             }
         };
 
-        assert_parse_succeeds(input, expected);
+        let result = parse_document_str(input);
+        assert_document_eq(result, expected);
     }
 
     #[test]
@@ -2782,14 +2935,15 @@ mod test {
         );
 
         let expected = code! {
-        "Meow?\n",
-        "\n",
-        "Meow.\n",
-        "Me...           ...ow.\n",
-        "Meow!\n",
+            "Meow?\n",
+            "\n",
+            "Meow.\n",
+            "Me...           ...ow.\n",
+            "Meow!\n",
         };
 
-        assert_parse_succeeds(input, expected);
+        let result = parse_content_str(input);
+        assert_content_eq(result, expected);
     }
 
     #[test]
@@ -2803,17 +2957,16 @@ mod test {
             "Hey, whats up?"
         );
 
-        let expected = document! (
-            contents: {
-                code {
-                    "Meow?\n",
-                },
-                paragraph {
-                    text("Hey, whats up?")
-                }
+        let expected = elements! (
+            code {
+                "Meow?\n",
+            },
+            paragraph {
+                text("Hey, whats up?")
             }
         );
 
-        assert_parse_succeeds(input, expected);
+        let result = parse_content_str(input);
+        assert_content_eq(result, expected);
     }
 }
