@@ -23,13 +23,13 @@ enum ErrorKind {
     MetadataNotAtStart,
     ReferencesOutOfPlace,
     //TODO: would love to see less primitive types here
-    // e.g indent, lexeme
+    // e.g  lexeme instead of String
     UnexpectedToken {
         expected: TokenName,
         actual: TokenDescription,
     },
     UnknownMetadata(String),
-    UnevenListIndent(usize),
+    UnevenListIndent(Indent),
     UnknownDirective(String),
     ContainerMissingStart,
     EmptyContainer,
@@ -89,8 +89,12 @@ impl ParseError {
                     expected, actual.name, actual.lexeme,
                 )
             }
-            UnevenListIndent(count) => {
-                write!(f, "list indent of {} is not even", count)
+            UnevenListIndent(indent) => {
+                write!(
+                    f,
+                    "list indent of {} spaces is not even",
+                    indent.space_count
+                )
             }
             UnknownDirective(name) => {
                 write!(f, "unknown directive'{}'", name)
@@ -572,10 +576,7 @@ fn parse_list_level(
         let space_count = indent.space_count;
 
         if space_count % 2 != 0 {
-            return parse_err!(
-                ErrorKind::UnevenListIndent(space_count),
-                bullet_token.position
-            );
+            return parse_err!(ErrorKind::UnevenListIndent(indent), bullet_token.position);
         }
 
         let depth = space_count / 2;
@@ -2778,7 +2779,7 @@ mod test {
     fn list_with_uneven_spaces() {
         let input = "-foo\n -bar";
 
-        let expected = ErrorKind::UnevenListIndent(1);
+        let expected = ErrorKind::UnevenListIndent(Indent { space_count: 1 });
 
         let result = parse_content_str(input);
         assert_parse_fails(result, expected);
