@@ -22,15 +22,13 @@ enum ErrorKind {
     },
     MetadataNotAtStart,
     ReferencesOutOfPlace,
-    //TODO: would love to see less primitive types here
-    // e.g  lexeme instead of String
     UnexpectedToken {
         expected: TokenName,
         actual: TokenDescription,
     },
-    UnknownMetadata(String),
+    UnknownMetadata(LexemeString),
     UnevenListIndent(Indent),
-    UnknownDirective(String),
+    UnknownDirective(LexemeString),
     ContainerMissingStart,
     EmptyContainer,
     UnterminatedRawTextRun,
@@ -249,7 +247,7 @@ fn parse_metadata(tokeniser: &mut Tokeniser) -> ParseResult<Metadata> {
             }
             _ => {
                 return parse_err!(
-                    ErrorKind::UnknownMetadata(key.to_string()),
+                    ErrorKind::UnknownMetadata(identifier_token.lexeme_to_owned()),
                     identifier_token.position
                 );
             }
@@ -520,8 +518,8 @@ fn parse_block(tokeniser: &mut Tokeniser) -> ParseResult<Block> {
         Token::ReferencesDirective => {
             return parse_err!(ErrorKind::ReferencesOutOfPlace, next.position);
         }
-        Token::UnknownDirective(name) => {
-            let err = ErrorKind::UnknownDirective(name.into());
+        Token::UnknownDirective(_) => {
+            let err = ErrorKind::UnknownDirective(next.lexeme_to_owned());
             return parse_err!(err, next.position);
         }
         Token::DelimitedContainerEnd => {
@@ -2241,7 +2239,7 @@ mod test {
     fn doc_metadata_with_unknown_identifier_is_rejected() {
         let input = "@metadata\nkibble: yes please\n";
 
-        let expected = ErrorKind::UnknownMetadata(String::from("kibble"));
+        let expected = ErrorKind::UnknownMetadata("kibble".into());
 
         let result = parse_document_str(input);
         assert_parse_fails(result, expected);

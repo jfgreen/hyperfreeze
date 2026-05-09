@@ -47,17 +47,17 @@ pub struct Indent {
 }
 
 #[derive(PartialEq, Eq, Debug)]
-pub struct Lexeme(String);
+pub struct LexemeString(String);
 
-impl<'a> From<&'a str> for Lexeme {
+impl<'a> From<&'a str> for LexemeString {
     fn from(value: &'a str) -> Self {
-        Lexeme(value.to_string())
+        LexemeString(value.to_string())
     }
 }
 
-impl Display for Lexeme {
+impl Display for LexemeString {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        let Lexeme(str) = self;
+        let LexemeString(str) = self;
         for c in str.escape_default() {
             f.write_char(c)?;
         }
@@ -78,7 +78,7 @@ impl Display for TokenName {
 #[derive(PartialEq, Eq, Debug)]
 pub struct TokenDescription {
     pub name: TokenName,
-    pub lexeme: Lexeme,
+    pub lexeme: LexemeString,
 }
 
 // TODO: Use a macro to clear up token building
@@ -192,19 +192,23 @@ pub struct UnexpectedTokenError {
     pub actual: TokenDescription,
 }
 
+// TODO: Instead of Spanned being generic,
+// can we solve by composition and a trait impl
+//
 // TODO: store span, not position
-pub struct Spanned<T> {
+pub struct Spanned<'a, T> {
     pub value: T,
     pub position: Position,
+    pub lexeme: &'a str,
 }
 
-// TODO: What if we leant into exposing the dynamic type?
-pub struct SpannedToken<'a> {
-    pub value: Token<'a>,
-    pub position: Position,
-    //TODO: having both lexeme and lexeme() is a bit meh
-    lexeme: &'a str,
+impl<'a, T> Spanned<'a, T> {
+    pub fn lexeme_to_owned(&self) -> LexemeString {
+        LexemeString::from(self.lexeme)
+    }
 }
+
+pub type SpannedToken<'a> = Spanned<'a, Token<'a>>;
 
 impl<'a> SpannedToken<'a> {
     pub fn expect<T>(&self) -> Result<T, UnexpectedTokenError>
@@ -221,13 +225,14 @@ impl<'a> SpannedToken<'a> {
     // TODO: naming of these next two funcs is still a bit off...
     // TODO: Do we need both?
 
-    pub fn try_value<T>(&self) -> Option<Spanned<T>>
+    pub fn try_value<T>(&self) -> Option<Spanned<'a, T>>
     where
         T: TokenSpec<'a>,
     {
         T::try_from(self.value).ok().map(|token| Spanned {
             value: token,
             position: self.position,
+            lexeme: self.lexeme,
         })
     }
 
@@ -248,12 +253,8 @@ impl<'a> SpannedToken<'a> {
     pub fn description(&self) -> TokenDescription {
         TokenDescription {
             name: self.value.name(),
-            lexeme: self.lexeme(),
+            lexeme: self.lexeme_to_owned(),
         }
-    }
-
-    pub fn lexeme(&self) -> Lexeme {
-        Lexeme::from(self.lexeme)
     }
 }
 
