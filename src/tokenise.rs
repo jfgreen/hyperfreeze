@@ -42,6 +42,11 @@ const MARKUP_CHARS: &[char; 10] = &[
     RIGHT_SQUARE_BRACKET,
 ];
 
+#[derive(Clone, Copy, Debug)]
+pub struct Indent {
+    pub space_count: usize,
+}
+
 // TODO: Use a macro to clear up token building
 // A macro where we can define for each token
 // name
@@ -94,8 +99,7 @@ pub enum Token<'a> {
     MarkupText(&'a str),
     RawFragment(&'a str),
     Code(&'a str),
-    //TODO: alias usize
-    ListBullet(usize),
+    ListBullet(Indent),
 }
 
 impl<'a> Display for Token<'a> {
@@ -142,7 +146,9 @@ impl<'a> Display for Token<'a> {
             Token::MarkupText(t) => write!(f, "{} '{}'", MarkupText::NAME, t),
             Token::RawFragment(t) => write!(f, "{} '{}'", RawFragment::NAME, t),
             Token::Code(t) => write!(f, "{} '{}'", Code::NAME, t),
-            Token::ListBullet(t) => write!(f, "{} '{}'", ListBullet::NAME, t),
+            Token::ListBullet(indent) => {
+                write!(f, "{} ({} spaces)", ListBullet::NAME, indent.space_count)
+            }
         }
     }
 }
@@ -345,7 +351,7 @@ pub struct Code<'a>(pub &'a str);
 pub struct Unknown<'a>(pub &'a str);
 
 #[derive(Clone, Copy, Debug)]
-pub struct ListBullet(pub usize);
+pub struct ListBullet(pub Indent);
 
 //TODO: Use macros to clear up repetition
 
@@ -1418,7 +1424,7 @@ fn match_list_bullet<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
     }
 
     Some(ScanMatch {
-        token: Token::ListBullet(space_count),
+        token: Token::ListBullet(Indent { space_count }),
         end: head,
     })
 }

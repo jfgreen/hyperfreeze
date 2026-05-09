@@ -549,16 +549,17 @@ fn parse_list_level(
     let mut items = Vec::new();
 
     while let Some(bullet_token) = tokeniser.peek().try_value() {
-        let ListBullet(indent_count) = bullet_token.value;
+        let ListBullet(indent) = bullet_token.value;
+        let space_count = indent.space_count;
 
-        if indent_count % 2 != 0 {
+        if space_count % 2 != 0 {
             return parse_err!(
-                ErrorKind::UnevenListIndent(indent_count),
+                ErrorKind::UnevenListIndent(space_count),
                 bullet_token.position
             );
         }
 
-        let depth = indent_count / 2;
+        let depth = space_count / 2;
 
         let item = if depth == current_depth {
             tokeniser.advance();
