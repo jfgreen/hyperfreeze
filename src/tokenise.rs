@@ -1,5 +1,4 @@
 use std::fmt::{self, Display, Formatter};
-use std::marker::PhantomData;
 use std::str::CharIndices;
 
 //TODO: Some kind of annotated example that describes the terminology
@@ -45,6 +44,22 @@ const MARKUP_CHARS: &[char; 10] = &[
 #[derive(Clone, Copy, Debug)]
 pub struct Indent {
     pub space_count: usize,
+}
+
+#[derive(PartialEq, Eq, Debug)]
+pub struct TokenName(pub &'static str);
+
+impl Display for TokenName {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        let TokenName(name) = self;
+        f.write_str(name)
+    }
+}
+
+#[derive(PartialEq, Eq, Debug)]
+pub struct TokenDescription {
+    pub name: TokenName,
+    pub escaped_lexeme: String,
 }
 
 // TODO: Use a macro to clear up token building
@@ -102,98 +117,83 @@ pub enum Token<'a> {
     ListBullet(Indent),
 }
 
-impl<'a> Display for Token<'a> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+impl<'a> Token<'a> {
+    fn name(&self) -> TokenName {
         match self {
-            Token::EndOfInput => write!(f, "{}", EndOfInput::NAME),
-            Token::TitleDirective => write!(f, "{}", TitleDirective::NAME),
-            Token::SectionDirective => write!(f, "{}", SectionDirective::NAME),
-            Token::SubSectionDirective => write!(f, "{}", SubSectionDirective::NAME),
-            Token::MetadataDirective => write!(f, "{}", MetadataDirective::NAME),
-            Token::ReferencesDirective => write!(f, "{}", ReferencesDirective::NAME),
-            Token::ParagraphDirective => write!(f, "{}", ParagraphDirective::NAME),
-            Token::ListDirective => write!(f, "{}", ListDirective::NAME),
-            Token::CodeDirective => write!(f, "{}", CodeDirective::NAME),
-            Token::InfoContainerDirective => write!(f, "{}", InfoContainerDirective::NAME),
-            Token::BlockParametersStart => write!(f, "{}", BlockParametersStart::NAME),
-            Token::BlockParametersEnd => write!(f, "{}", BlockParametersEnd::NAME),
-            Token::BlockParameterNameValueSeperator => {
-                write!(f, "{}", BlockParameterNameValueSeperator::NAME)
-            }
-            Token::BlockBreak => write!(f, "{}", BlockBreak::NAME),
-            Token::DataListSeperator => write!(f, "{}", DataListSeperator::NAME),
-            Token::DataKeyValueSeperator => write!(f, "{}", DataKeyValueSeperator::NAME),
-            Token::TitleTextSpace => write!(f, "{}", TitleTextSpace::NAME),
-            Token::LineBreak => write!(f, "{}", LineBreak::NAME),
-            Token::StrongDelimiter => write!(f, "{}", StrongDelimiter::NAME),
-            Token::EmphasisDelimiter => write!(f, "{}", EmphasisDelimiter::NAME),
-            Token::StrikethroughDelimiter => write!(f, "{}", StrikethroughDelimiter::NAME),
-            Token::RawDelimiter => write!(f, "{}", RawDelimiter::NAME),
-            Token::MarkupTextSpace => write!(f, "{}", MarkupTextSpace::NAME),
-            Token::LinkOpeningDelimiter => write!(f, "{}", LinkOpeningDelimiter::NAME),
-            Token::LinkClosingDelimiter => write!(f, "{}", LinkClosingDelimiter::NAME),
-            Token::LinkToReferenceJoiner => write!(f, "{}", LinkToReferenceJoiner::NAME),
-            Token::CodeDelimiter => write!(f, "{}", CodeDelimiter::NAME),
-            Token::DelimitedContainerStart => write!(f, "{}", DelimitedContainerStart::NAME),
-            Token::DelimitedContainerEnd => write!(f, "{}", DelimitedContainerEnd::NAME),
-            Token::UnknownDirective(t) => write!(f, "{} ({})", UnknownDirective::NAME, t),
-            Token::Unknown(t) => write!(f, "{} '{}'", Unknown::NAME, t),
-            Token::BlockParameterName(t) => write!(f, "{} '{}'", BlockParameterName::NAME, t),
-            Token::BlockParameterValue(t) => write!(f, "{} '{}'", BlockParameterValue::NAME, t),
-            Token::DataIdentifier(t) => write!(f, "{} '{}'", DataIdentifier::NAME, t),
-            Token::DataValue(t) => write!(f, "{} '{}'", DataValue::NAME, t),
-            Token::TitleText(t) => write!(f, "{} '{}'", TitleText::NAME, t),
-            Token::MarkupText(t) => write!(f, "{} '{}'", MarkupText::NAME, t),
-            Token::RawFragment(t) => write!(f, "{} '{}'", RawFragment::NAME, t),
-            Token::Code(t) => write!(f, "{} '{}'", Code::NAME, t),
-            Token::ListBullet(indent) => {
-                write!(f, "{} ({} spaces)", ListBullet::NAME, indent.space_count)
-            }
+            Token::EndOfInput => EndOfInput::NAME,
+            Token::TitleDirective => TitleDirective::NAME,
+            Token::SectionDirective => SectionDirective::NAME,
+            Token::SubSectionDirective => SubSectionDirective::NAME,
+            Token::MetadataDirective => MetadataDirective::NAME,
+            Token::ReferencesDirective => ReferencesDirective::NAME,
+            Token::ParagraphDirective => ParagraphDirective::NAME,
+            Token::ListDirective => ListDirective::NAME,
+            Token::CodeDirective => CodeDirective::NAME,
+            Token::InfoContainerDirective => InfoContainerDirective::NAME,
+            Token::BlockParametersStart => BlockParametersStart::NAME,
+            Token::BlockParametersEnd => BlockParametersEnd::NAME,
+            Token::BlockParameterNameValueSeperator => BlockParameterNameValueSeperator::NAME,
+            Token::BlockBreak => BlockBreak::NAME,
+            Token::DataListSeperator => DataListSeperator::NAME,
+            Token::DataKeyValueSeperator => DataKeyValueSeperator::NAME,
+            Token::TitleTextSpace => TitleTextSpace::NAME,
+            Token::LineBreak => LineBreak::NAME,
+            Token::StrongDelimiter => StrongDelimiter::NAME,
+            Token::EmphasisDelimiter => EmphasisDelimiter::NAME,
+            Token::StrikethroughDelimiter => StrikethroughDelimiter::NAME,
+            Token::RawDelimiter => RawDelimiter::NAME,
+            Token::MarkupTextSpace => MarkupTextSpace::NAME,
+            Token::LinkOpeningDelimiter => LinkOpeningDelimiter::NAME,
+            Token::LinkClosingDelimiter => LinkClosingDelimiter::NAME,
+            Token::LinkToReferenceJoiner => LinkToReferenceJoiner::NAME,
+            Token::CodeDelimiter => CodeDelimiter::NAME,
+            Token::DelimitedContainerStart => DelimitedContainerStart::NAME,
+            Token::DelimitedContainerEnd => DelimitedContainerEnd::NAME,
+            Token::UnknownDirective(_) => UnknownDirective::NAME,
+            Token::Unknown(_) => Unknown::NAME,
+            Token::BlockParameterName(_) => BlockParameterName::NAME,
+            Token::BlockParameterValue(_) => BlockParameterValue::NAME,
+            Token::DataIdentifier(_) => DataIdentifier::NAME,
+            Token::DataValue(_) => DataValue::NAME,
+            Token::TitleText(_) => TitleText::NAME,
+            Token::MarkupText(_) => MarkupText::NAME,
+            Token::RawFragment(_) => RawFragment::NAME,
+            Token::Code(_) => Code::NAME,
+            Token::ListBullet(_) => ListBullet::NAME,
         }
     }
 }
 
 type Matcher = for<'a> fn(&Scanner<'a>) -> Option<ScanMatch<'a>>;
 
-pub struct UnexpectedTokenError<'a, T>
-where
-    T: TokenSpec<'a>,
-{
-    pub actual: Token<'a>,
+#[derive(PartialEq, Eq, Debug)]
+pub struct UnexpectedTokenError {
     pub position: Position,
-    pub expected: PhantomData<T>,
+    pub expected: TokenName,
+    pub actual: TokenDescription,
 }
 
-impl<'a, T> Display for UnexpectedTokenError<'a, T>
-where
-    T: TokenSpec<'a>,
-{
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "expected: {}, got: {}", T::NAME, self.actual)
-    }
-}
-
+// TODO: store span, not position
 pub struct Spanned<T> {
     pub value: T,
-    // TODO: store span, not position
-    // TODO: position could be private?
     pub position: Position,
 }
 
 // TODO: What if we leant into exposing the dynamic type?
-pub type SpannedTokenKind<'a> = Spanned<Token<'a>>;
+pub struct SpannedToken<'a> {
+    pub value: Token<'a>,
+    pub position: Position,
+    pub lexeme: &'a str,
+}
 
-//TODO: We are quite close to being able to make SpannedTokenKind.value private
-// It wont be able to share a type, but it will enforce the parser follows certain patterns
-
-impl<'a> SpannedTokenKind<'a> {
-    pub fn expect<T>(&self) -> Result<T, UnexpectedTokenError<'a, T>>
+impl<'a> SpannedToken<'a> {
+    pub fn expect<T>(&self) -> Result<T, UnexpectedTokenError>
     where
         T: TokenSpec<'a>,
     {
-        T::try_from(self.value).map_err(|_| UnexpectedTokenError::<'a, T> {
-            expected: PhantomData::<T>,
-            actual: self.value,
+        T::try_from(self.value).map_err(|_| UnexpectedTokenError {
+            expected: T::NAME,
+            actual: self.description(),
             position: self.position,
         })
     }
@@ -224,13 +224,20 @@ impl<'a> SpannedTokenKind<'a> {
     {
         T::try_from(self.value).is_ok()
     }
+
+    pub fn description(&self) -> TokenDescription {
+        TokenDescription {
+            name: self.value.name(),
+            escaped_lexeme: self.lexeme.escape_default().to_string(),
+        }
+    }
 }
 
 //TODO: put matcher func as an associated type?
 // TODO: do we really need this? Its just the TryFrom thats
 // essential right?
 pub trait TokenSpec<'a>: TryFrom<Token<'a>> {
-    const NAME: &'static str;
+    const NAME: TokenName;
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -794,397 +801,398 @@ impl<'a> TryFrom<Token<'a>> for UnknownDirective<'a> {
 }
 
 impl<'a> TokenSpec<'a> for EndOfInput {
-    const NAME: &'static str = "end of input";
+    const NAME: TokenName = TokenName("end of input");
 }
 
 impl<'a> TokenSpec<'a> for TitleDirective {
-    const NAME: &'static str = "title directive";
+    const NAME: TokenName = TokenName("title directive");
 }
 
 impl<'a> TokenSpec<'a> for SectionDirective {
-    const NAME: &'static str = "section directive";
+    const NAME: TokenName = TokenName("section directive");
 }
 
 impl<'a> TokenSpec<'a> for SubSectionDirective {
-    const NAME: &'static str = "subsection directive";
+    const NAME: TokenName = TokenName("subsection directive");
 }
 
 impl<'a> TokenSpec<'a> for BlockParametersStart {
-    const NAME: &'static str = "block parameters start '('";
+    const NAME: TokenName = TokenName("block parameters start '('");
 }
 
 impl<'a> TokenSpec<'a> for BlockParametersEnd {
-    const NAME: &'static str = "block parameters end ')'";
+    const NAME: TokenName = TokenName("block parameters end ')'");
 }
 
 impl<'a> TokenSpec<'a> for BlockParameterNameValueSeperator {
-    const NAME: &'static str = "block parameter name value seperator";
+    const NAME: TokenName = TokenName("block parameter name value seperator");
 }
 
 impl<'a> TokenSpec<'a> for BlockBreak {
-    const NAME: &'static str = "block break";
+    const NAME: TokenName = TokenName("block break");
 }
 
 impl<'a> TokenSpec<'a> for DataListSeperator {
-    const NAME: &'static str = "metadata list seperator";
+    const NAME: TokenName = TokenName("metadata list seperator");
 }
 
 impl<'a> TokenSpec<'a> for DataKeyValueSeperator {
-    const NAME: &'static str = "metadata key value seperator";
+    const NAME: TokenName = TokenName("metadata key value seperator");
 }
 
 impl<'a> TokenSpec<'a> for TitleTextSpace {
-    const NAME: &'static str = "title text space";
+    const NAME: TokenName = TokenName("title text space");
 }
 
 impl<'a> TokenSpec<'a> for LineBreak {
-    const NAME: &'static str = "linebreak";
+    const NAME: TokenName = TokenName("linebreak");
 }
 
 impl<'a> TokenSpec<'a> for StrongDelimiter {
-    const NAME: &'static str = "strong delimiter";
+    const NAME: TokenName = TokenName("strong delimiter");
 }
 
 impl<'a> TokenSpec<'a> for EmphasisDelimiter {
-    const NAME: &'static str = "emphasis delimiter";
+    const NAME: TokenName = TokenName("emphasis delimiter");
 }
 
 impl<'a> TokenSpec<'a> for StrikethroughDelimiter {
-    const NAME: &'static str = "strikethrough delimiter";
+    const NAME: TokenName = TokenName("strikethrough delimiter");
 }
 
 impl<'a> TokenSpec<'a> for RawDelimiter {
-    const NAME: &'static str = "raw delimiter";
+    const NAME: TokenName = TokenName("raw delimiter");
 }
 
 impl<'a> TokenSpec<'a> for MarkupTextSpace {
-    const NAME: &'static str = "markup text space";
+    const NAME: TokenName = TokenName("markup text space");
 }
 
 impl<'a> TokenSpec<'a> for LinkOpeningDelimiter {
-    const NAME: &'static str = "link opening delimiter";
+    const NAME: TokenName = TokenName("link opening delimiter");
 }
 
 impl<'a> TokenSpec<'a> for LinkClosingDelimiter {
-    const NAME: &'static str = "link closing delimiter";
+    const NAME: TokenName = TokenName("link closing delimiter");
 }
 
 impl<'a> TokenSpec<'a> for LinkToReferenceJoiner {
-    const NAME: &'static str = "link to reference joiner '@'";
+    const NAME: TokenName = TokenName("link to reference joiner '@'");
 }
 
 impl<'a> TokenSpec<'a> for CodeDelimiter {
-    const NAME: &'static str = "delimited block delimiter";
+    const NAME: TokenName = TokenName("delimited block delimiter");
 }
 
 impl<'a> TokenSpec<'a> for DelimitedContainerStart {
-    const NAME: &'static str = "delimited container start";
+    const NAME: TokenName = TokenName("delimited container start");
 }
 
 impl<'a> TokenSpec<'a> for DelimitedContainerEnd {
-    const NAME: &'static str = "delimited container end";
+    const NAME: TokenName = TokenName("delimited container end");
 }
 
 impl<'a> TokenSpec<'a> for Unknown<'a> {
-    const NAME: &'static str = "unknown";
+    const NAME: TokenName = TokenName("unknown");
 }
 
 impl<'a> TokenSpec<'a> for BlockParameterName<'a> {
-    const NAME: &'static str = "block parameter name";
+    const NAME: TokenName = TokenName("block parameter name");
 }
 
 impl<'a> TokenSpec<'a> for BlockParameterValue<'a> {
-    const NAME: &'static str = "block parameter value";
+    const NAME: TokenName = TokenName("block parameter value");
 }
 
 impl<'a> TokenSpec<'a> for DataIdentifier<'a> {
-    const NAME: &'static str = "metadata identifier";
+    const NAME: TokenName = TokenName("metadata identifier");
 }
 
 impl<'a> TokenSpec<'a> for DataValue<'a> {
-    const NAME: &'static str = "metadata value";
+    const NAME: TokenName = TokenName("metadata value");
 }
 
 impl<'a> TokenSpec<'a> for TitleText<'a> {
-    const NAME: &'static str = "title text";
+    const NAME: TokenName = TokenName("title text");
 }
 
 impl<'a> TokenSpec<'a> for MarkupText<'a> {
-    const NAME: &'static str = "markup text";
+    const NAME: TokenName = TokenName("markup text");
 }
 
 impl<'a> TokenSpec<'a> for RawFragment<'a> {
-    const NAME: &'static str = "raw fragment";
+    const NAME: TokenName = TokenName("raw fragment");
 }
 
 impl<'a> TokenSpec<'a> for Code<'a> {
-    const NAME: &'static str = "code";
+    const NAME: TokenName = TokenName("code");
 }
 
 impl<'a> TokenSpec<'a> for ListBullet {
-    const NAME: &'static str = "list bullet";
+    const NAME: TokenName = TokenName("list bullet");
 }
 
 impl<'a> TokenSpec<'a> for MetadataDirective {
-    const NAME: &'static str = "metadata directive";
+    const NAME: TokenName = TokenName("metadata directive");
 }
 
 impl<'a> TokenSpec<'a> for ReferencesDirective {
-    const NAME: &'static str = "references directive";
+    const NAME: TokenName = TokenName("references directive");
 }
 
 impl<'a> TokenSpec<'a> for ParagraphDirective {
-    const NAME: &'static str = "paragraph directive";
+    const NAME: TokenName = TokenName("paragraph directive");
 }
 
 impl<'a> TokenSpec<'a> for ListDirective {
-    const NAME: &'static str = "list directive";
+    const NAME: TokenName = TokenName("list directive");
 }
 
 impl<'a> TokenSpec<'a> for CodeDirective {
-    const NAME: &'static str = "code directive";
+    const NAME: TokenName = TokenName("code directive");
 }
 
 impl<'a> TokenSpec<'a> for InfoContainerDirective {
-    const NAME: &'static str = "code directive";
+    const NAME: TokenName = TokenName("code directive");
 }
 
 impl<'a> TokenSpec<'a> for UnknownDirective<'a> {
-    const NAME: &'static str = "unknown block directive";
+    const NAME: TokenName = TokenName("unknown block directive");
 }
 
+//TODO: we should remove display from TokenSpec
 //TODO: these should contain value for value tokens
 impl Display for EndOfInput {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        f.write_str(Self::NAME)
+        f.write_str(Self::NAME.0)
     }
 }
 
 impl Display for TitleDirective {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        f.write_str(Self::NAME)
+        f.write_str(Self::NAME.0)
     }
 }
 
 impl Display for SectionDirective {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        f.write_str(Self::NAME)
+        f.write_str(Self::NAME.0)
     }
 }
 
 impl Display for SubSectionDirective {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        f.write_str(Self::NAME)
+        f.write_str(Self::NAME.0)
     }
 }
 
 impl Display for BlockParametersStart {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        f.write_str(Self::NAME)
+        f.write_str(Self::NAME.0)
     }
 }
 
 impl Display for BlockParametersEnd {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        f.write_str(Self::NAME)
+        f.write_str(Self::NAME.0)
     }
 }
 
 impl Display for BlockParameterNameValueSeperator {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        f.write_str(Self::NAME)
+        f.write_str(Self::NAME.0)
     }
 }
 
 impl Display for BlockBreak {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        f.write_str(Self::NAME)
+        f.write_str(Self::NAME.0)
     }
 }
 
 impl Display for DataListSeperator {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        f.write_str(Self::NAME)
+        f.write_str(Self::NAME.0)
     }
 }
 
 impl Display for DataKeyValueSeperator {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        f.write_str(Self::NAME)
+        f.write_str(Self::NAME.0)
     }
 }
 
 impl Display for TitleTextSpace {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        f.write_str(Self::NAME)
+        f.write_str(Self::NAME.0)
     }
 }
 
 impl Display for LineBreak {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        f.write_str(Self::NAME)
+        f.write_str(Self::NAME.0)
     }
 }
 
 impl Display for StrongDelimiter {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        f.write_str(Self::NAME)
+        f.write_str(Self::NAME.0)
     }
 }
 
 impl Display for EmphasisDelimiter {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        f.write_str(Self::NAME)
+        f.write_str(Self::NAME.0)
     }
 }
 
 impl Display for StrikethroughDelimiter {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        f.write_str(Self::NAME)
+        f.write_str(Self::NAME.0)
     }
 }
 
 impl Display for RawDelimiter {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        f.write_str(Self::NAME)
+        f.write_str(Self::NAME.0)
     }
 }
 
 impl Display for MarkupTextSpace {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        f.write_str(Self::NAME)
+        f.write_str(Self::NAME.0)
     }
 }
 
 impl Display for LinkOpeningDelimiter {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        f.write_str(Self::NAME)
+        f.write_str(Self::NAME.0)
     }
 }
 
 impl Display for LinkClosingDelimiter {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        f.write_str(Self::NAME)
+        f.write_str(Self::NAME.0)
     }
 }
 
 impl Display for LinkToReferenceJoiner {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        f.write_str(Self::NAME)
+        f.write_str(Self::NAME.0)
     }
 }
 
 impl Display for CodeDelimiter {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        f.write_str(Self::NAME)
+        f.write_str(Self::NAME.0)
     }
 }
 
 impl Display for DelimitedContainerStart {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        f.write_str(Self::NAME)
+        f.write_str(Self::NAME.0)
     }
 }
 
 impl Display for DelimitedContainerEnd {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        f.write_str(Self::NAME)
+        f.write_str(Self::NAME.0)
     }
 }
 
 impl Display for ListBullet {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        f.write_str(Self::NAME)
+        f.write_str(Self::NAME.0)
     }
 }
 
 impl<'a> Display for Unknown<'a> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        f.write_str(Self::NAME)
+        f.write_str(Self::NAME.0)
     }
 }
 
 impl Display for MetadataDirective {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        f.write_str(Self::NAME)
+        f.write_str(Self::NAME.0)
     }
 }
 
 impl Display for ReferencesDirective {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        f.write_str(Self::NAME)
+        f.write_str(Self::NAME.0)
     }
 }
 
 impl Display for ParagraphDirective {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        f.write_str(Self::NAME)
+        f.write_str(Self::NAME.0)
     }
 }
 
 impl Display for ListDirective {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        f.write_str(Self::NAME)
+        f.write_str(Self::NAME.0)
     }
 }
 
 impl Display for CodeDirective {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        f.write_str(Self::NAME)
+        f.write_str(Self::NAME.0)
     }
 }
 
 impl<'a> Display for BlockParameterName<'a> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        f.write_str(Self::NAME)
+        f.write_str(Self::NAME.0)
     }
 }
 
 impl<'a> Display for BlockParameterValue<'a> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        f.write_str(Self::NAME)
+        f.write_str(Self::NAME.0)
     }
 }
 
 impl<'a> Display for DataIdentifier<'a> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        f.write_str(Self::NAME)
+        f.write_str(Self::NAME.0)
     }
 }
 
 impl<'a> Display for DataValue<'a> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        f.write_str(Self::NAME)
+        f.write_str(Self::NAME.0)
     }
 }
 
 impl<'a> Display for TitleText<'a> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        f.write_str(Self::NAME)
+        f.write_str(Self::NAME.0)
     }
 }
 
 impl<'a> Display for MarkupText<'a> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        f.write_str(Self::NAME)
+        f.write_str(Self::NAME.0)
     }
 }
 
 impl<'a> Display for RawFragment<'a> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        f.write_str(Self::NAME)
+        f.write_str(Self::NAME.0)
     }
 }
 
 impl<'a> Display for Code<'a> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        f.write_str(Self::NAME)
+        f.write_str(Self::NAME.0)
     }
 }
 
 impl<'a> Display for UnknownDirective<'a> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        f.write_str(Self::NAME)
+        f.write_str(Self::NAME.0)
     }
 }
 
@@ -1251,37 +1259,41 @@ impl<'a> Tokeniser<'a> {
         }
     }
 
-    pub fn peek(&self) -> SpannedTokenKind<'a> {
+    pub fn peek(&self) -> SpannedToken<'a> {
+        //TODO: re-use with advance
         let matchers = self.current_matchers();
         let position = self.scanner.position();
-        // let start = self.scanner.read_head.index;
-
+        let start = self.scanner.read_head.index;
         let scan_match = self.scan(matchers);
-        // let lexeme = &self.scanner.input[start..scan_match.end.index];
+        let end = scan_match.end.index;
+        let lexeme = &self.scanner.input[start..end];
 
-        SpannedTokenKind {
+        SpannedToken {
             value: scan_match.token,
+            lexeme,
             position,
         }
     }
 
-    pub fn advance(&mut self) -> SpannedTokenKind<'a> {
+    pub fn advance(&mut self) -> SpannedToken<'a> {
         if self.token_count > self.max_tokens {
             panic!("Posible infinite loop detected")
         }
 
         let matchers = self.current_matchers();
         let position = self.scanner.position();
-        // let start = self.scanner.read_head.index;
 
+        let start = self.scanner.read_head.index;
         let scan_match = self.scan(matchers);
-        // let lexeme = &self.scanner.input[start..scan_match.end.index];
+        let end = scan_match.end.index;
+        let lexeme = &self.scanner.input[start..end];
 
         self.scanner.advance_past(&scan_match);
         self.token_count += 1;
 
-        SpannedTokenKind {
+        SpannedToken {
             value: scan_match.token,
+            lexeme,
             position,
         }
     }
@@ -1296,7 +1308,7 @@ impl<'a> Tokeniser<'a> {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Eq, PartialEq, Clone, Copy, Debug)]
 pub struct Position {
     pub column: u32,
     pub row: u32,

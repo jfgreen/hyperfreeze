@@ -19,17 +19,21 @@ enum ErrorKind {
     MissingListLevel((usize, usize)),
     MetadataNotAtStart,
     ReferencesOutOfPlace,
-    //TODO: these strings all have to be specific kinds of thing
-    // Can we use a newtype pattern, e.g TokenName('static str)?
-    // or if we need lexeme/value from input TokenDesc(String)
-    UnexpectedToken(String),
+    //TODO: would love to see less primitive types here
+    // e.g indent, lexeme
+    UnexpectedToken {
+        expected: TokenName,
+        actual: TokenDescription,
+    },
     UnknownMetadata(String),
     UnevenListIndent(usize),
     UnknownDirective(String),
     ContainerMissingStart,
     EmptyContainer,
     UnterminatedRawTextRun,
-    UnexpectedBlockStart(String),
+    UnexpectedBlockStart {
+        actual: TokenDescription,
+    },
     SubSectionNotNested,
 }
 
@@ -75,8 +79,12 @@ impl ParseError {
             ReferencesOutOfPlace => {
                 write!(f, "references not at start of document")
             }
-            UnexpectedToken(message) => {
-                write!(f, "unexpected token, {}", message)
+            UnexpectedToken { expected, actual } => {
+                write!(
+                    f,
+                    "unexpected token, expected: {}, got: {} '{}'",
+                    expected, actual.name, actual.escaped_lexeme,
+                )
             }
             UnevenListIndent(count) => {
                 write!(f, "list indent of {} is not even", count)
@@ -93,8 +101,12 @@ impl ParseError {
             UnterminatedRawTextRun => {
                 write!(f, "unterminated raw text run")
             }
-            UnexpectedBlockStart(actual) => {
-                write!(f, "expected start of block, got '{}'", actual)
+            UnexpectedBlockStart { actual } => {
+                write!(
+                    f,
+                    "expected start of block, got: {} '{}'",
+                    actual.name, actual.escaped_lexeme,
+                )
             }
             SubSectionNotNested => {
                 write!(f, "subsection not inside an enclosing section")
@@ -112,15 +124,17 @@ impl ParseError {
     }
 }
 
-impl<'a, T> From<UnexpectedTokenError<'a, T>> for ParseError
-where
-    T: TokenSpec<'a>,
-{
-    fn from(err: UnexpectedTokenError<'a, T>) -> Self {
+impl From<UnexpectedTokenError> for ParseError {
+    fn from(err: UnexpectedTokenError) -> Self {
+        let input_column = err.position.column;
+        let input_line = err.position.row;
         ParseError {
-            kind: ErrorKind::UnexpectedToken(err.to_string()),
-            input_column: err.position.column,
-            input_line: err.position.row,
+            kind: ErrorKind::UnexpectedToken {
+                expected: err.expected,
+                actual: err.actual,
+            },
+            input_column,
+            input_line,
             backtrace: Backtrace::capture(),
         }
     }
@@ -507,9 +521,11 @@ fn parse_block(tokeniser: &mut Tokeniser) -> ParseResult<Block> {
             return parse_err!(ErrorKind::ContainerMissingStart, next.position);
         }
         t if is_markup(t) => parse_paragraph(tokeniser)?,
-        other => {
+        _ => {
             return parse_err!(
-                ErrorKind::UnexpectedBlockStart(other.to_string()),
+                ErrorKind::UnexpectedBlockStart {
+                    actual: next.description()
+                },
                 next.position
             );
         }
@@ -1362,7 +1378,13 @@ mod test {
     fn explicit_paragraph_with_block_break_before_text_is_rejected() {
         let input = "#paragraph\n\nCats go meeow!";
 
-        let expected = ErrorKind::UnexpectedToken("expected: linebreak, got: block break".into());
+        let expected = ErrorKind::UnexpectedToken {
+            expected: LineBreak::NAME,
+            actual: TokenDescription {
+                name: BlockBreak::NAME,
+                escaped_lexeme: "\\n\\n".into(),
+            },
+        };
 
         let result = parse_content_str(input);
         assert_parse_fails(result, expected);
@@ -1412,7 +1434,13 @@ mod test {
     fn block_without_new_line_is_rejected() {
         let input = "#paragraph";
 
-        let expected = ErrorKind::UnexpectedToken("expected: linebreak, got: end of input".into());
+        let expected = ErrorKind::UnexpectedToken {
+            expected: LineBreak::NAME,
+            actual: TokenDescription {
+                name: EndOfInput::NAME,
+                escaped_lexeme: "".into(),
+            },
+        };
 
         let result = parse_content_str(input);
         assert_parse_fails(result, expected);
@@ -1552,8 +1580,13 @@ mod test {
             "ever so surprising\n"
         );
 
-        let expected =
-            ErrorKind::UnexpectedToken("expected: block break, got: paragraph directive".into());
+        let expected = ErrorKind::UnexpectedToken {
+            expected: TokenName("block break"),
+            actual: TokenDescription {
+                name: TokenName("paragraph directive"),
+                escaped_lexeme: "#paragraph".into(),
+            },
+        };
 
         let result = parse_content_str(input);
         assert_parse_fails(result, expected);
@@ -1949,9 +1982,13 @@ mod test {
     fn strikethrough_with_double_linebreak() {
         let input = "~Erm...\n\nmeow?~";
 
-        let expected = ErrorKind::UnexpectedToken(
-            "expected: strikethrough delimiter, got: block break".into(),
-        );
+        let expected = ErrorKind::UnexpectedToken {
+            expected: TokenName("strikethrough delimiter"),
+            actual: TokenDescription {
+                name: TokenName("block break"),
+                escaped_lexeme: "\\n\\n".into(),
+            },
+        };
 
         let result = parse_content_str(input);
         assert_parse_fails(result, expected);
@@ -1961,9 +1998,13 @@ mod test {
     fn unmatched_emphasis_1() {
         let input = "_.";
 
-        let expected = ErrorKind::UnexpectedToken(
-            "expected: emphasis delimiter, got: end of input".to_string(),
-        );
+        let expected = ErrorKind::UnexpectedToken {
+            expected: EmphasisDelimiter::NAME,
+            actual: TokenDescription {
+                name: EndOfInput::NAME,
+                escaped_lexeme: "".into(),
+            },
+        };
 
         let result = parse_content_str(input);
         assert_parse_fails(result, expected);
@@ -1973,9 +2014,13 @@ mod test {
     fn unmatched_emphasis_2() {
         let input = "meow _meow.";
 
-        let expected = ErrorKind::UnexpectedToken(
-            "expected: emphasis delimiter, got: end of input".to_string(),
-        );
+        let expected = ErrorKind::UnexpectedToken {
+            expected: EmphasisDelimiter::NAME,
+            actual: TokenDescription {
+                name: EndOfInput::NAME,
+                escaped_lexeme: "".into(),
+            },
+        };
 
         let result = parse_content_str(input);
         assert_parse_fails(result, expected);
@@ -1985,9 +2030,13 @@ mod test {
     fn unmatched_emphasis_3() {
         let input = "meow meow_";
 
-        let expected = ErrorKind::UnexpectedToken(
-            "expected: emphasis delimiter, got: end of input".to_string(),
-        );
+        let expected = ErrorKind::UnexpectedToken {
+            expected: EmphasisDelimiter::NAME,
+            actual: TokenDescription {
+                name: EndOfInput::NAME,
+                escaped_lexeme: "".into(),
+            },
+        };
 
         let result = parse_content_str(input);
         assert_parse_fails(result, expected);
@@ -1997,9 +2046,15 @@ mod test {
     fn nested_styled_text() {
         let input = "_*meow!*_";
 
-        let expected = ErrorKind::UnexpectedToken(
-            "expected: emphasis delimiter, got: strong delimiter".into(),
-        );
+        // TODO: is this error true? specialise it?
+        // we didn't strictly _expect_ only a delimiter right?
+        let expected = ErrorKind::UnexpectedToken {
+            expected: EmphasisDelimiter::NAME,
+            actual: TokenDescription {
+                name: StrongDelimiter::NAME,
+                escaped_lexeme: "*".into(),
+            },
+        };
 
         let result = parse_content_str(input);
         assert_parse_fails(result, expected);
@@ -2029,9 +2084,13 @@ mod test {
     fn raw_immediately_in_emphasis() {
         let input = "_``_";
 
-        let expected = ErrorKind::UnexpectedToken(
-            "expected: emphasis delimiter, got: raw delimiter".to_string(),
-        );
+        let expected = ErrorKind::UnexpectedToken {
+            expected: EmphasisDelimiter::NAME,
+            actual: TokenDescription {
+                name: RawDelimiter::NAME,
+                escaped_lexeme: "`".into(),
+            },
+        };
 
         let result = parse_content_str(input);
         assert_parse_fails(result, expected);
@@ -2041,9 +2100,13 @@ mod test {
     fn raw_within_in_emphasis() {
         let input = "_a``a_";
 
-        let expected = ErrorKind::UnexpectedToken(
-            "expected: emphasis delimiter, got: raw delimiter".to_string(),
-        );
+        let expected = ErrorKind::UnexpectedToken {
+            expected: EmphasisDelimiter::NAME,
+            actual: TokenDescription {
+                name: RawDelimiter::NAME,
+                escaped_lexeme: "`".into(),
+            },
+        };
 
         let result = parse_content_str(input);
         assert_parse_fails(result, expected);
@@ -2260,9 +2323,14 @@ mod test {
             "/Some Document Title"
         );
 
-        let expected = ErrorKind::UnexpectedToken(
-            "expected: title directive, got: markup text 'Document'".into(),
-        );
+        //TODO: double expected is a bit meh
+        let expected = ErrorKind::UnexpectedToken {
+            expected: TitleDirective::NAME,
+            actual: TokenDescription {
+                name: MarkupText::NAME,
+                escaped_lexeme: "Document".into(),
+            },
+        };
 
         let result = parse_document_str(input);
         assert_parse_fails(result, expected);
@@ -2278,9 +2346,12 @@ mod test {
             "/ Other Document Title"
         );
 
-        // TODO: we should put the lexeme into token so the error goes something like
-        // ErrorKind::UnexpectedBlockStart("title directive ('/')".into())
-        let expected = ErrorKind::UnexpectedBlockStart("title directive".into());
+        let expected = ErrorKind::UnexpectedBlockStart {
+            actual: TokenDescription {
+                name: TitleDirective::NAME,
+                escaped_lexeme: "/ ".into(),
+            },
+        };
 
         let result = parse_document_str(input);
         assert_parse_fails(result, expected);
@@ -2298,7 +2369,12 @@ mod test {
             "/Some Document Title"
         );
 
-        let expected = ErrorKind::UnexpectedBlockStart("title directive".into());
+        let expected = ErrorKind::UnexpectedBlockStart {
+            actual: TokenDescription {
+                name: TitleDirective::NAME,
+                escaped_lexeme: "/".into(),
+            },
+        };
 
         let result = parse_document_str(input);
         assert_parse_fails(result, expected);
@@ -2397,8 +2473,13 @@ mod test {
             "<<<"
         );
 
-        let expected =
-            ErrorKind::UnexpectedToken("expected: linebreak, got: markup text 'squeek'".into());
+        let expected = ErrorKind::UnexpectedToken {
+            expected: LineBreak::NAME,
+            actual: TokenDescription {
+                name: MarkupText::NAME,
+                escaped_lexeme: "squeek".into(),
+            },
+        };
 
         let result = parse_content_str(input);
         assert_parse_fails(result, expected);
@@ -2413,8 +2494,13 @@ mod test {
             "<<<toy"
         );
 
-        let expected =
-            ErrorKind::UnexpectedToken("expected: block break, got: markup text 'toy'".into());
+        let expected = ErrorKind::UnexpectedToken {
+            expected: BlockBreak::NAME,
+            actual: TokenDescription {
+                name: MarkupText::NAME,
+                escaped_lexeme: "toy".into(),
+            },
+        };
 
         let result = parse_content_str(input);
         assert_parse_fails(result, expected);
@@ -2430,7 +2516,13 @@ mod test {
             "toy"
         );
 
-        let expected = ErrorKind::UnexpectedToken("expected: block break, got: linebreak".into());
+        let expected = ErrorKind::UnexpectedToken {
+            expected: BlockBreak::NAME,
+            actual: TokenDescription {
+                name: LineBreak::NAME,
+                escaped_lexeme: "\\n".into(),
+            },
+        };
 
         let result = parse_content_str(input);
         assert_parse_fails(result, expected);
@@ -2664,8 +2756,13 @@ mod test {
     fn list_with_emphasis_over_multiple_points() {
         let input = "- f_oo\n  -ba_r";
 
-        let expected =
-            ErrorKind::UnexpectedToken("expected: emphasis delimiter, got: linebreak".into());
+        let expected = ErrorKind::UnexpectedToken {
+            expected: EmphasisDelimiter::NAME,
+            actual: TokenDescription {
+                name: LineBreak::NAME,
+                escaped_lexeme: "\\n".into(),
+            },
+        };
 
         let result = parse_content_str(input);
         assert_parse_fails(result, expected);
