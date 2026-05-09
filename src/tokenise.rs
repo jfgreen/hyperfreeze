@@ -1,4 +1,4 @@
-use std::fmt::{self, Display, Formatter};
+use std::fmt::{self, Display, Formatter, Write};
 use std::str::CharIndices;
 
 //TODO: Some kind of annotated example that describes the terminology
@@ -47,6 +47,25 @@ pub struct Indent {
 }
 
 #[derive(PartialEq, Eq, Debug)]
+pub struct Lexeme(String);
+
+impl<'a> From<&'a str> for Lexeme {
+    fn from(value: &'a str) -> Self {
+        Lexeme(value.to_string())
+    }
+}
+
+impl Display for Lexeme {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        let Lexeme(str) = self;
+        for c in str.escape_default() {
+            f.write_char(c)?;
+        }
+        Ok(())
+    }
+}
+
+#[derive(PartialEq, Eq, Debug)]
 pub struct TokenName(pub &'static str);
 
 impl Display for TokenName {
@@ -59,7 +78,7 @@ impl Display for TokenName {
 #[derive(PartialEq, Eq, Debug)]
 pub struct TokenDescription {
     pub name: TokenName,
-    pub escaped_lexeme: String,
+    pub lexeme: Lexeme,
 }
 
 // TODO: Use a macro to clear up token building
@@ -183,7 +202,8 @@ pub struct Spanned<T> {
 pub struct SpannedToken<'a> {
     pub value: Token<'a>,
     pub position: Position,
-    pub lexeme: &'a str,
+    //TODO: having both lexeme and lexeme() is a bit meh
+    lexeme: &'a str,
 }
 
 impl<'a> SpannedToken<'a> {
@@ -228,8 +248,12 @@ impl<'a> SpannedToken<'a> {
     pub fn description(&self) -> TokenDescription {
         TokenDescription {
             name: self.value.name(),
-            escaped_lexeme: self.lexeme.escape_default().to_string(),
+            lexeme: self.lexeme(),
         }
+    }
+
+    pub fn lexeme(&self) -> Lexeme {
+        Lexeme::from(self.lexeme)
     }
 }
 

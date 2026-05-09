@@ -16,7 +16,10 @@ pub struct ParseError {
 enum ErrorKind {
     LooseDelimiter,
     EmptyDelimitedText,
-    MissingListLevel((usize, usize)),
+    MissingListLevel {
+        from: usize,
+        to: usize,
+    },
     MetadataNotAtStart,
     ReferencesOutOfPlace,
     //TODO: would love to see less primitive types here
@@ -70,7 +73,7 @@ impl ParseError {
             UnknownMetadata(key) => {
                 write!(f, "unknown metadata '{}'", key)
             }
-            MissingListLevel((from, to)) => {
+            MissingListLevel { from, to } => {
                 write!(f, "list indent skipped from {} to {}", from, to)
             }
             MetadataNotAtStart => {
@@ -83,7 +86,7 @@ impl ParseError {
                 write!(
                     f,
                     "unexpected token, expected: {}, got: {} '{}'",
-                    expected, actual.name, actual.escaped_lexeme,
+                    expected, actual.name, actual.lexeme,
                 )
             }
             UnevenListIndent(count) => {
@@ -105,7 +108,7 @@ impl ParseError {
                 write!(
                     f,
                     "expected start of block, got: {} '{}'",
-                    actual.name, actual.escaped_lexeme,
+                    actual.name, actual.lexeme,
                 )
             }
             SubSectionNotNested => {
@@ -591,7 +594,10 @@ fn parse_list_level(
             break;
         } else {
             return parse_err!(
-                ErrorKind::MissingListLevel((current_depth, depth)),
+                ErrorKind::MissingListLevel {
+                    from: current_depth,
+                    to: depth
+                },
                 bullet_token.position
             );
         };
@@ -1382,7 +1388,7 @@ mod test {
             expected: LineBreak::NAME,
             actual: TokenDescription {
                 name: BlockBreak::NAME,
-                escaped_lexeme: "\\n\\n".into(),
+                lexeme: "\n\n".into(),
             },
         };
 
@@ -1438,7 +1444,7 @@ mod test {
             expected: LineBreak::NAME,
             actual: TokenDescription {
                 name: EndOfInput::NAME,
-                escaped_lexeme: "".into(),
+                lexeme: "".into(),
             },
         };
 
@@ -1584,7 +1590,7 @@ mod test {
             expected: TokenName("block break"),
             actual: TokenDescription {
                 name: TokenName("paragraph directive"),
-                escaped_lexeme: "#paragraph".into(),
+                lexeme: "#paragraph".into(),
             },
         };
 
@@ -1986,7 +1992,7 @@ mod test {
             expected: TokenName("strikethrough delimiter"),
             actual: TokenDescription {
                 name: TokenName("block break"),
-                escaped_lexeme: "\\n\\n".into(),
+                lexeme: "\n\n".into(),
             },
         };
 
@@ -2002,7 +2008,7 @@ mod test {
             expected: EmphasisDelimiter::NAME,
             actual: TokenDescription {
                 name: EndOfInput::NAME,
-                escaped_lexeme: "".into(),
+                lexeme: "".into(),
             },
         };
 
@@ -2018,7 +2024,7 @@ mod test {
             expected: EmphasisDelimiter::NAME,
             actual: TokenDescription {
                 name: EndOfInput::NAME,
-                escaped_lexeme: "".into(),
+                lexeme: "".into(),
             },
         };
 
@@ -2034,7 +2040,7 @@ mod test {
             expected: EmphasisDelimiter::NAME,
             actual: TokenDescription {
                 name: EndOfInput::NAME,
-                escaped_lexeme: "".into(),
+                lexeme: "".into(),
             },
         };
 
@@ -2052,7 +2058,7 @@ mod test {
             expected: EmphasisDelimiter::NAME,
             actual: TokenDescription {
                 name: StrongDelimiter::NAME,
-                escaped_lexeme: "*".into(),
+                lexeme: "*".into(),
             },
         };
 
@@ -2088,7 +2094,7 @@ mod test {
             expected: EmphasisDelimiter::NAME,
             actual: TokenDescription {
                 name: RawDelimiter::NAME,
-                escaped_lexeme: "`".into(),
+                lexeme: "`".into(),
             },
         };
 
@@ -2104,7 +2110,7 @@ mod test {
             expected: EmphasisDelimiter::NAME,
             actual: TokenDescription {
                 name: RawDelimiter::NAME,
-                escaped_lexeme: "`".into(),
+                lexeme: "`".into(),
             },
         };
 
@@ -2328,7 +2334,7 @@ mod test {
             expected: TitleDirective::NAME,
             actual: TokenDescription {
                 name: MarkupText::NAME,
-                escaped_lexeme: "Document".into(),
+                lexeme: "Document".into(),
             },
         };
 
@@ -2349,7 +2355,7 @@ mod test {
         let expected = ErrorKind::UnexpectedBlockStart {
             actual: TokenDescription {
                 name: TitleDirective::NAME,
-                escaped_lexeme: "/ ".into(),
+                lexeme: "/ ".into(),
             },
         };
 
@@ -2372,7 +2378,7 @@ mod test {
         let expected = ErrorKind::UnexpectedBlockStart {
             actual: TokenDescription {
                 name: TitleDirective::NAME,
-                escaped_lexeme: "/".into(),
+                lexeme: "/".into(),
             },
         };
 
@@ -2477,7 +2483,7 @@ mod test {
             expected: LineBreak::NAME,
             actual: TokenDescription {
                 name: MarkupText::NAME,
-                escaped_lexeme: "squeek".into(),
+                lexeme: "squeek".into(),
             },
         };
 
@@ -2498,7 +2504,7 @@ mod test {
             expected: BlockBreak::NAME,
             actual: TokenDescription {
                 name: MarkupText::NAME,
-                escaped_lexeme: "toy".into(),
+                lexeme: "toy".into(),
             },
         };
 
@@ -2520,7 +2526,7 @@ mod test {
             expected: BlockBreak::NAME,
             actual: TokenDescription {
                 name: LineBreak::NAME,
-                escaped_lexeme: "\\n".into(),
+                lexeme: "\n".into(),
             },
         };
 
@@ -2760,7 +2766,7 @@ mod test {
             expected: EmphasisDelimiter::NAME,
             actual: TokenDescription {
                 name: LineBreak::NAME,
-                escaped_lexeme: "\\n".into(),
+                lexeme: "\n".into(),
             },
         };
 
@@ -2785,7 +2791,7 @@ mod test {
             "    - Wagyu beef because it is oh so tender\n",
         );
 
-        let expected = ErrorKind::MissingListLevel((0, 2));
+        let expected = ErrorKind::MissingListLevel { from: 0, to: 2 };
 
         let result = parse_content_str(input);
         assert_parse_fails(result, expected);
