@@ -131,15 +131,13 @@ impl ParseError {
 
 impl From<UnexpectedTokenError> for ParseError {
     fn from(err: UnexpectedTokenError) -> Self {
-        let input_column = err.position.column;
-        let input_line = err.position.row;
         ParseError {
             kind: ErrorKind::UnexpectedToken {
                 expected: err.expected,
                 actual: err.actual,
             },
-            input_column,
-            input_line,
+            input_column: err.position.column,
+            input_line: err.position.row,
             backtrace: Backtrace::capture(),
         }
     }
