@@ -262,725 +262,107 @@ pub trait TokenSpec<'a>: TryFrom<Token<'a>> {
     const NAME: TokenName;
 }
 
-#[derive(Clone, Copy, Debug)]
-pub struct MetadataDirective;
+// macro_rules! token_stuff {
+//     ($($stuff:tt),+ $(,)?) => {
 
-#[derive(Clone, Copy, Debug)]
-pub struct ReferencesDirective;
+//     }
+//     ($($name:ident $($(<$lifetime:lifetime>)? ($value:ty))?),+ $(,)?) => {
+//         $(
+//             #[derive(Clone, Copy, Debug)]
+//             pub struct $name$($(<$lifetime>)? (pub $value))?;
+//         )+
+//     };
+// }
 
-#[derive(Clone, Copy, Debug)]
-pub struct ParagraphDirective;
+macro_rules! unit_token {
+    ($name:ident) => {
+        #[derive(Clone, Copy, Debug)]
+        pub struct $name;
 
-#[derive(Clone, Copy, Debug)]
-pub struct ListDirective;
-
-#[derive(Clone, Copy, Debug)]
-pub struct CodeDirective;
-
-#[derive(Clone, Copy, Debug)]
-pub struct InfoContainerDirective;
-
-#[derive(Clone, Copy, Debug)]
-pub struct UnknownDirective<'a>(pub &'a str);
-
-#[derive(Clone, Copy, Debug)]
-pub struct EndOfInput;
-
-#[derive(Clone, Copy, Debug)]
-pub struct TitleDirective;
-
-#[derive(Clone, Copy, Debug)]
-pub struct SectionDirective;
-
-#[derive(Clone, Copy, Debug)]
-pub struct SubSectionDirective;
-
-#[derive(Clone, Copy, Debug)]
-pub struct BlockParametersStart;
-
-#[derive(Clone, Copy, Debug)]
-pub struct BlockParametersEnd;
-
-#[derive(Clone, Copy, Debug)]
-pub struct BlockParameterNameValueSeperator;
-
-#[derive(Clone, Copy, Debug)]
-pub struct BlockBreak;
-
-#[derive(Clone, Copy, Debug)]
-pub struct DataListSeperator;
-
-#[derive(Clone, Copy, Debug)]
-pub struct DataKeyValueSeperator;
-
-#[derive(Clone, Copy, Debug)]
-pub struct TitleTextSpace;
-
-#[derive(Clone, Copy, Debug)]
-pub struct LineBreak;
-
-#[derive(Clone, Copy, Debug)]
-pub struct StrongDelimiter;
-
-#[derive(Clone, Copy, Debug)]
-pub struct EmphasisDelimiter;
-
-#[derive(Clone, Copy, Debug)]
-pub struct StrikethroughDelimiter;
-
-#[derive(Clone, Copy, Debug)]
-pub struct RawDelimiter;
-
-#[derive(Clone, Copy, Debug)]
-pub struct MarkupTextSpace;
-
-#[derive(Clone, Copy, Debug)]
-pub struct LinkOpeningDelimiter;
-
-#[derive(Clone, Copy, Debug)]
-pub struct LinkClosingDelimiter;
-
-#[derive(Clone, Copy, Debug)]
-pub struct LinkToReferenceJoiner;
-
-#[derive(Clone, Copy, Debug)]
-pub struct CodeDelimiter;
-
-#[derive(Clone, Copy, Debug)]
-pub struct DelimitedContainerStart;
-
-#[derive(Clone, Copy, Debug)]
-pub struct DelimitedContainerEnd;
-
-#[derive(Clone, Copy, Debug)]
-pub struct BlockParameterName<'a>(pub &'a str);
-
-#[derive(Clone, Copy, Debug)]
-pub struct BlockParameterValue<'a>(pub &'a str);
-
-#[derive(Clone, Copy, Debug)]
-pub struct DataIdentifier<'a>(pub &'a str);
-
-#[derive(Clone, Copy, Debug)]
-pub struct DataValue<'a>(pub &'a str);
-
-#[derive(Clone, Copy, Debug)]
-pub struct TitleText<'a>(pub &'a str);
-
-#[derive(Clone, Copy, Debug)]
-pub struct MarkupText<'a>(pub &'a str);
-
-#[derive(Clone, Copy, Debug)]
-pub struct RawFragment<'a>(pub &'a str);
-
-#[derive(Clone, Copy, Debug)]
-pub struct Code<'a>(pub &'a str);
-
-#[derive(Clone, Copy, Debug)]
-pub struct Unknown<'a>(pub &'a str);
-
-#[derive(Clone, Copy, Debug)]
-pub struct ListBullet(pub Indent);
-
-//TODO: Use macros to clear up repetition
-
-impl<'a> TryFrom<Token<'a>> for DataValue<'a> {
-    type Error = ();
-
-    fn try_from(value: Token<'a>) -> Result<Self, Self::Error> {
-        match value {
-            Token::DataValue(token) => Ok(Self(token)),
-            _ => Err(()),
+        impl<'a> TokenSpec<'a> for $name {
+            const NAME: TokenName = TokenName(stringify!($name));
         }
-    }
-}
 
-impl<'a> TryFrom<Token<'a>> for DataIdentifier<'a> {
-    type Error = ();
+        impl<'a> TryFrom<Token<'a>> for $name {
+            type Error = ();
 
-    fn try_from(value: Token<'a>) -> Result<Self, Self::Error> {
-        match value {
-            Token::DataIdentifier(token) => Ok(Self(token)),
-            _ => Err(()),
+            fn try_from(token: Token<'a>) -> Result<Self, Self::Error> {
+                match token {
+                    Token::$name => Ok(Self),
+                    _ => Err(()),
+                }
+            }
         }
-    }
+    };
 }
 
-impl<'a> TryFrom<Token<'a>> for TitleText<'a> {
-    type Error = ();
+//TODO: try and combine unit_token and value_token?
+macro_rules! value_token {
+    ($name:ident $(<$lifetime:lifetime>)? ($value:ty)) => {
+        #[derive(Clone, Copy, Debug)]
+        pub struct $name$(<$lifetime>)?(pub $value);
 
-    fn try_from(value: Token<'a>) -> Result<Self, Self::Error> {
-        match value {
-            Token::TitleText(token) => Ok(Self(token)),
-            _ => Err(()),
+        //TODO: Would be great to use a const fn to generate a friendly name
+        impl<'a> TokenSpec<'a> for $name$(<$lifetime>)? {
+            const NAME: TokenName = TokenName(stringify!($name));
         }
-    }
-}
 
-impl<'a> TryFrom<Token<'a>> for BlockParameterName<'a> {
-    type Error = ();
+        impl<'t$(, $lifetime)?> TryFrom<Token<'t>> for $name$(<$lifetime>)?
+        $(where 't: $lifetime)?
+        {
+            type Error = ();
 
-    fn try_from(value: Token<'a>) -> Result<Self, Self::Error> {
-        match value {
-            Token::BlockParameterName(token) => Ok(Self(token)),
-            _ => Err(()),
+            fn try_from(token: Token<'t>) -> Result<Self, Self::Error> {
+                match token {
+                    Token::$name(value) => Ok(Self(value)),
+                    _ => Err(()),
+                }
+            }
         }
-    }
-}
-
-impl<'a> TryFrom<Token<'a>> for BlockParameterValue<'a> {
-    type Error = ();
-
-    fn try_from(value: Token<'a>) -> Result<Self, Self::Error> {
-        match value {
-            Token::BlockParameterValue(token) => Ok(Self(token)),
-            _ => Err(()),
-        }
-    }
-}
-
-impl<'a> TryFrom<Token<'a>> for RawFragment<'a> {
-    type Error = ();
-
-    fn try_from(value: Token<'a>) -> Result<Self, Self::Error> {
-        match value {
-            Token::RawFragment(token) => Ok(Self(token)),
-            _ => Err(()),
-        }
-    }
-}
-
-impl<'a> TryFrom<Token<'a>> for MarkupText<'a> {
-    type Error = ();
-
-    fn try_from(value: Token<'a>) -> Result<Self, Self::Error> {
-        match value {
-            Token::MarkupText(token) => Ok(Self(token)),
-            _ => Err(()),
-        }
-    }
-}
-
-impl<'a> TryFrom<Token<'a>> for Code<'a> {
-    type Error = ();
-
-    fn try_from(value: Token<'a>) -> Result<Self, Self::Error> {
-        match value {
-            Token::Code(token) => Ok(Self(token)),
-            _ => Err(()),
-        }
-    }
-}
-
-impl<'a> TryFrom<Token<'a>> for ListBullet {
-    type Error = ();
-
-    fn try_from(value: Token<'a>) -> Result<Self, Self::Error> {
-        match value {
-            Token::ListBullet(token) => Ok(Self(token)),
-            _ => Err(()),
-        }
-    }
-}
-
-impl<'a> TryFrom<Token<'a>> for LineBreak {
-    type Error = ();
-
-    fn try_from(value: Token<'a>) -> Result<Self, Self::Error> {
-        match value {
-            Token::LineBreak => Ok(Self),
-            _ => Err(()),
-        }
-    }
-}
-
-impl<'a> TryFrom<Token<'a>> for TitleDirective {
-    type Error = ();
-
-    fn try_from(value: Token<'a>) -> Result<Self, Self::Error> {
-        match value {
-            Token::TitleDirective => Ok(Self),
-            _ => Err(()),
-        }
-    }
-}
-
-impl<'a> TryFrom<Token<'a>> for BlockBreak {
-    type Error = ();
-
-    fn try_from(value: Token<'a>) -> Result<Self, Self::Error> {
-        match value {
-            Token::BlockBreak => Ok(Self),
-            _ => Err(()),
-        }
-    }
-}
-
-impl<'a> TryFrom<Token<'a>> for DataKeyValueSeperator {
-    type Error = ();
-
-    fn try_from(value: Token<'a>) -> Result<Self, Self::Error> {
-        match value {
-            Token::DataKeyValueSeperator => Ok(Self),
-            _ => Err(()),
-        }
-    }
-}
-
-impl<'a> TryFrom<Token<'a>> for DelimitedContainerEnd {
-    type Error = ();
-
-    fn try_from(value: Token<'a>) -> Result<Self, Self::Error> {
-        match value {
-            Token::DelimitedContainerEnd => Ok(Self),
-            _ => Err(()),
-        }
-    }
-}
-
-impl<'a> TryFrom<Token<'a>> for SectionDirective {
-    type Error = ();
-
-    fn try_from(value: Token<'a>) -> Result<Self, Self::Error> {
-        match value {
-            Token::SectionDirective => Ok(Self),
-            _ => Err(()),
-        }
-    }
-}
-
-impl<'a> TryFrom<Token<'a>> for SubSectionDirective {
-    type Error = ();
-
-    fn try_from(value: Token<'a>) -> Result<Self, Self::Error> {
-        match value {
-            Token::SubSectionDirective => Ok(Self),
-            _ => Err(()),
-        }
-    }
-}
-
-impl<'a> TryFrom<Token<'a>> for BlockParameterNameValueSeperator {
-    type Error = ();
-
-    fn try_from(value: Token<'a>) -> Result<Self, Self::Error> {
-        match value {
-            Token::BlockParameterNameValueSeperator => Ok(Self),
-            _ => Err(()),
-        }
-    }
-}
-
-impl<'a> TryFrom<Token<'a>> for BlockParametersEnd {
-    type Error = ();
-
-    fn try_from(value: Token<'a>) -> Result<Self, Self::Error> {
-        match value {
-            Token::BlockParametersEnd => Ok(Self),
-            _ => Err(()),
-        }
-    }
-}
-
-impl<'a> TryFrom<Token<'a>> for RawDelimiter {
-    type Error = ();
-
-    fn try_from(value: Token<'a>) -> Result<Self, Self::Error> {
-        match value {
-            Token::RawDelimiter => Ok(Self),
-            _ => Err(()),
-        }
-    }
-}
-
-impl<'a> TryFrom<Token<'a>> for LinkOpeningDelimiter {
-    type Error = ();
-
-    fn try_from(value: Token<'a>) -> Result<Self, Self::Error> {
-        match value {
-            Token::LinkOpeningDelimiter => Ok(Self),
-            _ => Err(()),
-        }
-    }
-}
-
-impl<'a> TryFrom<Token<'a>> for LinkClosingDelimiter {
-    type Error = ();
-
-    fn try_from(value: Token<'a>) -> Result<Self, Self::Error> {
-        match value {
-            Token::LinkClosingDelimiter => Ok(Self),
-            _ => Err(()),
-        }
-    }
-}
-
-impl<'a> TryFrom<Token<'a>> for LinkToReferenceJoiner {
-    type Error = ();
-
-    fn try_from(value: Token<'a>) -> Result<Self, Self::Error> {
-        match value {
-            Token::LinkToReferenceJoiner => Ok(Self),
-            _ => Err(()),
-        }
-    }
-}
-
-impl<'a> TryFrom<Token<'a>> for CodeDelimiter {
-    type Error = ();
-
-    fn try_from(value: Token<'a>) -> Result<Self, Self::Error> {
-        match value {
-            Token::CodeDelimiter => Ok(Self),
-            _ => Err(()),
-        }
-    }
-}
-
-impl<'a> TryFrom<Token<'a>> for StrongDelimiter {
-    type Error = ();
-
-    fn try_from(value: Token<'a>) -> Result<Self, Self::Error> {
-        match value {
-            Token::StrongDelimiter => Ok(Self),
-            _ => Err(()),
-        }
-    }
-}
-
-impl<'a> TryFrom<Token<'a>> for EmphasisDelimiter {
-    type Error = ();
-
-    fn try_from(value: Token<'a>) -> Result<Self, Self::Error> {
-        match value {
-            Token::EmphasisDelimiter => Ok(Self),
-            _ => Err(()),
-        }
-    }
-}
-
-impl<'a> TryFrom<Token<'a>> for StrikethroughDelimiter {
-    type Error = ();
-
-    fn try_from(value: Token<'a>) -> Result<Self, Self::Error> {
-        match value {
-            Token::StrikethroughDelimiter => Ok(Self),
-            _ => Err(()),
-        }
-    }
-}
-
-impl<'a> TryFrom<Token<'a>> for EndOfInput {
-    type Error = ();
-
-    fn try_from(value: Token<'a>) -> Result<Self, Self::Error> {
-        match value {
-            Token::EndOfInput => Ok(Self),
-            _ => Err(()),
-        }
-    }
-}
-
-impl<'a> TryFrom<Token<'a>> for BlockParametersStart {
-    type Error = ();
-
-    fn try_from(value: Token<'a>) -> Result<Self, Self::Error> {
-        match value {
-            Token::BlockParametersStart => Ok(Self),
-            _ => Err(()),
-        }
-    }
-}
-
-impl<'a> TryFrom<Token<'a>> for DataListSeperator {
-    type Error = ();
-
-    fn try_from(value: Token<'a>) -> Result<Self, Self::Error> {
-        match value {
-            Token::DataListSeperator => Ok(Self),
-            _ => Err(()),
-        }
-    }
-}
-
-impl<'a> TryFrom<Token<'a>> for TitleTextSpace {
-    type Error = ();
-
-    fn try_from(value: Token<'a>) -> Result<Self, Self::Error> {
-        match value {
-            Token::TitleTextSpace => Ok(Self),
-            _ => Err(()),
-        }
-    }
-}
-impl<'a> TryFrom<Token<'a>> for MarkupTextSpace {
-    type Error = ();
-
-    fn try_from(value: Token<'a>) -> Result<Self, Self::Error> {
-        match value {
-            Token::MarkupTextSpace => Ok(Self),
-            _ => Err(()),
-        }
-    }
-}
-impl<'a> TryFrom<Token<'a>> for DelimitedContainerStart {
-    type Error = ();
-
-    fn try_from(value: Token<'a>) -> Result<Self, Self::Error> {
-        match value {
-            Token::DelimitedContainerStart => Ok(Self),
-            _ => Err(()),
-        }
-    }
-}
-
-impl<'a> TryFrom<Token<'a>> for Unknown<'a> {
-    type Error = ();
-
-    fn try_from(value: Token<'a>) -> Result<Self, Self::Error> {
-        match value {
-            Token::Unknown(token) => Ok(Self(token)),
-            _ => Err(()),
-        }
-    }
-}
-
-impl<'a> TryFrom<Token<'a>> for MetadataDirective {
-    type Error = ();
-
-    fn try_from(value: Token<'a>) -> Result<Self, Self::Error> {
-        match value {
-            Token::MetadataDirective => Ok(Self),
-            _ => Err(()),
-        }
-    }
-}
-
-impl<'a> TryFrom<Token<'a>> for ReferencesDirective {
-    type Error = ();
-
-    fn try_from(value: Token<'a>) -> Result<Self, Self::Error> {
-        match value {
-            Token::ReferencesDirective => Ok(Self),
-            _ => Err(()),
-        }
-    }
-}
-
-impl<'a> TryFrom<Token<'a>> for ParagraphDirective {
-    type Error = ();
 
-    fn try_from(value: Token<'a>) -> Result<Self, Self::Error> {
-        match value {
-            Token::ParagraphDirective => Ok(Self),
-            _ => Err(()),
-        }
-    }
-}
-
-impl<'a> TryFrom<Token<'a>> for ListDirective {
-    type Error = ();
-
-    fn try_from(value: Token<'a>) -> Result<Self, Self::Error> {
-        match value {
-            Token::ListDirective => Ok(Self),
-            _ => Err(()),
-        }
-    }
-}
-
-impl<'a> TryFrom<Token<'a>> for CodeDirective {
-    type Error = ();
-
-    fn try_from(value: Token<'a>) -> Result<Self, Self::Error> {
-        match value {
-            Token::CodeDirective => Ok(Self),
-            _ => Err(()),
-        }
-    }
-}
-
-impl<'a> TryFrom<Token<'a>> for InfoContainerDirective {
-    type Error = ();
-
-    fn try_from(value: Token<'a>) -> Result<Self, Self::Error> {
-        match value {
-            Token::InfoContainerDirective => Ok(Self),
-            _ => Err(()),
-        }
-    }
-}
-
-impl<'a> TryFrom<Token<'a>> for UnknownDirective<'a> {
-    type Error = ();
-
-    fn try_from(value: Token<'a>) -> Result<Self, Self::Error> {
-        match value {
-            Token::UnknownDirective(token) => Ok(Self(token)),
-            _ => Err(()),
-        }
-    }
-}
-
-impl<'a> TokenSpec<'a> for EndOfInput {
-    const NAME: TokenName = TokenName("end of input");
-}
-
-impl<'a> TokenSpec<'a> for TitleDirective {
-    const NAME: TokenName = TokenName("title directive");
-}
-
-impl<'a> TokenSpec<'a> for SectionDirective {
-    const NAME: TokenName = TokenName("section directive");
-}
-
-impl<'a> TokenSpec<'a> for SubSectionDirective {
-    const NAME: TokenName = TokenName("subsection directive");
-}
-
-impl<'a> TokenSpec<'a> for BlockParametersStart {
-    const NAME: TokenName = TokenName("block parameters start '('");
-}
-
-impl<'a> TokenSpec<'a> for BlockParametersEnd {
-    const NAME: TokenName = TokenName("block parameters end ')'");
-}
-
-impl<'a> TokenSpec<'a> for BlockParameterNameValueSeperator {
-    const NAME: TokenName = TokenName("block parameter name value seperator");
-}
-
-impl<'a> TokenSpec<'a> for BlockBreak {
-    const NAME: TokenName = TokenName("block break");
-}
-
-impl<'a> TokenSpec<'a> for DataListSeperator {
-    const NAME: TokenName = TokenName("metadata list seperator");
-}
-
-impl<'a> TokenSpec<'a> for DataKeyValueSeperator {
-    const NAME: TokenName = TokenName("metadata key value seperator");
-}
-
-impl<'a> TokenSpec<'a> for TitleTextSpace {
-    const NAME: TokenName = TokenName("title text space");
-}
-
-impl<'a> TokenSpec<'a> for LineBreak {
-    const NAME: TokenName = TokenName("linebreak");
-}
-
-impl<'a> TokenSpec<'a> for StrongDelimiter {
-    const NAME: TokenName = TokenName("strong delimiter");
-}
-
-impl<'a> TokenSpec<'a> for EmphasisDelimiter {
-    const NAME: TokenName = TokenName("emphasis delimiter");
-}
-
-impl<'a> TokenSpec<'a> for StrikethroughDelimiter {
-    const NAME: TokenName = TokenName("strikethrough delimiter");
-}
-
-impl<'a> TokenSpec<'a> for RawDelimiter {
-    const NAME: TokenName = TokenName("raw delimiter");
-}
-
-impl<'a> TokenSpec<'a> for MarkupTextSpace {
-    const NAME: TokenName = TokenName("markup text space");
-}
-
-impl<'a> TokenSpec<'a> for LinkOpeningDelimiter {
-    const NAME: TokenName = TokenName("link opening delimiter");
-}
-
-impl<'a> TokenSpec<'a> for LinkClosingDelimiter {
-    const NAME: TokenName = TokenName("link closing delimiter");
-}
-
-impl<'a> TokenSpec<'a> for LinkToReferenceJoiner {
-    const NAME: TokenName = TokenName("link to reference joiner '@'");
-}
-
-impl<'a> TokenSpec<'a> for CodeDelimiter {
-    const NAME: TokenName = TokenName("delimited block delimiter");
-}
-
-impl<'a> TokenSpec<'a> for DelimitedContainerStart {
-    const NAME: TokenName = TokenName("delimited container start");
-}
-
-impl<'a> TokenSpec<'a> for DelimitedContainerEnd {
-    const NAME: TokenName = TokenName("delimited container end");
-}
-
-impl<'a> TokenSpec<'a> for Unknown<'a> {
-    const NAME: TokenName = TokenName("unknown");
-}
-
-impl<'a> TokenSpec<'a> for BlockParameterName<'a> {
-    const NAME: TokenName = TokenName("block parameter name");
-}
-
-impl<'a> TokenSpec<'a> for BlockParameterValue<'a> {
-    const NAME: TokenName = TokenName("block parameter value");
-}
-
-impl<'a> TokenSpec<'a> for DataIdentifier<'a> {
-    const NAME: TokenName = TokenName("metadata identifier");
-}
-
-impl<'a> TokenSpec<'a> for DataValue<'a> {
-    const NAME: TokenName = TokenName("metadata value");
-}
-
-impl<'a> TokenSpec<'a> for TitleText<'a> {
-    const NAME: TokenName = TokenName("title text");
-}
-
-impl<'a> TokenSpec<'a> for MarkupText<'a> {
-    const NAME: TokenName = TokenName("markup text");
-}
-
-impl<'a> TokenSpec<'a> for RawFragment<'a> {
-    const NAME: TokenName = TokenName("raw fragment");
-}
-
-impl<'a> TokenSpec<'a> for Code<'a> {
-    const NAME: TokenName = TokenName("code");
-}
-
-impl<'a> TokenSpec<'a> for ListBullet {
-    const NAME: TokenName = TokenName("list bullet");
-}
-
-impl<'a> TokenSpec<'a> for MetadataDirective {
-    const NAME: TokenName = TokenName("metadata directive");
-}
-
-impl<'a> TokenSpec<'a> for ReferencesDirective {
-    const NAME: TokenName = TokenName("references directive");
-}
-
-impl<'a> TokenSpec<'a> for ParagraphDirective {
-    const NAME: TokenName = TokenName("paragraph directive");
-}
-
-impl<'a> TokenSpec<'a> for ListDirective {
-    const NAME: TokenName = TokenName("list directive");
-}
-
-impl<'a> TokenSpec<'a> for CodeDirective {
-    const NAME: TokenName = TokenName("code directive");
-}
-
-impl<'a> TokenSpec<'a> for InfoContainerDirective {
-    const NAME: TokenName = TokenName("code directive");
-}
-
-impl<'a> TokenSpec<'a> for UnknownDirective<'a> {
-    const NAME: TokenName = TokenName("unknown block directive");
-}
+    };
+}
+
+unit_token!(MetadataDirective);
+unit_token!(ReferencesDirective);
+unit_token!(ParagraphDirective);
+unit_token!(ListDirective);
+unit_token!(CodeDirective);
+unit_token!(InfoContainerDirective);
+unit_token!(EndOfInput);
+unit_token!(TitleDirective);
+unit_token!(SectionDirective);
+unit_token!(SubSectionDirective);
+unit_token!(BlockParametersStart);
+unit_token!(BlockParametersEnd);
+unit_token!(BlockParameterNameValueSeperator);
+unit_token!(BlockBreak);
+unit_token!(DataListSeperator);
+unit_token!(DataKeyValueSeperator);
+unit_token!(TitleTextSpace);
+unit_token!(LineBreak);
+unit_token!(StrongDelimiter);
+unit_token!(EmphasisDelimiter);
+unit_token!(StrikethroughDelimiter);
+unit_token!(RawDelimiter);
+unit_token!(MarkupTextSpace);
+unit_token!(LinkOpeningDelimiter);
+unit_token!(LinkClosingDelimiter);
+unit_token!(LinkToReferenceJoiner);
+unit_token!(CodeDelimiter);
+unit_token!(DelimitedContainerStart);
+unit_token!(DelimitedContainerEnd);
+value_token!(UnknownDirective<'a>(&'a str));
+value_token!(BlockParameterName<'a>(&'a str));
+value_token!(BlockParameterValue<'a>(&'a str));
+value_token!(DataIdentifier<'a>(&'a str));
+value_token!(DataValue<'a>(&'a str));
+value_token!(TitleText<'a>(&'a str));
+value_token!(MarkupText<'a>(&'a str));
+value_token!(RawFragment<'a>(&'a str));
+value_token!(Code<'a>(&'a str));
+value_token!(Unknown<'a>(&'a str));
+value_token!(ListBullet(Indent));
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum ScanMode {
