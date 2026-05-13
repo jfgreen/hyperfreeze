@@ -1584,9 +1584,9 @@ mod test {
         );
 
         let expected = ErrorKind::UnexpectedToken {
-            expected: TokenName("block break"),
+            expected: BlockBreak::NAME,
             actual: TokenDescription {
-                name: TokenName("paragraph directive"),
+                name: ParagraphDirective::NAME,
                 lexeme: "#paragraph".into(),
             },
         };
@@ -1986,9 +1986,9 @@ mod test {
         let input = "~Erm...\n\nmeow?~";
 
         let expected = ErrorKind::UnexpectedToken {
-            expected: TokenName("strikethrough delimiter"),
+            expected: StrikethroughDelimiter::NAME,
             actual: TokenDescription {
-                name: TokenName("block break"),
+                name: BlockBreak::NAME,
                 lexeme: "\n\n".into(),
             },
         };
