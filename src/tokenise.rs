@@ -222,10 +222,7 @@ impl<'a> SpannedToken<'a> {
         })
     }
 
-    // TODO: naming of these next two funcs is still a bit off...
-    // TODO: Do we need both?
-
-    pub fn try_value<T>(&self) -> Option<Spanned<'a, T>>
+    pub fn try_value_spanned<T>(&self) -> Option<Spanned<'a, T>>
     where
         T: TokenSpec<'a>,
     {
@@ -236,7 +233,7 @@ impl<'a> SpannedToken<'a> {
         })
     }
 
-    pub fn value_into<T>(&self) -> Option<T>
+    pub fn try_value<T>(&self) -> Option<T>
     where
         T: TokenSpec<'a>,
     {

@@ -229,7 +229,7 @@ fn parse_metadata(tokeniser: &mut Tokeniser) -> ParseResult<Metadata> {
 
     tokeniser.push_mode(ScanMode::StructuredData);
 
-    while let Some(identifier_token) = tokeniser.peek().try_value() {
+    while let Some(identifier_token) = tokeniser.peek().try_value_spanned() {
         let DataIdentifier(key) = identifier_token.value;
         tokeniser.advance();
         tokeniser.advance().expect::<DataKeyValueSeperator>()?;
@@ -273,7 +273,7 @@ fn parse_references(tokeniser: &mut Tokeniser) -> ParseResult<Box<[Reference]>> 
 
     let mut references = Vec::new();
 
-    while let Some(DataIdentifier(id)) = tokeniser.peek().value_into() {
+    while let Some(DataIdentifier(id)) = tokeniser.peek().try_value() {
         tokeniser.advance();
         tokeniser.advance().expect::<DataKeyValueSeperator>()?;
 
@@ -567,7 +567,7 @@ fn parse_list_level(
 ) -> ParseResult<Box<[ListItem]>> {
     let mut items = Vec::new();
 
-    while let Some(bullet_token) = tokeniser.peek().try_value() {
+    while let Some(bullet_token) = tokeniser.peek().try_value_spanned() {
         let ListBullet(indent) = bullet_token.value;
         let space_count = indent.space_count;
 
@@ -618,7 +618,7 @@ fn parse_list(tokeniser: &mut Tokeniser) -> ParseResult<Block> {
             tokeniser.advance();
 
             //TODO: just into?
-            if let Some(BlockParameterName(name)) = tokeniser.peek().value_into() {
+            if let Some(BlockParameterName(name)) = tokeniser.peek().try_value() {
                 tokeniser.advance();
 
                 tokeniser
@@ -701,7 +701,7 @@ fn parse_raw_text_run(tokeniser: &mut Tokeniser) -> ParseResult<TextRun> {
 
     loop {
         let next = tokeniser.peek();
-        if let Some(RawFragment(fragment)) = next.value_into() {
+        if let Some(RawFragment(fragment)) = next.try_value() {
             run.push_str(fragment);
             tokeniser.advance();
         } else if next.is::<LineBreak>() {
@@ -839,7 +839,7 @@ fn parse_markup_text(tokeniser: &mut Tokeniser) -> ParseResult<String> {
 
     loop {
         let next = tokeniser.peek();
-        if let Some(MarkupText(text)) = next.value_into() {
+        if let Some(MarkupText(text)) = next.try_value() {
             run.push_str(text);
             tokeniser.advance();
         } else if next.is::<MarkupTextSpace>() {
