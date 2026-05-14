@@ -617,7 +617,6 @@ fn parse_list(tokeniser: &mut Tokeniser) -> ParseResult<Block> {
         if tokeniser.peek().is::<BlockParametersStart>() {
             tokeniser.advance();
 
-            //TODO: just into?
             if let Some(BlockParameterName(name)) = tokeniser.peek().try_value() {
                 tokeniser.advance();
 

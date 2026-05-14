@@ -81,13 +81,6 @@ pub struct TokenDescription {
     pub lexeme: LexemeString,
 }
 
-// TODO: Use a macro to clear up token building
-// A macro where we can define for each token
-// name
-// structure
-// pattern matcher
-// ???
-
 #[derive(Clone, Copy, Debug)]
 pub enum Token<'a> {
     EndOfInput,
@@ -259,31 +252,20 @@ pub trait TokenSpec<'a>: TryFrom<Token<'a>> {
     const NAME: TokenName;
 }
 
-// macro_rules! token_stuff {
-//     ($($stuff:tt),+ $(,)?) => {
+macro_rules! token {
 
-//     }
-//     ($($name:ident $($(<$lifetime:lifetime>)? ($value:ty))?),+ $(,)?) => {
-//         $(
-//             #[derive(Clone, Copy, Debug)]
-//             pub struct $name$($(<$lifetime>)? (pub $value))?;
-//         )+
-//     };
-// }
-
-macro_rules! unit_token {
     ($name:ident) => {
         #[derive(Clone, Copy, Debug)]
         pub struct $name;
 
-        impl<'a> TokenSpec<'a> for $name {
+        impl<'t> TokenSpec<'t> for $name {
             const NAME: TokenName = TokenName(stringify!($name));
         }
 
-        impl<'a> TryFrom<Token<'a>> for $name {
+        impl<'t> TryFrom<Token<'t>> for $name {
             type Error = ();
 
-            fn try_from(token: Token<'a>) -> Result<Self, Self::Error> {
+            fn try_from(token: Token<'t>) -> Result<Self, Self::Error> {
                 match token {
                     Token::$name => Ok(Self),
                     _ => Err(()),
@@ -291,16 +273,14 @@ macro_rules! unit_token {
             }
         }
     };
-}
 
-//TODO: try and combine unit_token and value_token?
-macro_rules! value_token {
     ($name:ident $(<$lifetime:lifetime>)? ($value:ty)) => {
         #[derive(Clone, Copy, Debug)]
         pub struct $name$(<$lifetime>)?(pub $value);
 
-        //TODO: Would be great to use a const fn to generate a friendly name
-        impl<'a> TokenSpec<'a> for $name$(<$lifetime>)? {
+        impl<'t$(, $lifetime)?> TokenSpec<'t> for $name$(<$lifetime>)?
+        $(where 't: $lifetime)?
+        {
             const NAME: TokenName = TokenName(stringify!($name));
         }
 
@@ -320,46 +300,46 @@ macro_rules! value_token {
     };
 }
 
-unit_token!(MetadataDirective);
-unit_token!(ReferencesDirective);
-unit_token!(ParagraphDirective);
-unit_token!(ListDirective);
-unit_token!(CodeDirective);
-unit_token!(InfoContainerDirective);
-unit_token!(EndOfInput);
-unit_token!(TitleDirective);
-unit_token!(SectionDirective);
-unit_token!(SubSectionDirective);
-unit_token!(BlockParametersStart);
-unit_token!(BlockParametersEnd);
-unit_token!(BlockParameterNameValueSeperator);
-unit_token!(BlockBreak);
-unit_token!(DataListSeperator);
-unit_token!(DataKeyValueSeperator);
-unit_token!(TitleTextSpace);
-unit_token!(LineBreak);
-unit_token!(StrongDelimiter);
-unit_token!(EmphasisDelimiter);
-unit_token!(StrikethroughDelimiter);
-unit_token!(RawDelimiter);
-unit_token!(MarkupTextSpace);
-unit_token!(LinkOpeningDelimiter);
-unit_token!(LinkClosingDelimiter);
-unit_token!(LinkToReferenceJoiner);
-unit_token!(CodeDelimiter);
-unit_token!(DelimitedContainerStart);
-unit_token!(DelimitedContainerEnd);
-value_token!(UnknownDirective<'a>(&'a str));
-value_token!(BlockParameterName<'a>(&'a str));
-value_token!(BlockParameterValue<'a>(&'a str));
-value_token!(DataIdentifier<'a>(&'a str));
-value_token!(DataValue<'a>(&'a str));
-value_token!(TitleText<'a>(&'a str));
-value_token!(MarkupText<'a>(&'a str));
-value_token!(RawFragment<'a>(&'a str));
-value_token!(Code<'a>(&'a str));
-value_token!(Unknown<'a>(&'a str));
-value_token!(ListBullet(Indent));
+token!(MetadataDirective);
+token!(ReferencesDirective);
+token!(ParagraphDirective);
+token!(ListDirective);
+token!(CodeDirective);
+token!(InfoContainerDirective);
+token!(EndOfInput);
+token!(TitleDirective);
+token!(SectionDirective);
+token!(SubSectionDirective);
+token!(BlockParametersStart);
+token!(BlockParametersEnd);
+token!(BlockParameterNameValueSeperator);
+token!(BlockBreak);
+token!(DataListSeperator);
+token!(DataKeyValueSeperator);
+token!(TitleTextSpace);
+token!(LineBreak);
+token!(StrongDelimiter);
+token!(EmphasisDelimiter);
+token!(StrikethroughDelimiter);
+token!(RawDelimiter);
+token!(MarkupTextSpace);
+token!(LinkOpeningDelimiter);
+token!(LinkClosingDelimiter);
+token!(LinkToReferenceJoiner);
+token!(CodeDelimiter);
+token!(DelimitedContainerStart);
+token!(DelimitedContainerEnd);
+token!(UnknownDirective<'a>(&'a str));
+token!(BlockParameterName<'a>(&'a str));
+token!(BlockParameterValue<'a>(&'a str));
+token!(DataIdentifier<'a>(&'a str));
+token!(DataValue<'a>(&'a str));
+token!(TitleText<'a>(&'a str));
+token!(MarkupText<'a>(&'a str));
+token!(RawFragment<'a>(&'a str));
+token!(Code<'a>(&'a str));
+token!(Unknown<'a>(&'a str));
+token!(ListBullet(Indent));
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum ScanMode {
