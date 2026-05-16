@@ -204,29 +204,29 @@ impl<'a, T> Spanned<'a, T> {
 pub type SpannedToken<'a> = Spanned<'a, Token<'a>>;
 
 impl<'a> SpannedToken<'a> {
-    pub fn expect_spanned<T>(&self) -> Result<Spanned<'a, T>, UnexpectedTokenError>
+    pub fn require_spanned<T>(&self) -> Result<Spanned<'a, T>, UnexpectedTokenError>
     where
         T: TokenSpec<'a>,
     {
-        self.try_value_spanned().ok_or(UnexpectedTokenError {
+        self.try_consume_spanned().ok_or(UnexpectedTokenError {
             expected: T::NAME,
             actual: self.description(),
             position: self.position,
         })
     }
 
-    pub fn expect<T>(&self) -> Result<T, UnexpectedTokenError>
+    pub fn require<T>(&self) -> Result<T, UnexpectedTokenError>
     where
         T: TokenSpec<'a>,
     {
-        self.try_value().ok_or(UnexpectedTokenError {
+        self.try_consume().ok_or(UnexpectedTokenError {
             expected: T::NAME,
             actual: self.description(),
             position: self.position,
         })
     }
 
-    pub fn try_value_spanned<T>(&self) -> Option<Spanned<'a, T>>
+    pub fn try_consume_spanned<T>(&self) -> Option<Spanned<'a, T>>
     where
         T: TokenSpec<'a>,
     {
@@ -237,7 +237,7 @@ impl<'a> SpannedToken<'a> {
         })
     }
 
-    pub fn try_value<T>(&self) -> Option<T>
+    pub fn try_consume<T>(&self) -> Option<T>
     where
         T: TokenSpec<'a>,
     {
