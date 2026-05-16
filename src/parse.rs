@@ -40,6 +40,9 @@ enum ErrorKind {
     /// Invalid metadata name
     UnknownMetadata(LexemeString),
 
+    /// List style not recognised
+    InvalidListStyle(LexemeString),
+
     /// List indent is an odd number of spaces
     UnevenListIndent(Indent),
 
@@ -128,6 +131,10 @@ impl ParseError {
 
             UnknownDirective(name) => {
                 write!(f, "unknown directive'{}'", name)
+            }
+
+            InvalidListStyle(style) => {
+                write!(f, "invalid list style '{}'", style)
             }
 
             ContainerMissingStart => {
@@ -526,9 +533,6 @@ fn parse_subsection(tokeniser: &mut Tokeniser) -> ParseResult<SubSection> {
 fn parse_subsection_element(tokeniser: &mut Tokeniser) -> ParseResult<SubSectionElement> {
     let next = tokeniser.peek();
     match next.value {
-        Token::SubSectionDirective => {
-            todo!("not allow")
-        }
         Token::InfoContainerDirective => {
             let container = parse_container(tokeniser)?;
             Ok(SubSectionElement::Container(container))
@@ -662,7 +666,8 @@ fn parse_list(tokeniser: &mut Tokeniser) -> ParseResult<Block> {
                     .expect::<BlockParameterNameValueSeperator>()?;
 
                 tokeniser.push_mode(ScanMode::HeaderValue);
-                let BlockParameterValue(value) = tokeniser.advance().expect()?;
+                let param_value_token = tokeniser.advance();
+                let BlockParameterValue(value) = param_value_token.expect()?;
 
                 tokeniser.pop_mode();
 
@@ -671,7 +676,14 @@ fn parse_list(tokeniser: &mut Tokeniser) -> ParseResult<Block> {
                         style = match value {
                             "ordered" => ListStyle::Ordered,
                             "unordered" => ListStyle::Unordered,
-                            _ => todo!(),
+                            _ => {
+                                return parse_err!(
+                                    ErrorKind::InvalidListStyle(
+                                        param_value_token.lexeme_to_owned()
+                                    ),
+                                    param_value_token.position
+                                );
+                            }
                         }
                     }
                     _ => todo!(),
@@ -1260,8 +1272,6 @@ mod test {
         }
     }
 
-    // --
-
     fn parse_document_str(document: &'static str) -> ParseResult<Document> {
         parse_str(&document)
     }
@@ -1293,7 +1303,7 @@ mod test {
         match result {
             Ok(doc) => {
                 eprintln!("Expected parse to fail, but got doc:");
-                eprintln!("{:?}\n", doc);
+                eprintln!("{:#?}\n", doc);
                 panic!("parse unexpectedly succeeded")
             }
             Err(err) => {
@@ -2639,6 +2649,19 @@ mod test {
         };
         let result = parse_content_str(input);
         assert_content_eq(result, expected);
+    }
+
+    #[test]
+    fn list_with_invalid_style() {
+        let input = concat!(
+            "#list(style=cool)\n",
+            "- Dont you think this list is really rather neat?\n",
+        );
+
+        let expected = ErrorKind::InvalidListStyle("cool".into());
+
+        let result = parse_content_str(input);
+        assert_parse_fails(result, expected);
     }
 
     #[test]
