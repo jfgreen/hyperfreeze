@@ -204,11 +204,22 @@ impl<'a, T> Spanned<'a, T> {
 pub type SpannedToken<'a> = Spanned<'a, Token<'a>>;
 
 impl<'a> SpannedToken<'a> {
+    pub fn expect_spanned<T>(&self) -> Result<Spanned<'a, T>, UnexpectedTokenError>
+    where
+        T: TokenSpec<'a>,
+    {
+        self.try_value_spanned().ok_or(UnexpectedTokenError {
+            expected: T::NAME,
+            actual: self.description(),
+            position: self.position,
+        })
+    }
+
     pub fn expect<T>(&self) -> Result<T, UnexpectedTokenError>
     where
         T: TokenSpec<'a>,
     {
-        T::try_from(self.value).map_err(|_| UnexpectedTokenError {
+        self.try_value().ok_or(UnexpectedTokenError {
             expected: T::NAME,
             actual: self.description(),
             position: self.position,

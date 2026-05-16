@@ -647,6 +647,7 @@ fn parse_list_level(
     Ok(items)
 }
 
+//TODO: At some point we need common mechanics for iterating block parameters
 fn parse_list(tokeniser: &mut Tokeniser) -> ParseResult<Block> {
     let mut style = ListStyle::Unordered;
 
@@ -666,8 +667,8 @@ fn parse_list(tokeniser: &mut Tokeniser) -> ParseResult<Block> {
                     .expect::<BlockParameterNameValueSeperator>()?;
 
                 tokeniser.push_mode(ScanMode::HeaderValue);
-                let param_value_token = tokeniser.advance();
-                let BlockParameterValue(value) = param_value_token.expect()?;
+                let param_value_token = tokeniser.advance().expect_spanned()?;
+                let BlockParameterValue(value) = param_value_token.value;
 
                 tokeniser.pop_mode();
 
@@ -739,9 +740,8 @@ fn parse_plain_text_run(tokeniser: &mut Tokeniser) -> ParseResult<TextRun> {
 }
 
 fn parse_raw_text_run(tokeniser: &mut Tokeniser) -> ParseResult<TextRun> {
-    let token = tokeniser.advance();
+    let token = tokeniser.advance().expect_spanned::<RawDelimiter>()?;
     let run_start = token.position;
-    token.expect::<RawDelimiter>()?;
 
     tokeniser.push_mode(ScanMode::Raw);
 
@@ -778,9 +778,11 @@ fn parse_raw_text_run(tokeniser: &mut Tokeniser) -> ParseResult<TextRun> {
 }
 
 fn parse_linked_text_run(tokeniser: &mut Tokeniser) -> ParseResult<TextRun> {
-    let token = tokeniser.advance();
+    let token = tokeniser
+        .advance()
+        .expect_spanned::<LinkOpeningDelimiter>()?;
+
     let start_of_run = token.position;
-    token.expect::<LinkOpeningDelimiter>()?;
 
     let run = parse_markup_text(tokeniser)?;
 
