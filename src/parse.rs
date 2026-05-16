@@ -4,6 +4,7 @@ use std::fmt::{self, Display};
 use crate::document::*;
 use crate::tokenise::*;
 
+/// Error returned on parse failure
 #[derive(Debug)]
 pub struct ParseError {
     kind: ErrorKind,
@@ -12,29 +13,52 @@ pub struct ParseError {
     backtrace: Backtrace,
 }
 
+/// Describes the reason why an attempt to parse failed
 #[derive(PartialEq, Eq, Debug)]
 enum ErrorKind {
+    /// Space between delimiter and delimited content
     LooseDelimiter,
+
+    /// Delimiters contains no content between them
     EmptyDelimitedText,
-    MissingListLevel {
-        from: usize,
-        to: usize,
-    },
+
+    /// List indent skips one or more levels
+    MissingListLevel { from: usize, to: usize },
+
+    /// Metadata not at the start of the document
     MetadataNotAtStart,
+
+    /// References not at the start of the document
     ReferencesOutOfPlace,
+
+    /// Parser expected a specific token but got another
     UnexpectedToken {
         expected: TokenName,
         actual: TokenDescription,
     },
+
+    /// Invalid metadata name
     UnknownMetadata(LexemeString),
+
+    /// List indent is an odd number of spaces
     UnevenListIndent(Indent),
+
+    /// Invalid directive name
     UnknownDirective(LexemeString),
+
+    /// Delimited container end has no matching start
     ContainerMissingStart,
+
+    /// Container has no content
     EmptyContainer,
+
+    /// Raw text run is missing a closing delimiter
     UnterminatedRawTextRun,
-    UnexpectedBlockStart {
-        actual: TokenDescription,
-    },
+
+    /// Block starts with an unexpected token
+    UnexpectedBlockStart { actual: TokenDescription },
+
+    /// Subsection not nested inside a section
     SubSectionNotNested,
 }
 
@@ -65,21 +89,27 @@ impl ParseError {
             LooseDelimiter => {
                 write!(f, "delimited text cant have leading/trailing whitespace")
             }
+
             EmptyDelimitedText => {
                 write!(f, "delimited text cant be empty")
             }
+
             UnknownMetadata(key) => {
                 write!(f, "unknown metadata '{}'", key)
             }
+
             MissingListLevel { from, to } => {
                 write!(f, "list indent skipped from {} to {}", from, to)
             }
+
             MetadataNotAtStart => {
                 write!(f, "document metadata is not at start of document")
             }
+
             ReferencesOutOfPlace => {
                 write!(f, "references not at start of document")
             }
+
             UnexpectedToken { expected, actual } => {
                 write!(
                     f,
@@ -87,6 +117,7 @@ impl ParseError {
                     expected, actual.name, actual.lexeme,
                 )
             }
+
             UnevenListIndent(indent) => {
                 write!(
                     f,
@@ -94,18 +125,23 @@ impl ParseError {
                     indent.space_count
                 )
             }
+
             UnknownDirective(name) => {
                 write!(f, "unknown directive'{}'", name)
             }
+
             ContainerMissingStart => {
                 write!(f, "delimited container end with no preceeding start")
             }
+
             EmptyContainer => {
                 write!(f, "empty container,")
             }
+
             UnterminatedRawTextRun => {
                 write!(f, "unterminated raw text run")
             }
+
             UnexpectedBlockStart { actual } => {
                 write!(
                     f,
@@ -113,6 +149,7 @@ impl ParseError {
                     actual.name, actual.lexeme,
                 )
             }
+
             SubSectionNotNested => {
                 write!(f, "subsection not inside an enclosing section")
             }
