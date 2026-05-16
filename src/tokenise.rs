@@ -219,11 +219,7 @@ impl<'a> SpannedToken<'a> {
     where
         T: TokenSpec<'a>,
     {
-        self.try_consume().ok_or(UnexpectedTokenError {
-            expected: T::NAME,
-            actual: self.description(),
-            position: self.position,
-        })
+        self.require_spanned().map(|t| t.value)
     }
 
     pub fn try_consume_spanned<T>(&self) -> Option<Spanned<'a, T>>
