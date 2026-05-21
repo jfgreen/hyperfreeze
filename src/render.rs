@@ -1,5 +1,6 @@
 use std::io;
 
+#[allow(clippy::wildcard_imports)]
 use crate::document::*;
 
 //TODO: Have some kind of helper for writing HTML, with indent
@@ -11,13 +12,13 @@ pub fn render_html(document: &Document, out: &mut impl io::Write) -> io::Result<
     writeln!(out, "<html>")?;
     writeln!(out, "  <head>")?;
     writeln!(out, "    <meta charset=\"UTF-8\">")?;
-    writeln!(out, "    <title>{}</title>", title)?;
+    writeln!(out, "    <title>{title}</title>")?;
     writeln!(out, "  </head>")?;
     writeln!(out, "  <body>")?;
     writeln!(out, "    <main>")?;
-    writeln!(out, "      <h1>{}</h1>", title)?;
+    writeln!(out, "      <h1>{title}</h1>")?;
 
-    for element in document.contents.iter() {
+    for element in &document.contents {
         render_element(element, out)?;
     }
 
@@ -65,13 +66,13 @@ fn render_block(block: &Block, out: &mut impl io::Write) -> io::Result<()> {
         Block::Paragraph(text) => render_text(text, out)?,
         Block::List(list) => render_list(list, out)?,
         Block::Code(code) => render_code(code, out)?,
-    };
+    }
     Ok(())
 }
 
 fn render_container(container: &Container, out: &mut impl io::Write) -> io::Result<()> {
     //TODO: Actually display the container somehow
-    for block in container.content.iter() {
+    for block in &container.content {
         render_block(block, out)?;
     }
     Ok(())
@@ -104,7 +105,7 @@ fn render_subsection(subsection: &SubSection, out: &mut impl io::Write) -> io::R
 fn render_text(text_runs: &[TextRun], out: &mut impl io::Write) -> io::Result<()> {
     writeln!(out, "    <p>")?;
     writeln!(out, "      ")?;
-    for run in text_runs.iter() {
+    for run in text_runs {
         render_text_run(run, out)?;
     }
     writeln!(out, "    </p>")?;
@@ -119,8 +120,8 @@ fn render_text_run(run: &TextRun, out: &mut impl io::Write) -> io::Result<()> {
         Style::Strikethrough => write!(out, "<s>")?,
         Style::Raw => write!(out, "<code>")?,
         //FIXME: This is wrong, we need to resolve the link
-        Style::Link(link) => write!(out, "<a href={}>", link)?,
-    };
+        Style::Link(link) => write!(out, "<a href={link}>")?,
+    }
 
     out.write_all(run.text.as_bytes())?;
 
@@ -131,14 +132,15 @@ fn render_text_run(run: &TextRun, out: &mut impl io::Write) -> io::Result<()> {
         Style::Strikethrough => write!(out, "</s>")?,
         Style::Raw => write!(out, "</code>")?,
         Style::Link(_) => write!(out, "</a>")?,
-    };
+    }
+
     Ok(())
 }
 
 fn render_list(list: &List, out: &mut impl io::Write) -> io::Result<()> {
     //TODO: Handle list style
     writeln!(out, "<ul>")?;
-    for item in list.items.iter() {
+    for item in &list.items {
         render_list_item(item, out)?;
     }
     writeln!(out, "</ul>")?;
@@ -151,7 +153,7 @@ fn render_list_item(item: &ListItem, out: &mut impl io::Write) -> io::Result<()>
         ListItem::Text(text) => render_text(text, out)?,
         ListItem::SubList(sub_list) => {
             writeln!(out, "<ul>")?;
-            for item in sub_list.iter() {
+            for item in sub_list {
                 render_list_item(item, out)?;
             }
             writeln!(out, "</ul>")?;

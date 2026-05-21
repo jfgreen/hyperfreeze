@@ -1,7 +1,12 @@
 use std::backtrace::{Backtrace, BacktraceStatus};
 use std::fmt::{self, Display};
 
+// TODO: Can we fix this import mess with namespaces instead?
+// (same in render module)
+
+#[allow(clippy::wildcard_imports)]
 use crate::document::*;
+#[allow(clippy::wildcard_imports)]
 use crate::tokenise::*;
 
 /// Error returned on parse failure
@@ -19,6 +24,7 @@ enum ErrorKind {
     /// Space between delimiter and delimited content
     LooseDelimiter,
 
+    //TODO: Do we need this anymore, remove?
     /// Delimiters contains no content between them
     EmptyDelimitedText,
 
@@ -61,6 +67,12 @@ enum ErrorKind {
     /// Block starts with an unexpected token
     UnexpectedBlockStart { actual: TokenDescription },
 
+    /// Text run starts with an unexpected token
+    UnexpectedTextRunStart { actual: TokenDescription },
+
+    /// Header text starts with an unexpected token
+    UnexpectedHeaderTextStart { actual: TokenDescription },
+
     /// Subsection not nested inside a section
     SubSectionNotNested,
 }
@@ -86,34 +98,32 @@ impl ParseError {
     }
 
     fn write_message(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        use ErrorKind::*;
-
         match &self.kind {
-            LooseDelimiter => {
+            ErrorKind::LooseDelimiter => {
                 write!(f, "delimited text cant have leading/trailing whitespace")
             }
 
-            EmptyDelimitedText => {
+            ErrorKind::EmptyDelimitedText => {
                 write!(f, "delimited text cant be empty")
             }
 
-            UnknownMetadata(key) => {
-                write!(f, "unknown metadata '{}'", key)
+            ErrorKind::UnknownMetadata(key) => {
+                write!(f, "unknown metadata '{key}'")
             }
 
-            MissingListLevel { from, to } => {
-                write!(f, "list indent skipped from {} to {}", from, to)
+            ErrorKind::MissingListLevel { from, to } => {
+                write!(f, "list indent skipped from {from} to {to}")
             }
 
-            MetadataNotAtStart => {
+            ErrorKind::MetadataNotAtStart => {
                 write!(f, "document metadata is not at start of document")
             }
 
-            ReferencesOutOfPlace => {
+            ErrorKind::ReferencesOutOfPlace => {
                 write!(f, "references not at start of document")
             }
 
-            UnexpectedToken { expected, actual } => {
+            ErrorKind::UnexpectedToken { expected, actual } => {
                 write!(
                     f,
                     "unexpected token, expected: {}, got: {} '{}'",
@@ -121,7 +131,7 @@ impl ParseError {
                 )
             }
 
-            UnevenListIndent(indent) => {
+            ErrorKind::UnevenListIndent(indent) => {
                 write!(
                     f,
                     "list indent of {} spaces is not even",
@@ -129,27 +139,27 @@ impl ParseError {
                 )
             }
 
-            UnknownDirective(name) => {
-                write!(f, "unknown directive'{}'", name)
+            ErrorKind::UnknownDirective(name) => {
+                write!(f, "unknown directive '{name}'")
             }
 
-            InvalidListStyle(style) => {
-                write!(f, "invalid list style '{}'", style)
+            ErrorKind::InvalidListStyle(style) => {
+                write!(f, "invalid list style '{style}'")
             }
 
-            ContainerMissingStart => {
+            ErrorKind::ContainerMissingStart => {
                 write!(f, "delimited container end with no preceeding start")
             }
 
-            EmptyContainer => {
+            ErrorKind::EmptyContainer => {
                 write!(f, "empty container,")
             }
 
-            UnterminatedRawTextRun => {
+            ErrorKind::UnterminatedRawTextRun => {
                 write!(f, "unterminated raw text run")
             }
 
-            UnexpectedBlockStart { actual } => {
+            ErrorKind::UnexpectedBlockStart { actual } => {
                 write!(
                     f,
                     "expected start of block, got: {} '{}'",
@@ -157,7 +167,23 @@ impl ParseError {
                 )
             }
 
-            SubSectionNotNested => {
+            ErrorKind::UnexpectedTextRunStart { actual } => {
+                write!(
+                    f,
+                    "expected start of text run, got: {} '{}'",
+                    actual.name, actual.lexeme,
+                )
+            }
+
+            ErrorKind::UnexpectedHeaderTextStart { actual } => {
+                write!(
+                    f,
+                    "expected start of header text, got: {} '{}'",
+                    actual.name, actual.lexeme,
+                )
+            }
+
+            ErrorKind::SubSectionNotNested => {
                 write!(f, "subsection not inside an enclosing section")
             }
         }
@@ -293,7 +319,7 @@ fn parse_metadata(tokeniser: &mut Tokeniser) -> ParseResult<Metadata> {
                     identifier_token.position
                 );
             }
-        };
+        }
 
         if tokeniser.peek().is::<LineBreak>() {
             tokeniser.advance();
@@ -347,6 +373,18 @@ fn parse_header_text(tokeniser: &mut Tokeniser) -> ParseResult<String> {
     let mut title = String::new();
 
     tokeniser.push_mode(ScanMode::Title);
+
+    let next = tokeniser.peek();
+
+    //TODO: Test coverage for this logic
+    if !matches!(next.value, Token::TitleTextSpace | Token::TitleText(_)) {
+        return parse_err!(
+            ErrorKind::UnexpectedHeaderTextStart {
+                actual: next.description()
+            },
+            next.position
+        );
+    }
 
     loop {
         let next = tokeniser.peek();
@@ -477,7 +515,7 @@ fn parse_section(tokeniser: &mut Tokeniser) -> ParseResult<Section> {
 
     let section = Section {
         content: elements.into_boxed_slice(),
-        heading: name.to_string(),
+        heading: name,
     };
 
     Ok(section)
@@ -524,7 +562,7 @@ fn parse_subsection(tokeniser: &mut Tokeniser) -> ParseResult<SubSection> {
 
     let subsection = SubSection {
         content: elements.into_boxed_slice(),
-        heading: name.to_string(),
+        heading: name,
     };
 
     Ok(subsection)
@@ -532,24 +570,20 @@ fn parse_subsection(tokeniser: &mut Tokeniser) -> ParseResult<SubSection> {
 
 fn parse_subsection_element(tokeniser: &mut Tokeniser) -> ParseResult<SubSectionElement> {
     let next = tokeniser.peek();
-    match next.value {
-        Token::InfoContainerDirective => {
-            let container = parse_container(tokeniser)?;
-            Ok(SubSectionElement::Container(container))
-        }
-        _ => {
-            let block = parse_block(tokeniser)?;
-            Ok(SubSectionElement::Block(block))
-        }
+    if let Token::InfoContainerDirective = next.value {
+        let container = parse_container(tokeniser)?;
+        Ok(SubSectionElement::Container(container))
+    } else {
+        let block = parse_block(tokeniser)?;
+        Ok(SubSectionElement::Block(block))
     }
 }
 
 fn parse_block(tokeniser: &mut Tokeniser) -> ParseResult<Block> {
     let next = tokeniser.peek();
     let block = match next.value {
-        Token::ListBullet(_) => parse_list(tokeniser)?,
+        Token::ListBullet(_) | Token::ListDirective => parse_list(tokeniser)?,
         Token::ParagraphDirective => parse_paragraph(tokeniser)?,
-        Token::ListDirective => parse_list(tokeniser)?,
         Token::CodeDirective => parse_code(tokeniser)?,
         Token::MetadataDirective => {
             return parse_err!(ErrorKind::MetadataNotAtStart, next.position);
@@ -886,6 +920,17 @@ fn validate_styled_text_run(run: &str) -> Result<(), ErrorKind> {
 
 fn parse_markup_text(tokeniser: &mut Tokeniser) -> ParseResult<String> {
     let mut run = String::new();
+
+    let next = tokeniser.peek();
+
+    if !matches!(next.value, Token::MarkupTextSpace | Token::MarkupText(_)) {
+        return parse_err!(
+            ErrorKind::UnexpectedTextRunStart {
+                actual: next.description()
+            },
+            next.position
+        );
+    }
 
     loop {
         let next = tokeniser.peek();
@@ -1993,7 +2038,12 @@ mod test {
     fn empty_emphasis() {
         let input = "Rules cats must follow: __.";
 
-        let expected = ErrorKind::EmptyDelimitedText;
+        let expected = ErrorKind::UnexpectedTextRunStart {
+            actual: TokenDescription {
+                name: EmphasisDelimiter::NAME,
+                lexeme: "_".into(),
+            },
+        };
 
         let result = parse_content_str(input);
         assert_parse_fails(result, expected);
@@ -2081,8 +2131,7 @@ mod test {
     fn unmatched_emphasis_3() {
         let input = "meow meow_";
 
-        let expected = ErrorKind::UnexpectedToken {
-            expected: EmphasisDelimiter::NAME,
+        let expected = ErrorKind::UnexpectedTextRunStart {
             actual: TokenDescription {
                 name: EndOfInput::NAME,
                 lexeme: "".into(),
@@ -2097,10 +2146,7 @@ mod test {
     fn nested_styled_text() {
         let input = "_*meow!*_";
 
-        // TODO: is this error true? specialise it?
-        // we didn't strictly _expect_ only a delimiter right?
-        let expected = ErrorKind::UnexpectedToken {
-            expected: EmphasisDelimiter::NAME,
+        let expected = ErrorKind::UnexpectedTextRunStart {
             actual: TokenDescription {
                 name: StrongDelimiter::NAME,
                 lexeme: "*".into(),
@@ -2135,8 +2181,7 @@ mod test {
     fn raw_immediately_in_emphasis() {
         let input = "_``_";
 
-        let expected = ErrorKind::UnexpectedToken {
-            expected: EmphasisDelimiter::NAME,
+        let expected = ErrorKind::UnexpectedTextRunStart {
             actual: TokenDescription {
                 name: RawDelimiter::NAME,
                 lexeme: "`".into(),

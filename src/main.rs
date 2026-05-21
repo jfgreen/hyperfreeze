@@ -1,3 +1,5 @@
+#![warn(clippy::pedantic)]
+
 use std::fmt::Display;
 use std::fs::File;
 use std::io::prelude::*;
@@ -76,8 +78,8 @@ impl From<std::io::Error> for Error {
 impl Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Error::ParseError(err) => write!(f, "Parse error: {}", err),
-            Error::IOError(err) => write!(f, "IO error: {}", err),
+            Error::ParseError(err) => write!(f, "Parse error: {err}"),
+            Error::IOError(err) => write!(f, "IO error: {err}"),
         }
     }
 }
@@ -107,13 +109,13 @@ fn parse_doc() -> Result<(), Error> {
 fn parse_args(args: std::env::Args) -> (String, String) {
     let mut args = args.into_iter();
     let exec = args.next();
-    match (args.next(), args.next()) {
-        (Some(input_path), Some(output_path)) => (input_path, output_path),
-        _ => {
-            let exec = exec.as_deref().unwrap_or("hyperfreeze");
-            println!("Usage: {exec} [input_path] [output_path]");
-            std::process::exit(1);
-        }
+    let positional_args = (args.next(), args.next());
+    if let (Some(input_path), Some(output_path)) = positional_args {
+        (input_path, output_path)
+    } else {
+        let exec = exec.as_deref().unwrap_or("hyperfreeze");
+        println!("Usage: {exec} [input_path] [output_path]");
+        std::process::exit(1);
     }
 }
 

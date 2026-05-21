@@ -129,7 +129,7 @@ pub enum Token<'a> {
     ListBullet(Indent),
 }
 
-impl<'a> Token<'a> {
+impl Token<'_> {
     fn name(&self) -> TokenName {
         match self {
             Token::EndOfInput => EndOfInput::NAME,
@@ -195,7 +195,7 @@ pub struct Spanned<'a, T> {
     pub lexeme: &'a str,
 }
 
-impl<'a, T> Spanned<'a, T> {
+impl<T> Spanned<'_, T> {
     pub fn lexeme_to_owned(&self) -> LexemeString {
         LexemeString::from(self.lexeme)
     }
@@ -282,6 +282,7 @@ macro_rules! token {
     };
 
     ($name:ident $(<$lifetime:lifetime>)? ($value:ty)) => {
+        #[allow(dead_code)]
         #[derive(Clone, Copy, Debug)]
         pub struct $name$(<$lifetime>)?(pub $value);
 
@@ -428,9 +429,10 @@ impl<'a> Tokeniser<'a> {
     }
 
     pub fn advance(&mut self) -> SpannedToken<'a> {
-        if self.token_count > self.max_tokens {
-            panic!("Posible infinite loop detected")
-        }
+        assert!(
+            self.token_count <= self.max_tokens,
+            "Posible infinite loop detected"
+        );
 
         let matchers = self.current_matchers();
         let position = self.scanner.position();
@@ -858,7 +860,6 @@ fn match_code_delimiter<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
     for char in CODE_DELIMITER_PATTERN.chars() {
         if head.current == Some(char) {
             head.read_next_char();
-            continue;
         } else {
             return None;
         }
@@ -887,9 +888,9 @@ fn match_code_block<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
             });
         } else if head.current.is_none() {
             return None;
-        } else {
-            head.read_next_char();
         }
+
+        head.read_next_char();
     }
 }
 
@@ -1169,7 +1170,7 @@ fn match_data_key_value_seperator<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch
     let mut head = scanner.read_head.clone();
 
     if head.current == Some(COLON) {
-        head.read_next_char()
+        head.read_next_char();
     } else {
         return None;
     }
@@ -1188,7 +1189,7 @@ fn match_data_list_seperator<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>>
     let mut head = scanner.read_head.clone();
 
     if head.current == Some(VERTICAL_BAR) {
-        head.read_next_char()
+        head.read_next_char();
     } else {
         return None;
     }
@@ -1210,12 +1211,12 @@ fn match_data_directive<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
     let i1 = head.index;
 
     if head.current == Some(AT_SIGN) {
-        head.read_next_char()
+        head.read_next_char();
     } else {
         return None;
     }
 
-    while head.current.is_some_and(|c| c.is_alphanumeric()) {
+    while head.current.is_some_and(char::is_alphanumeric) {
         head.read_next_char();
     }
 
@@ -1237,12 +1238,12 @@ fn match_container_directive<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>>
     let i1 = head.index;
 
     if head.current == Some(EXCLAMATION_MARK) {
-        head.read_next_char()
+        head.read_next_char();
     } else {
         return None;
     }
 
-    while head.current.is_some_and(|c| c.is_alphanumeric()) {
+    while head.current.is_some_and(char::is_alphanumeric) {
         head.read_next_char();
     }
 
@@ -1264,12 +1265,12 @@ fn match_block_directive<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
     let i1 = head.index;
 
     if head.current == Some(HASH) {
-        head.read_next_char()
+        head.read_next_char();
     } else {
         return None;
     }
 
-    while head.current.is_some_and(|c| c.is_alphanumeric()) {
+    while head.current.is_some_and(char::is_alphanumeric) {
         head.read_next_char();
     }
 
@@ -1290,19 +1291,19 @@ fn match_subsection_directive<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>
     let mut head = scanner.read_head.clone();
 
     if head.current == Some(SLASH) {
-        head.read_next_char()
+        head.read_next_char();
     } else {
         return None;
     }
 
     if head.current == Some(SLASH) {
-        head.read_next_char()
+        head.read_next_char();
     } else {
         return None;
     }
 
     if head.current == Some(SLASH) {
-        head.read_next_char()
+        head.read_next_char();
     } else {
         return None;
     }
@@ -1321,13 +1322,13 @@ fn match_section_directive<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
     let mut head = scanner.read_head.clone();
 
     if head.current == Some(SLASH) {
-        head.read_next_char()
+        head.read_next_char();
     } else {
         return None;
     }
 
     if head.current == Some(SLASH) {
-        head.read_next_char()
+        head.read_next_char();
     } else {
         return None;
     }
@@ -1346,7 +1347,7 @@ fn match_title_directive<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
     let mut head = scanner.read_head.clone();
 
     if head.current == Some(SLASH) {
-        head.read_next_char()
+        head.read_next_char();
     } else {
         return None;
     }
@@ -1367,7 +1368,6 @@ fn match_container_start<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
     for char in CONTAINER_START_PATTERN.chars() {
         if head.current == Some(char) {
             head.read_next_char();
-            continue;
         } else {
             return None;
         }
@@ -1389,7 +1389,6 @@ fn match_container_end<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
     for char in CONTAINER_END_PATTERN.chars() {
         if head.current == Some(char) {
             head.read_next_char();
-            continue;
         } else {
             return None;
         }
