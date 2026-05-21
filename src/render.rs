@@ -1,11 +1,9 @@
 use std::io;
 
-#[allow(clippy::wildcard_imports)]
-use crate::document::*;
+use crate::document as doc;
 
 //TODO: Have some kind of helper for writing HTML, with indent
-pub fn render_html(document: &Document, out: &mut impl io::Write) -> io::Result<()> {
-    //FIXME: Decide on if to enforce this, or to have a fallback?
+pub fn render_html(document: &doc::Document, out: &mut impl io::Write) -> io::Result<()> {
     let title = &document.title;
 
     writeln!(out, "<!DOCTYPE html>")?;
@@ -29,48 +27,51 @@ pub fn render_html(document: &Document, out: &mut impl io::Write) -> io::Result<
     Ok(())
 }
 
-fn render_element(element: &Element, out: &mut impl io::Write) -> io::Result<()> {
+fn render_element(element: &doc::Element, out: &mut impl io::Write) -> io::Result<()> {
     match element {
-        Element::Block(block) => render_block(block, out)?,
-        Element::Container(container) => render_container(container, out)?,
-        Element::Section(section) => render_section(section, out)?,
+        doc::Element::Block(block) => render_block(block, out)?,
+        doc::Element::Container(container) => render_container(container, out)?,
+        doc::Element::Section(section) => render_section(section, out)?,
     }
 
     Ok(())
 }
 
-fn render_section_element(element: &SectionElement, out: &mut impl io::Write) -> io::Result<()> {
+fn render_section_element(
+    element: &doc::SectionElement,
+    out: &mut impl io::Write,
+) -> io::Result<()> {
     match element {
-        SectionElement::Block(block) => render_block(block, out)?,
-        SectionElement::Container(container) => render_container(container, out)?,
-        SectionElement::SubSection(subsection) => render_subsection(subsection, out)?,
+        doc::SectionElement::Block(block) => render_block(block, out)?,
+        doc::SectionElement::Container(container) => render_container(container, out)?,
+        doc::SectionElement::SubSection(subsection) => render_subsection(subsection, out)?,
     }
 
     Ok(())
 }
 
 fn render_subsection_element(
-    element: &SubSectionElement,
+    element: &doc::SubSectionElement,
     out: &mut impl io::Write,
 ) -> io::Result<()> {
     match element {
-        SubSectionElement::Block(block) => render_block(block, out)?,
-        SubSectionElement::Container(container) => render_container(container, out)?,
+        doc::SubSectionElement::Block(block) => render_block(block, out)?,
+        doc::SubSectionElement::Container(container) => render_container(container, out)?,
     }
 
     Ok(())
 }
 
-fn render_block(block: &Block, out: &mut impl io::Write) -> io::Result<()> {
+fn render_block(block: &doc::Block, out: &mut impl io::Write) -> io::Result<()> {
     match block {
-        Block::Paragraph(text) => render_text(text, out)?,
-        Block::List(list) => render_list(list, out)?,
-        Block::Code(code) => render_code(code, out)?,
+        doc::Block::Paragraph(text) => render_text(text, out)?,
+        doc::Block::List(list) => render_list(list, out)?,
+        doc::Block::Code(code) => render_code(code, out)?,
     }
     Ok(())
 }
 
-fn render_container(container: &Container, out: &mut impl io::Write) -> io::Result<()> {
+fn render_container(container: &doc::Container, out: &mut impl io::Write) -> io::Result<()> {
     //TODO: Actually display the container somehow
     for block in &container.content {
         render_block(block, out)?;
@@ -78,7 +79,7 @@ fn render_container(container: &Container, out: &mut impl io::Write) -> io::Resu
     Ok(())
 }
 
-fn render_section(section: &Section, out: &mut impl io::Write) -> io::Result<()> {
+fn render_section(section: &doc::Section, out: &mut impl io::Write) -> io::Result<()> {
     writeln!(out, "<section>")?;
     writeln!(out, "<h2>{}</h2>", section.heading)?;
 
@@ -90,7 +91,7 @@ fn render_section(section: &Section, out: &mut impl io::Write) -> io::Result<()>
     Ok(())
 }
 
-fn render_subsection(subsection: &SubSection, out: &mut impl io::Write) -> io::Result<()> {
+fn render_subsection(subsection: &doc::SubSection, out: &mut impl io::Write) -> io::Result<()> {
     writeln!(out, "<section>")?;
     writeln!(out, "<h3>{}</h3>", subsection.heading)?;
 
@@ -102,7 +103,7 @@ fn render_subsection(subsection: &SubSection, out: &mut impl io::Write) -> io::R
     Ok(())
 }
 
-fn render_text(text_runs: &[TextRun], out: &mut impl io::Write) -> io::Result<()> {
+fn render_text(text_runs: &[doc::TextRun], out: &mut impl io::Write) -> io::Result<()> {
     writeln!(out, "    <p>")?;
     writeln!(out, "      ")?;
     for run in text_runs {
@@ -112,7 +113,9 @@ fn render_text(text_runs: &[TextRun], out: &mut impl io::Write) -> io::Result<()
     Ok(())
 }
 
-fn render_text_run(run: &TextRun, out: &mut impl io::Write) -> io::Result<()> {
+fn render_text_run(run: &doc::TextRun, out: &mut impl io::Write) -> io::Result<()> {
+    use doc::Style;
+
     match &run.style {
         Style::None => (),
         Style::Strong => write!(out, "<strong>")?,
@@ -137,7 +140,7 @@ fn render_text_run(run: &TextRun, out: &mut impl io::Write) -> io::Result<()> {
     Ok(())
 }
 
-fn render_list(list: &List, out: &mut impl io::Write) -> io::Result<()> {
+fn render_list(list: &doc::List, out: &mut impl io::Write) -> io::Result<()> {
     //TODO: Handle list style
     writeln!(out, "<ul>")?;
     for item in &list.items {
@@ -147,11 +150,11 @@ fn render_list(list: &List, out: &mut impl io::Write) -> io::Result<()> {
     Ok(())
 }
 
-fn render_list_item(item: &ListItem, out: &mut impl io::Write) -> io::Result<()> {
+fn render_list_item(item: &doc::ListItem, out: &mut impl io::Write) -> io::Result<()> {
     write!(out, "<li>")?;
     match item {
-        ListItem::Text(text) => render_text(text, out)?,
-        ListItem::SubList(sub_list) => {
+        doc::ListItem::Text(text) => render_text(text, out)?,
+        doc::ListItem::SubList(sub_list) => {
             writeln!(out, "<ul>")?;
             for item in sub_list {
                 render_list_item(item, out)?;
