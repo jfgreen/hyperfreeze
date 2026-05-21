@@ -4,8 +4,8 @@ use std::fmt::{self, Display};
 // TODO: Can we fix this import mess with namespaces instead?
 // (same in render module)
 
-#[allow(clippy::wildcard_imports)]
-use crate::document::*;
+use crate::document::{self as doc, Document};
+
 #[allow(clippy::wildcard_imports)]
 use crate::tokenise::*;
 
@@ -247,7 +247,7 @@ pub fn parse_str(input: &str) -> Result<Document, ParseError> {
 }
 
 fn parse_document(tokeniser: &mut Tokeniser) -> ParseResult<Document> {
-    let mut metadata = Metadata::default();
+    let mut metadata = doc::Metadata::default();
     let mut references = Vec::new();
     let mut elements = Vec::new();
 
@@ -291,8 +291,8 @@ fn parse_document_title(tokeniser: &mut Tokeniser) -> ParseResult<String> {
     Ok(title)
 }
 
-fn parse_metadata(tokeniser: &mut Tokeniser) -> ParseResult<Metadata> {
-    let mut metadata = Metadata::default();
+fn parse_metadata(tokeniser: &mut Tokeniser) -> ParseResult<doc::Metadata> {
+    let mut metadata = doc::Metadata::default();
 
     tokeniser.advance().require::<MetadataDirective>()?;
     tokeniser.advance().require::<LineBreak>()?;
@@ -335,7 +335,7 @@ fn parse_metadata(tokeniser: &mut Tokeniser) -> ParseResult<Metadata> {
     Ok(metadata)
 }
 
-fn parse_references(tokeniser: &mut Tokeniser) -> ParseResult<Box<[Reference]>> {
+fn parse_references(tokeniser: &mut Tokeniser) -> ParseResult<Box<[doc::Reference]>> {
     tokeniser.advance().require::<ReferencesDirective>()?;
     tokeniser.advance().require::<LineBreak>()?;
 
@@ -353,10 +353,12 @@ fn parse_references(tokeniser: &mut Tokeniser) -> ParseResult<Box<[Reference]>> 
             tokeniser.advance();
         }
 
-        references.push(Reference {
+        let reference = doc::Reference {
             id: id.into(),
             link: link.into(),
-        });
+        };
+
+        references.push(reference);
     }
 
     tokeniser.pop_mode();
@@ -422,28 +424,28 @@ fn parse_metadata_list(tokeniser: &mut Tokeniser) -> ParseResult<Box<[String]>> 
     Ok(tags)
 }
 
-fn parse_element(tokeniser: &mut Tokeniser) -> ParseResult<Element> {
+fn parse_element(tokeniser: &mut Tokeniser) -> ParseResult<doc::Element> {
     let next = tokeniser.peek();
     match next.value {
         Token::SectionDirective => {
             let section = parse_section(tokeniser)?;
-            Ok(Element::Section(section))
+            Ok(doc::Element::Section(section))
         }
         Token::InfoContainerDirective => {
             let container = parse_container(tokeniser)?;
-            Ok(Element::Container(container))
+            Ok(doc::Element::Container(container))
         }
         Token::SubSectionDirective => {
             parse_err!(ErrorKind::SubSectionNotNested, next.position)
         }
         _ => {
             let block = parse_block(tokeniser)?;
-            Ok(Element::Block(block))
+            Ok(doc::Element::Block(block))
         }
     }
 }
 
-fn parse_container(tokeniser: &mut Tokeniser) -> ParseResult<Container> {
+fn parse_container(tokeniser: &mut Tokeniser) -> ParseResult<doc::Container> {
     tokeniser.advance().require::<InfoContainerDirective>()?;
 
     let next = tokeniser.peek();
@@ -458,7 +460,7 @@ fn parse_container(tokeniser: &mut Tokeniser) -> ParseResult<Container> {
         return parse_err!(ErrorKind::EmptyContainer, next.position);
     }
 
-    let container_kind = ContainerKind::Info;
+    let container_kind = doc::ContainerKind::Info;
 
     let mut blocks = Vec::new();
 
@@ -487,7 +489,7 @@ fn parse_container(tokeniser: &mut Tokeniser) -> ParseResult<Container> {
         blocks.push(block);
     }
 
-    let container = Container {
+    let container = doc::Container {
         content: blocks.into_boxed_slice(),
         kind: container_kind,
     };
@@ -495,7 +497,7 @@ fn parse_container(tokeniser: &mut Tokeniser) -> ParseResult<Container> {
     Ok(container)
 }
 
-fn parse_section(tokeniser: &mut Tokeniser) -> ParseResult<Section> {
+fn parse_section(tokeniser: &mut Tokeniser) -> ParseResult<doc::Section> {
     tokeniser.advance().require::<SectionDirective>()?;
 
     let name = parse_header_text(tokeniser)?;
@@ -513,7 +515,7 @@ fn parse_section(tokeniser: &mut Tokeniser) -> ParseResult<Section> {
         elements.push(element);
     }
 
-    let section = Section {
+    let section = doc::Section {
         content: elements.into_boxed_slice(),
         heading: name,
     };
@@ -521,25 +523,25 @@ fn parse_section(tokeniser: &mut Tokeniser) -> ParseResult<Section> {
     Ok(section)
 }
 
-fn parse_section_element(tokeniser: &mut Tokeniser) -> ParseResult<SectionElement> {
+fn parse_section_element(tokeniser: &mut Tokeniser) -> ParseResult<doc::SectionElement> {
     let peeked = tokeniser.peek();
     match peeked.value {
         Token::SubSectionDirective => {
             let subsection = parse_subsection(tokeniser)?;
-            Ok(SectionElement::SubSection(subsection))
+            Ok(doc::SectionElement::SubSection(subsection))
         }
         Token::InfoContainerDirective => {
             let container = parse_container(tokeniser)?;
-            Ok(SectionElement::Container(container))
+            Ok(doc::SectionElement::Container(container))
         }
         _ => {
             let block = parse_block(tokeniser)?;
-            Ok(SectionElement::Block(block))
+            Ok(doc::SectionElement::Block(block))
         }
     }
 }
 
-fn parse_subsection(tokeniser: &mut Tokeniser) -> ParseResult<SubSection> {
+fn parse_subsection(tokeniser: &mut Tokeniser) -> ParseResult<doc::SubSection> {
     tokeniser.advance().require::<SubSectionDirective>()?;
 
     let name = parse_header_text(tokeniser)?;
@@ -560,7 +562,7 @@ fn parse_subsection(tokeniser: &mut Tokeniser) -> ParseResult<SubSection> {
         elements.push(element);
     }
 
-    let subsection = SubSection {
+    let subsection = doc::SubSection {
         content: elements.into_boxed_slice(),
         heading: name,
     };
@@ -568,18 +570,18 @@ fn parse_subsection(tokeniser: &mut Tokeniser) -> ParseResult<SubSection> {
     Ok(subsection)
 }
 
-fn parse_subsection_element(tokeniser: &mut Tokeniser) -> ParseResult<SubSectionElement> {
+fn parse_subsection_element(tokeniser: &mut Tokeniser) -> ParseResult<doc::SubSectionElement> {
     let next = tokeniser.peek();
     if let Token::InfoContainerDirective = next.value {
         let container = parse_container(tokeniser)?;
-        Ok(SubSectionElement::Container(container))
+        Ok(doc::SubSectionElement::Container(container))
     } else {
         let block = parse_block(tokeniser)?;
-        Ok(SubSectionElement::Block(block))
+        Ok(doc::SubSectionElement::Block(block))
     }
 }
 
-fn parse_block(tokeniser: &mut Tokeniser) -> ParseResult<Block> {
+fn parse_block(tokeniser: &mut Tokeniser) -> ParseResult<doc::Block> {
     let next = tokeniser.peek();
     let block = match next.value {
         Token::ListBullet(_) | Token::ListDirective => parse_list(tokeniser)?,
@@ -619,7 +621,7 @@ fn parse_block(tokeniser: &mut Tokeniser) -> ParseResult<Block> {
     Ok(block)
 }
 
-fn parse_paragraph(tokeniser: &mut Tokeniser) -> ParseResult<Block> {
+fn parse_paragraph(tokeniser: &mut Tokeniser) -> ParseResult<doc::Block> {
     if tokeniser.peek().is::<ParagraphDirective>() {
         tokeniser.advance();
         tokeniser.advance().require::<LineBreak>()?;
@@ -633,13 +635,13 @@ fn parse_paragraph(tokeniser: &mut Tokeniser) -> ParseResult<Block> {
 
     let text_runs = parse_text_runs(tokeniser)?;
     tokeniser.pop_mode();
-    Ok(Block::Paragraph(text_runs))
+    Ok(doc::Block::Paragraph(text_runs))
 }
 
 fn parse_list_level(
     tokeniser: &mut Tokeniser,
     current_depth: usize,
-) -> ParseResult<Box<[ListItem]>> {
+) -> ParseResult<Box<[doc::ListItem]>> {
     let mut items = Vec::new();
 
     while let Some(bullet_token) = tokeniser.peek().try_consume_spanned() {
@@ -658,10 +660,10 @@ fn parse_list_level(
             if tokeniser.peek().is::<LineBreak>() {
                 tokeniser.advance();
             }
-            ListItem::Text(text)
+            doc::ListItem::Text(text)
         } else if depth == current_depth + 1 {
             let sub_items = parse_list_level(tokeniser, depth)?;
-            ListItem::SubList(sub_items)
+            doc::ListItem::SubList(sub_items)
         } else if depth < current_depth {
             break;
         } else {
@@ -682,8 +684,8 @@ fn parse_list_level(
 }
 
 //TODO: At some point we need common mechanics for iterating block parameters
-fn parse_list(tokeniser: &mut Tokeniser) -> ParseResult<Block> {
-    let mut style = ListStyle::Unordered;
+fn parse_list(tokeniser: &mut Tokeniser) -> ParseResult<doc::Block> {
+    let mut style = doc::ListStyle::Unordered;
 
     if tokeniser.peek().is::<ListDirective>() {
         tokeniser.advance();
@@ -709,8 +711,8 @@ fn parse_list(tokeniser: &mut Tokeniser) -> ParseResult<Block> {
                 match name {
                     "style" => {
                         style = match value {
-                            "ordered" => ListStyle::Ordered,
-                            "unordered" => ListStyle::Unordered,
+                            "ordered" => doc::ListStyle::Ordered,
+                            "unordered" => doc::ListStyle::Unordered,
                             _ => {
                                 return parse_err!(
                                     ErrorKind::InvalidListStyle(
@@ -737,11 +739,13 @@ fn parse_list(tokeniser: &mut Tokeniser) -> ParseResult<Block> {
     let base_depth = 0;
     let items = parse_list_level(tokeniser, base_depth)?;
     tokeniser.pop_mode();
-    let list = List { items, style };
-    Ok(Block::List(list))
+
+    let list = doc::List { items, style };
+    let block = doc::Block::List(list);
+    Ok(block)
 }
 
-fn parse_text_runs(tokeniser: &mut Tokeniser) -> ParseResult<Box<[TextRun]>> {
+fn parse_text_runs(tokeniser: &mut Tokeniser) -> ParseResult<Box<[doc::TextRun]>> {
     let mut text_runs = Vec::new();
 
     loop {
@@ -762,18 +766,18 @@ fn parse_text_runs(tokeniser: &mut Tokeniser) -> ParseResult<Box<[TextRun]>> {
     Ok(text_runs)
 }
 
-fn parse_plain_text_run(tokeniser: &mut Tokeniser) -> ParseResult<TextRun> {
+fn parse_plain_text_run(tokeniser: &mut Tokeniser) -> ParseResult<doc::TextRun> {
     let run = parse_markup_text(tokeniser)?;
 
-    let run = TextRun {
+    let run = doc::TextRun {
         text: run,
-        style: Style::None,
+        style: doc::Style::None,
     };
 
     Ok(run)
 }
 
-fn parse_raw_text_run(tokeniser: &mut Tokeniser) -> ParseResult<TextRun> {
+fn parse_raw_text_run(tokeniser: &mut Tokeniser) -> ParseResult<doc::TextRun> {
     let token = tokeniser.advance().require_spanned::<RawDelimiter>()?;
     let run_start = token.position;
 
@@ -803,15 +807,15 @@ fn parse_raw_text_run(tokeniser: &mut Tokeniser) -> ParseResult<TextRun> {
         return parse_err!(ErrorKind::EmptyDelimitedText, run_start);
     }
 
-    let run = TextRun {
+    let run = doc::TextRun {
         text: run,
-        style: Style::Raw,
+        style: doc::Style::Raw,
     };
 
     Ok(run)
 }
 
-fn parse_linked_text_run(tokeniser: &mut Tokeniser) -> ParseResult<TextRun> {
+fn parse_linked_text_run(tokeniser: &mut Tokeniser) -> ParseResult<doc::TextRun> {
     let token = tokeniser
         .advance()
         .require_spanned::<LinkOpeningDelimiter>()?;
@@ -834,13 +838,13 @@ fn parse_linked_text_run(tokeniser: &mut Tokeniser) -> ParseResult<TextRun> {
 
     tokeniser.pop_mode();
 
-    Ok(TextRun {
+    Ok(doc::TextRun {
         text: run,
-        style: Style::Link(identifier.into()),
+        style: doc::Style::Link(identifier.into()),
     })
 }
 
-fn parse_strong_text_run(tokeniser: &mut Tokeniser) -> ParseResult<TextRun> {
+fn parse_strong_text_run(tokeniser: &mut Tokeniser) -> ParseResult<doc::TextRun> {
     let next = tokeniser.peek();
     let run_start = next.position;
 
@@ -854,15 +858,15 @@ fn parse_strong_text_run(tokeniser: &mut Tokeniser) -> ParseResult<TextRun> {
         return parse_err!(error, run_start);
     }
 
-    let run = TextRun {
+    let run = doc::TextRun {
         text: run,
-        style: Style::Strong,
+        style: doc::Style::Strong,
     };
 
     Ok(run)
 }
 
-fn parse_emphasised_text_run(tokeniser: &mut Tokeniser) -> ParseResult<TextRun> {
+fn parse_emphasised_text_run(tokeniser: &mut Tokeniser) -> ParseResult<doc::TextRun> {
     let next = tokeniser.peek();
     let run_start = next.position;
 
@@ -876,15 +880,15 @@ fn parse_emphasised_text_run(tokeniser: &mut Tokeniser) -> ParseResult<TextRun> 
         return parse_err!(error, run_start);
     }
 
-    let run = TextRun {
+    let run = doc::TextRun {
         text: run,
-        style: Style::Emphasis,
+        style: doc::Style::Emphasis,
     };
 
     Ok(run)
 }
 
-fn parse_strikethrough_text_run(tokeniser: &mut Tokeniser) -> ParseResult<TextRun> {
+fn parse_strikethrough_text_run(tokeniser: &mut Tokeniser) -> ParseResult<doc::TextRun> {
     let next = tokeniser.peek();
     let run_start = next.position;
 
@@ -898,9 +902,9 @@ fn parse_strikethrough_text_run(tokeniser: &mut Tokeniser) -> ParseResult<TextRu
         return parse_err!(error, run_start);
     }
 
-    let run = TextRun {
+    let run = doc::TextRun {
         text: run,
-        style: Style::Strikethrough,
+        style: doc::Style::Strikethrough,
     };
 
     Ok(run)
@@ -948,7 +952,7 @@ fn parse_markup_text(tokeniser: &mut Tokeniser) -> ParseResult<String> {
     Ok(run)
 }
 
-fn parse_code(tokeniser: &mut Tokeniser) -> ParseResult<Block> {
+fn parse_code(tokeniser: &mut Tokeniser) -> ParseResult<doc::Block> {
     tokeniser.advance().require::<CodeDirective>()?;
 
     tokeniser.advance().require::<LineBreak>()?;
@@ -969,7 +973,7 @@ fn parse_code(tokeniser: &mut Tokeniser) -> ParseResult<Block> {
 
     tokeniser.pop_mode();
 
-    let block = Block::Code(String::from(code));
+    let block = doc::Block::Code(String::from(code));
     Ok(block)
 }
 
@@ -1043,7 +1047,7 @@ mod test {
         };
 
         ( {$($fields:tt)*}) => {
-            Metadata{
+            doc::Metadata{
                 $($fields)*
               ..Default::default()
             }
@@ -1085,7 +1089,7 @@ mod test {
             $(,)?
         ) => {
             Box::new(
-                [$(Reference {
+                [$(doc::Reference {
                     id: $ref_id.to_string(),
                     link: $ref_link.to_string(),
                 },)*]
@@ -1096,18 +1100,18 @@ mod test {
     //TODO: Less confusing for macros to be more like (info: {...}) => {...}
     macro_rules! element {
         (info $( $block:ident { $($content:tt)* } $(,)? )*) => {
-            Element::Container(Container{
+            doc::Element::Container(doc::Container{
                 content: Box::new([
                     $(
                         block!($block $($content)*),
                     )*
                 ]),
-                kind: ContainerKind::Info,
+                kind: doc::ContainerKind::Info,
             })
         };
 
         (section ($name:expr) $( $element:ident $(($element_name:expr))? { $($content:tt)* } $(,)? )*) => {
-            Element::Section(Section{
+            doc::Element::Section(doc::Section{
                 content: Box::new([
                     $(
                         section_element!($element $(($element_name))? $($content)*),
@@ -1118,7 +1122,7 @@ mod test {
         };
 
         ($block:ident $($content:tt)*) => {
-            Element::Block(block!($block $($content)*))
+            doc::Element::Block(block!($block $($content)*))
         };
 
 
@@ -1137,7 +1141,7 @@ mod test {
         };
 
         (subsection ($name:expr) $( $element:ident $(($element_name:expr))? { $($content:tt)* } $(,)? )*) => {
-            SectionElement::SubSection(SubSection{
+            doc::SectionElement::SubSection(doc::SubSection{
                 content: Box::new([
                     $(
                         subsection_element!($element $(($element_name))? $($content)*),
@@ -1148,13 +1152,13 @@ mod test {
         };
 
         ($block:ident $($content:tt)*) => {
-            SectionElement::Block(block!($block $($content)*))
+            doc::SectionElement::Block(block!($block $($content)*))
         };
     }
 
     macro_rules! subsection_element {
         (info $( $block:ident { $($content:tt)* } $(,)? )*) => {
-            SubSectionElement::Container(Container{
+            doc::SubSectionElement::Container(doc::Container{
                 content: Box::new([
                     $(
                         block!($block $($content)*),
@@ -1165,14 +1169,14 @@ mod test {
         };
 
         ($block:ident $($content:tt)*) => {
-            SubSectionElement::Block(block!($block $($content)*))
+            doc::SubSectionElement::Block(block!($block $($content)*))
         };
 
     }
 
     macro_rules! block {
         (paragraph $($text:expr),* $(,)?) => {
-            Block::Paragraph(Box::new([
+            doc::Block::Paragraph(Box::new([
                 $(
                     $text,
                 )*
@@ -1180,39 +1184,39 @@ mod test {
         };
 
         (list $($item:ident { $($content:tt)* } $(,)?)*) => {
-            Block::List(
-                List {
+            doc::Block::List(
+                doc::List {
                     items: Box::new([
                     $(
                         list_item!($item $($content)*),
                     )*
                     ]),
-                    style: ListStyle::Unordered,
+                    style: doc::ListStyle::Unordered,
                 }
             )
         };
 
         (ordered_list $($item:ident { $($content:tt)* } $(,)?)*) => {
-            Block::List(
-                List {
+            doc::Block::List(
+                doc::List {
                     items: Box::new([
                     $(
                         list_item!($item $($content)*),
                     )*
                     ]),
-                    style: ListStyle::Ordered,
+                    style: doc::ListStyle::Ordered,
                 }
             )
         };
 
         (code $($text:expr),+ $(,)?) => {
-            Block::Code(concat!($($text,)+).to_string())
+            doc::Block::Code(concat!($($text,)+).to_string())
         };
     }
 
     macro_rules! list_item {
         (paragraph $($text:expr),* $(,)?) => {
-            ListItem::Text(Box::new([
+            doc::ListItem::Text(Box::new([
                 $(
                     $text,
                 )*
@@ -1220,7 +1224,7 @@ mod test {
         };
 
         (list $($item:ident { $($content:tt)* } $(,)?)*) => {
-            ListItem::SubList(Box::new([
+            doc::ListItem::SubList(Box::new([
                 $(
                     list_item!($item $($content)*),
                 )*
@@ -1277,45 +1281,45 @@ mod test {
         }
     }
 
-    fn text(text: &str) -> TextRun {
-        TextRun {
+    fn text(text: &str) -> doc::TextRun {
+        doc::TextRun {
             text: text.to_string(),
-            style: Style::None,
+            style: doc::Style::None,
         }
     }
 
-    fn emphasised_text(text: &str) -> TextRun {
-        TextRun {
+    fn emphasised_text(text: &str) -> doc::TextRun {
+        doc::TextRun {
             text: text.to_string(),
-            style: Style::Emphasis,
+            style: doc::Style::Emphasis,
         }
     }
 
-    fn strong_text(text: &str) -> TextRun {
-        TextRun {
+    fn strong_text(text: &str) -> doc::TextRun {
+        doc::TextRun {
             text: text.to_string(),
-            style: Style::Strong,
+            style: doc::Style::Strong,
         }
     }
 
-    fn strikethrough_text(text: &str) -> TextRun {
-        TextRun {
+    fn strikethrough_text(text: &str) -> doc::TextRun {
+        doc::TextRun {
             text: text.to_string(),
-            style: Style::Strikethrough,
+            style: doc::Style::Strikethrough,
         }
     }
 
-    fn raw_text(text: &str) -> TextRun {
-        TextRun {
+    fn raw_text(text: &str) -> doc::TextRun {
+        doc::TextRun {
             text: text.to_string(),
-            style: Style::Raw,
+            style: doc::Style::Raw,
         }
     }
 
-    fn linked_text(text: &str, reference: &str) -> TextRun {
-        TextRun {
+    fn linked_text(text: &str, reference: &str) -> doc::TextRun {
+        doc::TextRun {
             text: text.to_string(),
-            style: Style::Link(reference.to_string()),
+            style: doc::Style::Link(reference.to_string()),
         }
     }
 
@@ -1337,7 +1341,7 @@ mod test {
         }
     }
 
-    fn assert_content_eq(result: ParseResult<Document>, expected: Box<[Element]>) {
+    fn assert_content_eq(result: ParseResult<Document>, expected: Box<[doc::Element]>) {
         let doc = expect_successful_parse(result);
         if doc.contents != expected {
             eprintln!("Actual:\n{:#?}", doc.contents);
