@@ -24,10 +24,6 @@ enum ErrorKind {
     /// Space between delimiter and delimited content
     LooseDelimiter,
 
-    //TODO: Do we need this anymore, remove?
-    /// Delimiters contains no content between them
-    EmptyDelimitedText,
-
     /// List indent skips one or more levels
     MissingListLevel { from: usize, to: usize },
 
@@ -61,14 +57,14 @@ enum ErrorKind {
     /// Container has no content
     EmptyContainer,
 
-    /// Raw text run is missing a closing delimiter
-    UnterminatedRawTextRun,
-
     /// Block starts with an unexpected token
     UnexpectedBlockStart { actual: TokenDescription },
 
     /// Text run starts with an unexpected token
     UnexpectedTextRunStart { actual: TokenDescription },
+
+    /// Raw run starts with an unexpected token
+    UnexpectedRawTextRunStart { actual: TokenDescription },
 
     /// Header text starts with an unexpected token
     UnexpectedHeaderTextStart { actual: TokenDescription },
@@ -101,10 +97,6 @@ impl ParseError {
         match &self.kind {
             ErrorKind::LooseDelimiter => {
                 write!(f, "delimited text cant have leading/trailing whitespace")
-            }
-
-            ErrorKind::EmptyDelimitedText => {
-                write!(f, "delimited text cant be empty")
             }
 
             ErrorKind::UnknownMetadata(key) => {
@@ -155,10 +147,6 @@ impl ParseError {
                 write!(f, "empty container,")
             }
 
-            ErrorKind::UnterminatedRawTextRun => {
-                write!(f, "unterminated raw text run")
-            }
-
             ErrorKind::UnexpectedBlockStart { actual } => {
                 write!(
                     f,
@@ -171,6 +159,14 @@ impl ParseError {
                 write!(
                     f,
                     "expected start of text run, got: {} '{}'",
+                    actual.name, actual.lexeme,
+                )
+            }
+
+            ErrorKind::UnexpectedRawTextRunStart { actual } => {
+                write!(
+                    f,
+                    "expected start of raw text run, got: {} '{}'",
                     actual.name, actual.lexeme,
                 )
             }
@@ -778,10 +774,19 @@ fn parse_plain_text_run(tokeniser: &mut Tokeniser) -> ParseResult<doc::TextRun> 
 }
 
 fn parse_raw_text_run(tokeniser: &mut Tokeniser) -> ParseResult<doc::TextRun> {
-    let token = tokeniser.advance().require_spanned::<RawDelimiter>()?;
-    let run_start = token.position;
+    tokeniser.advance().require::<RawDelimiter>()?;
 
     tokeniser.push_mode(ScanMode::Raw);
+    let next = tokeniser.peek();
+
+    if !matches!(next.value, Token::RawFragment(_) | Token::LineBreak) {
+        return parse_err!(
+            ErrorKind::UnexpectedRawTextRunStart {
+                actual: next.description()
+            },
+            next.position
+        );
+    }
 
     let mut run = String::new();
 
@@ -793,19 +798,14 @@ fn parse_raw_text_run(tokeniser: &mut Tokeniser) -> ParseResult<doc::TextRun> {
         } else if next.is::<LineBreak>() {
             tokeniser.advance();
             run.push(SPACE);
-        } else if next.is::<RawDelimiter>() {
-            break;
         } else {
-            return parse_err!(ErrorKind::UnterminatedRawTextRun, next.position);
+            break;
         }
     }
 
-    tokeniser.advance();
-    tokeniser.pop_mode();
+    tokeniser.advance().require::<RawDelimiter>()?;
 
-    if run.is_empty() {
-        return parse_err!(ErrorKind::EmptyDelimitedText, run_start);
-    }
+    tokeniser.pop_mode();
 
     let run = doc::TextRun {
         text: run,
@@ -913,10 +913,6 @@ fn parse_strikethrough_text_run(tokeniser: &mut Tokeniser) -> ParseResult<doc::T
 fn validate_styled_text_run(run: &str) -> Result<(), ErrorKind> {
     if run.starts_with(SPACE) || run.ends_with(SPACE) {
         return Err(ErrorKind::LooseDelimiter);
-    }
-
-    if run.is_empty() {
-        return Err(ErrorKind::EmptyDelimitedText);
     }
 
     Ok(())
@@ -2057,7 +2053,12 @@ mod test {
     fn empty_raw() {
         let input = "Robot cat says: ``!.";
 
-        let expected = ErrorKind::EmptyDelimitedText;
+        let expected = ErrorKind::UnexpectedRawTextRunStart {
+            actual: TokenDescription {
+                name: RawDelimiter::NAME,
+                lexeme: "`".into(),
+            },
+        };
 
         let result = parse_content_str(input);
         assert_parse_fails(result, expected);
@@ -2067,7 +2068,13 @@ mod test {
     fn raw_with_double_linebreak() {
         let input = "`Erm...\n\nmeow?`";
 
-        let expected = ErrorKind::UnterminatedRawTextRun;
+        let expected = ErrorKind::UnexpectedToken {
+            expected: RawDelimiter::NAME,
+            actual: TokenDescription {
+                name: BlockBreak::NAME,
+                lexeme: "\n\n".into(),
+            },
+        };
 
         let result = parse_content_str(input);
         assert_parse_fails(result, expected);
@@ -2077,7 +2084,13 @@ mod test {
     fn raw_with_double_linebreak_containing_whitespace() {
         let input = "`Erm...\n \nmeow?`";
 
-        let expected = ErrorKind::UnterminatedRawTextRun;
+        let expected = ErrorKind::UnexpectedToken {
+            expected: RawDelimiter::NAME,
+            actual: TokenDescription {
+                name: BlockBreak::NAME,
+                lexeme: "\n \n".into(),
+            },
+        };
 
         let result = parse_content_str(input);
         assert_parse_fails(result, expected);
