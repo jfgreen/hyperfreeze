@@ -1,11 +1,9 @@
 use std::backtrace::{Backtrace, BacktraceStatus};
 use std::fmt::{self, Display};
 
-// TODO: Can we fix this import mess with namespaces instead?
-// (same in render module)
-
 use crate::document::{self as doc, Document};
 
+// TODO: Can we solve this lint with a prelude?
 #[allow(clippy::wildcard_imports)]
 use crate::tokenise::*;
 
@@ -374,7 +372,6 @@ fn parse_header_text(tokeniser: &mut Tokeniser) -> ParseResult<String> {
 
     let next = tokeniser.peek();
 
-    //TODO: Test coverage for this logic
     if !matches!(next.value, Token::TitleTextSpace | Token::TitleText(_)) {
         return parse_err!(
             ErrorKind::UnexpectedHeaderTextStart {
@@ -2490,6 +2487,22 @@ mod test {
         };
 
         let result = parse_document_str(input);
+        assert_parse_fails(result, expected);
+    }
+
+    #[test]
+    fn empty_doc_title() {
+        let input = "/";
+
+        let result = parse_document_str(input);
+
+        let expected = ErrorKind::UnexpectedHeaderTextStart {
+            actual: TokenDescription {
+                name: EndOfInput::NAME,
+                lexeme: "".into(),
+            },
+        };
+
         assert_parse_fails(result, expected);
     }
 
