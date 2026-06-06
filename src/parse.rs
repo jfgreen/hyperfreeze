@@ -240,14 +240,16 @@ fn parse_metadata(tokeniser: &mut Tokeniser) -> ParseResult<doc::Metadata> {
 
     tokeniser.push_mode(ScanMode::StructuredData);
 
-    while let Some(identifier_token) = tokeniser.peek().try_consume_spanned() {
+    while let Some(identifier_token) = tokeniser.peek().try_consume() {
         let DataIdentifier(key) = identifier_token.value;
         tokeniser.advance();
         tokeniser.advance().require::<DataKeyValueSeperator>()?;
 
         match key {
             "id" => {
-                let DataValue(id) = tokeniser.advance().require()?;
+                let id_token = tokeniser.advance().require()?;
+                let DataValue(id) = id_token.value;
+
                 metadata.id = Some(id.to_string());
             }
             "tags" => {
@@ -284,11 +286,14 @@ fn parse_references(tokeniser: &mut Tokeniser) -> ParseResult<Box<[doc::Referenc
 
     let mut references = Vec::new();
 
-    while let Some(DataIdentifier(id)) = tokeniser.peek().try_consume() {
+    while let Some(id_token) = tokeniser.peek().try_consume() {
+        let DataIdentifier(id) = id_token.value;
+
         tokeniser.advance();
         tokeniser.advance().require::<DataKeyValueSeperator>()?;
 
-        let DataValue(link) = tokeniser.advance().require()?;
+        let link_token = tokeniser.advance().require()?;
+        let DataValue(link) = link_token.value;
 
         if tokeniser.peek().is::<LineBreak>() {
             tokeniser.advance();
@@ -346,13 +351,16 @@ fn parse_header_text(tokeniser: &mut Tokeniser) -> ParseResult<String> {
 fn parse_metadata_list(tokeniser: &mut Tokeniser) -> ParseResult<Box<[String]>> {
     let mut tags = Vec::new();
 
-    let DataValue(first_tag) = tokeniser.advance().require()?;
-    tags.push(first_tag.to_string());
+    let first_item_token = tokeniser.advance().require()?;
+    let DataValue(first_item) = first_item_token.value;
+
+    tags.push(first_item.to_string());
 
     while tokeniser.peek().is::<DataListSeperator>() {
         tokeniser.advance();
-        let DataValue(tag) = tokeniser.advance().require()?;
-        tags.push(tag.to_string());
+        let item_token = tokeniser.advance().require()?;
+        let DataValue(item) = item_token.value;
+        tags.push(item.to_string());
     }
 
     let tags = tags.into_boxed_slice();
@@ -574,7 +582,7 @@ fn parse_list_level(
 ) -> ParseResult<Box<[doc::ListItem]>> {
     let mut items = Vec::new();
 
-    while let Some(bullet_token) = tokeniser.peek().try_consume_spanned() {
+    while let Some(bullet_token) = tokeniser.peek().try_consume() {
         let ListBullet(indent) = bullet_token.value;
         let space_count = indent.space_count;
 
@@ -625,7 +633,7 @@ fn parse_list(tokeniser: &mut Tokeniser) -> ParseResult<doc::Block> {
         if tokeniser.peek().is::<BlockParametersStart>() {
             tokeniser.advance();
 
-            if let Some(name_token) = tokeniser.peek().try_consume_spanned() {
+            if let Some(name_token) = tokeniser.peek().try_consume() {
                 let BlockParameterName(name) = name_token.value;
                 tokeniser.advance();
 
@@ -634,7 +642,7 @@ fn parse_list(tokeniser: &mut Tokeniser) -> ParseResult<doc::Block> {
                     .require::<BlockParameterNameValueSeperator>()?;
 
                 tokeniser.push_mode(ScanMode::HeaderValue);
-                let param_value_token = tokeniser.advance().require_spanned()?;
+                let param_value_token = tokeniser.advance().require()?;
                 let BlockParameterValue(value) = param_value_token.value;
 
                 tokeniser.pop_mode();
@@ -727,7 +735,8 @@ fn parse_raw_text_run(tokeniser: &mut Tokeniser) -> ParseResult<doc::TextRun> {
 
     loop {
         let next = tokeniser.peek();
-        if let Some(RawFragment(fragment)) = next.try_consume() {
+        if let Some(fragment_token) = next.try_consume() {
+            let RawFragment(fragment) = fragment_token.value;
             run.push_str(fragment);
             tokeniser.advance();
         } else if next.is::<LineBreak>() {
@@ -751,9 +760,7 @@ fn parse_raw_text_run(tokeniser: &mut Tokeniser) -> ParseResult<doc::TextRun> {
 }
 
 fn parse_linked_text_run(tokeniser: &mut Tokeniser) -> ParseResult<doc::TextRun> {
-    let next = tokeniser
-        .advance()
-        .require_spanned::<LinkOpeningDelimiter>()?;
+    let next = tokeniser.advance().require::<LinkOpeningDelimiter>()?;
 
     let run = parse_markup_text(tokeniser)?;
 
@@ -767,7 +774,8 @@ fn parse_linked_text_run(tokeniser: &mut Tokeniser) -> ParseResult<doc::TextRun>
 
     tokeniser.advance().require::<LinkToReferenceJoiner>()?;
 
-    let DataIdentifier(identifier) = tokeniser.advance().require()?;
+    let identifier_token = tokeniser.advance().require()?;
+    let DataIdentifier(identifier) = identifier_token.value;
 
     tokeniser.pop_mode();
 
@@ -859,7 +867,8 @@ fn parse_markup_text(tokeniser: &mut Tokeniser) -> ParseResult<String> {
 
     loop {
         let next = tokeniser.peek();
-        if let Some(MarkupText(text)) = next.try_consume() {
+        if let Some(text_token) = next.try_consume() {
+            let MarkupText(text) = text_token.value;
             run.push_str(text);
             tokeniser.advance();
         } else if next.is::<MarkupTextSpace>() {
@@ -888,7 +897,8 @@ fn parse_code(tokeniser: &mut Tokeniser) -> ParseResult<doc::Block> {
 
     tokeniser.push_mode(ScanMode::Code);
 
-    let Code(code) = tokeniser.advance().require()?;
+    let code_token = tokeniser.advance().require()?;
+    let Code(code) = code_token.value;
 
     tokeniser.advance().require::<CodeDelimiter>()?;
 

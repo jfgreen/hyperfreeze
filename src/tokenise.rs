@@ -218,24 +218,17 @@ pub struct SpannedToken<'a> {
 }
 
 impl<'a> SpannedToken<'a> {
-    pub fn require_spanned<T>(&self) -> Result<Spanned<'a, T>, UnexpectedTokenError>
+    pub fn require<T>(&self) -> Result<Spanned<'a, T>, UnexpectedTokenError>
     where
         T: TokenSpec<'a>,
     {
-        self.try_consume_spanned().ok_or(UnexpectedTokenError {
+        self.try_consume().ok_or(UnexpectedTokenError {
             expected: T::NAME,
             actual: self.description(),
         })
     }
 
-    pub fn require<T>(&self) -> Result<T, UnexpectedTokenError>
-    where
-        T: TokenSpec<'a>,
-    {
-        self.require_spanned().map(|t| t.value)
-    }
-
-    pub fn try_consume_spanned<T>(&self) -> Option<Spanned<'a, T>>
+    pub fn try_consume<T>(&self) -> Option<Spanned<'a, T>>
     where
         T: TokenSpec<'a>,
     {
@@ -244,13 +237,6 @@ impl<'a> SpannedToken<'a> {
             position: self.position,
             lexeme: self.lexeme,
         })
-    }
-
-    pub fn try_consume<T>(&self) -> Option<T>
-    where
-        T: TokenSpec<'a>,
-    {
-        T::try_from(self.value).ok()
     }
 
     pub fn is<T>(&self) -> bool
