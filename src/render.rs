@@ -114,27 +114,27 @@ fn render_text(text_runs: &[doc::TextRun], out: &mut impl io::Write) -> io::Resu
 }
 
 fn render_text_run(run: &doc::TextRun, out: &mut impl io::Write) -> io::Result<()> {
-    use doc::Style;
+    use doc::TextStyle;
 
     match &run.style {
-        Style::None => (),
-        Style::Strong => write!(out, "<strong>")?,
-        Style::Emphasis => write!(out, "<em>")?,
-        Style::Strikethrough => write!(out, "<s>")?,
-        Style::Raw => write!(out, "<code>")?,
+        TextStyle::None => (),
+        TextStyle::Strong => write!(out, "<strong>")?,
+        TextStyle::Emphasis => write!(out, "<em>")?,
+        TextStyle::Strikethrough => write!(out, "<s>")?,
+        TextStyle::Raw => write!(out, "<code>")?,
         //FIXME: This is wrong, we need to resolve the link
-        Style::Link(link) => write!(out, "<a href={link}>")?,
+        TextStyle::Link(link) => write!(out, "<a href={link}>")?,
     }
 
     out.write_all(run.text.as_bytes())?;
 
     match &run.style {
-        Style::None => (),
-        Style::Strong => write!(out, "</strong>")?,
-        Style::Emphasis => write!(out, "</em>")?,
-        Style::Strikethrough => write!(out, "</s>")?,
-        Style::Raw => write!(out, "</code>")?,
-        Style::Link(_) => write!(out, "</a>")?,
+        TextStyle::None => (),
+        TextStyle::Strong => write!(out, "</strong>")?,
+        TextStyle::Emphasis => write!(out, "</em>")?,
+        TextStyle::Strikethrough => write!(out, "</s>")?,
+        TextStyle::Raw => write!(out, "</code>")?,
+        TextStyle::Link(_) => write!(out, "</a>")?,
     }
 
     Ok(())

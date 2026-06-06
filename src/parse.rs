@@ -715,7 +715,7 @@ fn parse_plain_text_run(tokeniser: &mut Tokeniser) -> ParseResult<doc::TextRun> 
 
     let run = doc::TextRun {
         text: run,
-        style: doc::Style::None,
+        style: doc::TextStyle::None,
     };
 
     Ok(run)
@@ -753,7 +753,7 @@ fn parse_raw_text_run(tokeniser: &mut Tokeniser) -> ParseResult<doc::TextRun> {
 
     let run = doc::TextRun {
         text: run,
-        style: doc::Style::Raw,
+        style: doc::TextStyle::Raw,
     };
 
     Ok(run)
@@ -781,7 +781,7 @@ fn parse_linked_text_run(tokeniser: &mut Tokeniser) -> ParseResult<doc::TextRun>
 
     Ok(doc::TextRun {
         text: run,
-        style: doc::Style::Link(identifier.into()),
+        style: doc::TextStyle::Link(identifier.into()),
     })
 }
 
@@ -800,7 +800,7 @@ fn parse_strong_text_run(tokeniser: &mut Tokeniser) -> ParseResult<doc::TextRun>
 
     let run = doc::TextRun {
         text: run,
-        style: doc::Style::Strong,
+        style: doc::TextStyle::Strong,
     };
 
     Ok(run)
@@ -821,7 +821,7 @@ fn parse_emphasised_text_run(tokeniser: &mut Tokeniser) -> ParseResult<doc::Text
 
     let run = doc::TextRun {
         text: run,
-        style: doc::Style::Emphasis,
+        style: doc::TextStyle::Emphasis,
     };
 
     Ok(run)
@@ -842,7 +842,7 @@ fn parse_strikethrough_text_run(tokeniser: &mut Tokeniser) -> ParseResult<doc::T
 
     let run = doc::TextRun {
         text: run,
-        style: doc::Style::Strikethrough,
+        style: doc::TextStyle::Strikethrough,
     };
 
     Ok(run)
@@ -1215,42 +1215,42 @@ mod test {
     fn text(text: &str) -> doc::TextRun {
         doc::TextRun {
             text: text.to_string(),
-            style: doc::Style::None,
+            style: doc::TextStyle::None,
         }
     }
 
     fn emphasised_text(text: &str) -> doc::TextRun {
         doc::TextRun {
             text: text.to_string(),
-            style: doc::Style::Emphasis,
+            style: doc::TextStyle::Emphasis,
         }
     }
 
     fn strong_text(text: &str) -> doc::TextRun {
         doc::TextRun {
             text: text.to_string(),
-            style: doc::Style::Strong,
+            style: doc::TextStyle::Strong,
         }
     }
 
     fn strikethrough_text(text: &str) -> doc::TextRun {
         doc::TextRun {
             text: text.to_string(),
-            style: doc::Style::Strikethrough,
+            style: doc::TextStyle::Strikethrough,
         }
     }
 
     fn raw_text(text: &str) -> doc::TextRun {
         doc::TextRun {
             text: text.to_string(),
-            style: doc::Style::Raw,
+            style: doc::TextStyle::Raw,
         }
     }
 
     fn linked_text(text: &str, reference: &str) -> doc::TextRun {
         doc::TextRun {
             text: text.to_string(),
-            style: doc::Style::Link(reference.to_string()),
+            style: doc::TextStyle::Link(reference.to_string()),
         }
     }
 

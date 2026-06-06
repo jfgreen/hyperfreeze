@@ -89,15 +89,16 @@ pub enum ListStyle {
 #[derive(PartialEq, Eq, Debug)]
 pub struct TextRun {
     pub text: String,
-    pub style: Style,
+    pub style: TextStyle,
 }
 
 #[derive(PartialEq, Eq, Debug)]
-pub enum Style {
+pub enum TextStyle {
     None,
     Strong,
     Emphasis,
     Strikethrough,
     Raw,
+    //TODO: Newtype for reference id?
     Link(String),
 }
