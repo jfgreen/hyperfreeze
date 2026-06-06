@@ -23,6 +23,7 @@ enum ErrorKind {
     ExpectedToken(TokenName),
     UnknownMetadata(LexemeString),
     InvalidListStyle(LexemeString),
+    InvalidListParameter(LexemeString),
     UnevenListIndent(Indent),
     UnknownDirective(LexemeString),
     ContainerMissingStart,
@@ -98,6 +99,10 @@ impl ParseError {
 
             ErrorKind::InvalidListStyle(style) => {
                 write!(f, "invalid list style '{style}'")
+            }
+
+            ErrorKind::InvalidListParameter(parameter) => {
+                write!(f, "invalid list style '{parameter}'")
             }
 
             ErrorKind::ContainerMissingStart => {
@@ -620,7 +625,8 @@ fn parse_list(tokeniser: &mut Tokeniser) -> ParseResult<doc::Block> {
         if tokeniser.peek().is::<BlockParametersStart>() {
             tokeniser.advance();
 
-            if let Some(BlockParameterName(name)) = tokeniser.peek().try_consume() {
+            if let Some(name_token) = tokeniser.peek().try_consume_spanned() {
+                let BlockParameterName(name) = name_token.value;
                 tokeniser.advance();
 
                 tokeniser
@@ -648,7 +654,12 @@ fn parse_list(tokeniser: &mut Tokeniser) -> ParseResult<doc::Block> {
                             }
                         }
                     }
-                    _ => todo!(),
+                    _ => {
+                        return parse_err!(
+                            ErrorKind::InvalidListParameter(name_token.lexeme_to_owned()),
+                            name_token
+                        );
+                    }
                 }
             }
 
@@ -2535,6 +2546,19 @@ mod test {
         );
 
         let expected = ErrorKind::InvalidListStyle("cool".into());
+
+        let result = parse_content_str(input);
+        assert_parse_fails(result, expected);
+    }
+
+    #[test]
+    fn list_with_invalid_parameter() {
+        let input = concat!(
+            "#list(up=down)\n",
+            "- Dont you think this list is really rather odd?\n",
+        );
+
+        let expected = ErrorKind::InvalidListParameter("up".into());
 
         let result = parse_content_str(input);
         assert_parse_fails(result, expected);
