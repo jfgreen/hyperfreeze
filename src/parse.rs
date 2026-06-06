@@ -2800,7 +2800,7 @@ mod test {
     }
 
     #[test]
-    fn basic_link_with_reference() {
+    fn link_with_reference() {
         let input = concat!(
             "@references\n",
             "ripley_2020: https://example.com\n",
@@ -2822,6 +2822,35 @@ mod test {
             },
             references: {
                 ("ripley_2020", "https://example.com")
+            }
+        );
+
+        let result = parse_document_str(input);
+        assert_document_eq(result, expected);
+    }
+
+    #[test]
+    fn link_with_following_space() {
+        let input = concat!(
+            "@references\n",
+            "some_ref: https://example.com\n",
+            "\n",
+            "/ Some doc\n",
+            "\n",
+            "See [our guide]@some_ref for more\n",
+        );
+
+        let expected = document!(
+            title: "Some doc",
+            contents: {
+                paragraph {
+                    text("See "),
+                    linked_text("our guide", "some_ref"),
+                    text(" for more")
+                }
+            },
+            references: {
+                ("some_ref", "https://example.com")
             }
         );
 

@@ -1175,10 +1175,6 @@ fn match_data_identifier<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
         return None;
     }
 
-    while head.current.is_some_and(|c| c == SPACE) {
-        head.read_next_char();
-    }
-
     Some(ScanMatch {
         token: Token::DataIdentifier(text),
         end: head,
@@ -1187,6 +1183,10 @@ fn match_data_identifier<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
 
 fn match_data_key_value_seperator<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
     let mut head = scanner.read_head.clone();
+
+    while head.current.is_some_and(|c| c == SPACE) {
+        head.read_next_char();
+    }
 
     if head.current == Some(COLON) {
         head.read_next_char();
