@@ -2292,7 +2292,6 @@ mod test {
             "/Some Document Title"
         );
 
-        //TODO: double expected is a bit meh
         let expected = ErrorKind::ExpectedToken(TitleDirective::NAME);
 
         let result = parse_document_str(input);
