@@ -7,73 +7,36 @@ use crate::document::{self as doc, Document};
 #[allow(clippy::wildcard_imports)]
 use crate::tokenise::*;
 
-/// Error returned on parse failure
 #[derive(Debug)]
 pub struct ParseError {
     kind: ErrorKind,
-    input_column: u32,
-    input_line: u32,
+    token: TokenDescription,
     backtrace: Backtrace,
 }
 
-/// Describes the reason why an attempt to parse failed
 #[derive(PartialEq, Eq, Debug)]
 enum ErrorKind {
-    /// Space between delimiter and delimited content
     LooseDelimiter,
-
-    /// List indent skips one or more levels
     MissingListLevel { from: usize, to: usize },
-
-    /// Metadata not at the start of the document
     MetadataNotAtStart,
-
-    /// References not at the start of the document
     ReferencesOutOfPlace,
-
-    /// Parser expected a specific token but got another
-    UnexpectedToken {
-        expected: TokenName,
-        actual: TokenDescription,
-    },
-
-    /// Invalid metadata name
+    ExpectedToken(TokenName),
     UnknownMetadata(LexemeString),
-
-    /// List style not recognised
     InvalidListStyle(LexemeString),
-
-    /// List indent is an odd number of spaces
     UnevenListIndent(Indent),
-
-    /// Invalid directive name
     UnknownDirective(LexemeString),
-
-    /// Delimited container end has no matching start
     ContainerMissingStart,
-
-    /// Container has no content
     EmptyContainer,
-
-    /// Block starts with an unexpected token
-    UnexpectedBlockStart { actual: TokenDescription },
-
-    /// Text run starts with an unexpected token
-    UnexpectedTextRunStart { actual: TokenDescription },
-
-    /// Raw run starts with an unexpected token
-    UnexpectedRawTextRunStart { actual: TokenDescription },
-
-    /// Header text starts with an unexpected token
-    UnexpectedHeaderTextStart { actual: TokenDescription },
-
-    /// Subsection not nested inside a section
+    UnexpectedBlockStart,
+    UnexpectedTextRunStart,
+    UnexpectedRawTextRunStart,
+    UnexpectedHeaderTextStart,
     SubSectionNotNested,
 }
 
 impl Display for ParseError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        self.write_position(f)?;
+        self.write_token(f)?;
         self.write_message(f)?;
         self.write_backtrace(f)?;
         Ok(())
@@ -81,13 +44,17 @@ impl Display for ParseError {
 }
 
 impl ParseError {
-    fn write_position(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+    fn write_token(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        let position = self.token.position;
         writeln!(
             f,
-            "parsing error on line {} column {}",
-            self.input_line + 1,
-            self.input_column + 1
+            "parsing error on line {} column {} at {} token '{}'",
+            position.row + 1,
+            position.column + 1,
+            self.token.name,
+            self.token.lexeme,
         )?;
+
         Ok(())
     }
 
@@ -113,12 +80,8 @@ impl ParseError {
                 write!(f, "references not at start of document")
             }
 
-            ErrorKind::UnexpectedToken { expected, actual } => {
-                write!(
-                    f,
-                    "unexpected token, expected: {}, got: {} '{}'",
-                    expected, actual.name, actual.lexeme,
-                )
+            ErrorKind::ExpectedToken(expected) => {
+                write!(f, "unexpected token, expected: {expected}")
             }
 
             ErrorKind::UnevenListIndent(indent) => {
@@ -142,39 +105,23 @@ impl ParseError {
             }
 
             ErrorKind::EmptyContainer => {
-                write!(f, "empty container,")
+                write!(f, "empty container")
             }
 
-            ErrorKind::UnexpectedBlockStart { actual } => {
-                write!(
-                    f,
-                    "expected start of block, got: {} '{}'",
-                    actual.name, actual.lexeme,
-                )
+            ErrorKind::UnexpectedBlockStart => {
+                write!(f, "expected start of block")
             }
 
-            ErrorKind::UnexpectedTextRunStart { actual } => {
-                write!(
-                    f,
-                    "expected start of text run, got: {} '{}'",
-                    actual.name, actual.lexeme,
-                )
+            ErrorKind::UnexpectedTextRunStart => {
+                write!(f, "expected start of text")
             }
 
-            ErrorKind::UnexpectedRawTextRunStart { actual } => {
-                write!(
-                    f,
-                    "expected start of raw text run, got: {} '{}'",
-                    actual.name, actual.lexeme,
-                )
+            ErrorKind::UnexpectedRawTextRunStart => {
+                write!(f, "expected start of raw")
             }
 
-            ErrorKind::UnexpectedHeaderTextStart { actual } => {
-                write!(
-                    f,
-                    "expected start of header text, got: {} '{}'",
-                    actual.name, actual.lexeme,
-                )
+            ErrorKind::UnexpectedHeaderTextStart => {
+                write!(f, "expected start of header")
             }
 
             ErrorKind::SubSectionNotNested => {
@@ -196,24 +143,19 @@ impl ParseError {
 impl From<UnexpectedTokenError> for ParseError {
     fn from(err: UnexpectedTokenError) -> Self {
         ParseError {
-            kind: ErrorKind::UnexpectedToken {
-                expected: err.expected,
-                actual: err.actual,
-            },
-            input_column: err.position.column,
-            input_line: err.position.row,
+            kind: ErrorKind::ExpectedToken(err.expected),
+            token: err.actual,
             backtrace: Backtrace::capture(),
         }
     }
 }
 
 macro_rules! parse_err {
-    ($error:expr, $position:expr) => {{
+    ($error:expr, $token:expr) => {{
         Err(ParseError {
             kind: $error,
-            input_column: $position.column,
-            input_line: $position.row,
             backtrace: Backtrace::capture(),
+            token: $token.description(),
         })
     }};
 }
@@ -310,7 +252,7 @@ fn parse_metadata(tokeniser: &mut Tokeniser) -> ParseResult<doc::Metadata> {
             _ => {
                 return parse_err!(
                     ErrorKind::UnknownMetadata(identifier_token.lexeme_to_owned()),
-                    identifier_token.position
+                    identifier_token
                 );
             }
         }
@@ -373,12 +315,7 @@ fn parse_header_text(tokeniser: &mut Tokeniser) -> ParseResult<String> {
     let next = tokeniser.peek();
 
     if !matches!(next.value, Token::TitleTextSpace | Token::TitleText(_)) {
-        return parse_err!(
-            ErrorKind::UnexpectedHeaderTextStart {
-                actual: next.description()
-            },
-            next.position
-        );
+        return parse_err!(ErrorKind::UnexpectedHeaderTextStart, next);
     }
 
     loop {
@@ -429,7 +366,7 @@ fn parse_element(tokeniser: &mut Tokeniser) -> ParseResult<doc::Element> {
             Ok(doc::Element::Container(container))
         }
         Token::SubSectionDirective => {
-            parse_err!(ErrorKind::SubSectionNotNested, next.position)
+            parse_err!(ErrorKind::SubSectionNotNested, next)
         }
         _ => {
             let block = parse_block(tokeniser)?;
@@ -443,14 +380,14 @@ fn parse_container(tokeniser: &mut Tokeniser) -> ParseResult<doc::Container> {
 
     let next = tokeniser.peek();
     if next.is::<BlockBreak>() {
-        return parse_err!(ErrorKind::EmptyContainer, next.position);
+        return parse_err!(ErrorKind::EmptyContainer, next);
     }
 
     tokeniser.advance().require::<LineBreak>()?;
 
     let next = tokeniser.peek();
     if next.is::<EndOfInput>() {
-        return parse_err!(ErrorKind::EmptyContainer, next.position);
+        return parse_err!(ErrorKind::EmptyContainer, next);
     }
 
     let container_kind = doc::ContainerKind::Info;
@@ -464,7 +401,7 @@ fn parse_container(tokeniser: &mut Tokeniser) -> ParseResult<doc::Container> {
 
         let next = tokeniser.peek();
         if next.is::<DelimitedContainerEnd>() {
-            return parse_err!(ErrorKind::EmptyContainer, next.position);
+            return parse_err!(ErrorKind::EmptyContainer, next);
         }
 
         while !tokeniser.peek().is::<DelimitedContainerEnd>() {
@@ -581,26 +518,21 @@ fn parse_block(tokeniser: &mut Tokeniser) -> ParseResult<doc::Block> {
         Token::ParagraphDirective => parse_paragraph(tokeniser)?,
         Token::CodeDirective => parse_code(tokeniser)?,
         Token::MetadataDirective => {
-            return parse_err!(ErrorKind::MetadataNotAtStart, next.position);
+            return parse_err!(ErrorKind::MetadataNotAtStart, next);
         }
         Token::ReferencesDirective => {
-            return parse_err!(ErrorKind::ReferencesOutOfPlace, next.position);
+            return parse_err!(ErrorKind::ReferencesOutOfPlace, next);
         }
         Token::UnknownDirective(_) => {
             let err = ErrorKind::UnknownDirective(next.lexeme_to_owned());
-            return parse_err!(err, next.position);
+            return parse_err!(err, next);
         }
         Token::DelimitedContainerEnd => {
-            return parse_err!(ErrorKind::ContainerMissingStart, next.position);
+            return parse_err!(ErrorKind::ContainerMissingStart, next);
         }
         t if is_markup(t) => parse_paragraph(tokeniser)?,
         _ => {
-            return parse_err!(
-                ErrorKind::UnexpectedBlockStart {
-                    actual: next.description()
-                },
-                next.position
-            );
+            return parse_err!(ErrorKind::UnexpectedBlockStart, next);
         }
     };
 
@@ -642,7 +574,7 @@ fn parse_list_level(
         let space_count = indent.space_count;
 
         if space_count % 2 != 0 {
-            return parse_err!(ErrorKind::UnevenListIndent(indent), bullet_token.position);
+            return parse_err!(ErrorKind::UnevenListIndent(indent), bullet_token);
         }
 
         let depth = space_count / 2;
@@ -665,7 +597,7 @@ fn parse_list_level(
                     from: current_depth,
                     to: depth
                 },
-                bullet_token.position
+                bullet_token
             );
         };
 
@@ -711,7 +643,7 @@ fn parse_list(tokeniser: &mut Tokeniser) -> ParseResult<doc::Block> {
                                     ErrorKind::InvalidListStyle(
                                         param_value_token.lexeme_to_owned()
                                     ),
-                                    param_value_token.position
+                                    param_value_token
                                 );
                             }
                         }
@@ -777,12 +709,7 @@ fn parse_raw_text_run(tokeniser: &mut Tokeniser) -> ParseResult<doc::TextRun> {
     let next = tokeniser.peek();
 
     if !matches!(next.value, Token::RawFragment(_) | Token::LineBreak) {
-        return parse_err!(
-            ErrorKind::UnexpectedRawTextRunStart {
-                actual: next.description()
-            },
-            next.position
-        );
+        return parse_err!(ErrorKind::UnexpectedRawTextRunStart, next);
     }
 
     let mut run = String::new();
@@ -813,16 +740,14 @@ fn parse_raw_text_run(tokeniser: &mut Tokeniser) -> ParseResult<doc::TextRun> {
 }
 
 fn parse_linked_text_run(tokeniser: &mut Tokeniser) -> ParseResult<doc::TextRun> {
-    let token = tokeniser
+    let next = tokeniser
         .advance()
         .require_spanned::<LinkOpeningDelimiter>()?;
-
-    let start_of_run = token.position;
 
     let run = parse_markup_text(tokeniser)?;
 
     if run.starts_with(SPACE) || run.ends_with(SPACE) {
-        return parse_err!(ErrorKind::LooseDelimiter, start_of_run);
+        return parse_err!(ErrorKind::LooseDelimiter, next);
     }
 
     tokeniser.advance().require::<LinkClosingDelimiter>()?;
@@ -842,8 +767,7 @@ fn parse_linked_text_run(tokeniser: &mut Tokeniser) -> ParseResult<doc::TextRun>
 }
 
 fn parse_strong_text_run(tokeniser: &mut Tokeniser) -> ParseResult<doc::TextRun> {
-    let next = tokeniser.peek();
-    let run_start = next.position;
+    let run_start = tokeniser.peek();
 
     tokeniser.advance().require::<StrongDelimiter>()?;
 
@@ -864,8 +788,7 @@ fn parse_strong_text_run(tokeniser: &mut Tokeniser) -> ParseResult<doc::TextRun>
 }
 
 fn parse_emphasised_text_run(tokeniser: &mut Tokeniser) -> ParseResult<doc::TextRun> {
-    let next = tokeniser.peek();
-    let run_start = next.position;
+    let run_start = tokeniser.peek();
 
     tokeniser.advance().require::<EmphasisDelimiter>()?;
 
@@ -886,8 +809,7 @@ fn parse_emphasised_text_run(tokeniser: &mut Tokeniser) -> ParseResult<doc::Text
 }
 
 fn parse_strikethrough_text_run(tokeniser: &mut Tokeniser) -> ParseResult<doc::TextRun> {
-    let next = tokeniser.peek();
-    let run_start = next.position;
+    let run_start = tokeniser.peek();
 
     tokeniser.advance().require::<StrikethroughDelimiter>()?;
 
@@ -921,12 +843,7 @@ fn parse_markup_text(tokeniser: &mut Tokeniser) -> ParseResult<String> {
     let next = tokeniser.peek();
 
     if !matches!(next.value, Token::MarkupTextSpace | Token::MarkupText(_)) {
-        return parse_err!(
-            ErrorKind::UnexpectedTextRunStart {
-                actual: next.description()
-            },
-            next.position
-        );
+        return parse_err!(ErrorKind::UnexpectedTextRunStart, next);
     }
 
     loop {
@@ -1471,13 +1388,7 @@ mod test {
     fn explicit_paragraph_with_block_break_before_text_is_rejected() {
         let input = "#paragraph\n\nCats go meeow!";
 
-        let expected = ErrorKind::UnexpectedToken {
-            expected: LineBreak::NAME,
-            actual: TokenDescription {
-                name: BlockBreak::NAME,
-                lexeme: "\n\n".into(),
-            },
-        };
+        let expected = ErrorKind::ExpectedToken(LineBreak::NAME);
 
         let result = parse_content_str(input);
         assert_parse_fails(result, expected);
@@ -1527,13 +1438,7 @@ mod test {
     fn block_without_new_line_is_rejected() {
         let input = "#paragraph";
 
-        let expected = ErrorKind::UnexpectedToken {
-            expected: LineBreak::NAME,
-            actual: TokenDescription {
-                name: EndOfInput::NAME,
-                lexeme: "".into(),
-            },
-        };
+        let expected = ErrorKind::ExpectedToken(LineBreak::NAME);
 
         let result = parse_content_str(input);
         assert_parse_fails(result, expected);
@@ -1673,13 +1578,7 @@ mod test {
             "ever so surprising\n"
         );
 
-        let expected = ErrorKind::UnexpectedToken {
-            expected: BlockBreak::NAME,
-            actual: TokenDescription {
-                name: ParagraphDirective::NAME,
-                lexeme: "#paragraph".into(),
-            },
-        };
+        let expected = ErrorKind::ExpectedToken(BlockBreak::NAME);
 
         let result = parse_content_str(input);
         assert_parse_fails(result, expected);
@@ -2035,12 +1934,7 @@ mod test {
     fn empty_emphasis() {
         let input = "Rules cats must follow: __.";
 
-        let expected = ErrorKind::UnexpectedTextRunStart {
-            actual: TokenDescription {
-                name: EmphasisDelimiter::NAME,
-                lexeme: "_".into(),
-            },
-        };
+        let expected = ErrorKind::UnexpectedTextRunStart;
 
         let result = parse_content_str(input);
         assert_parse_fails(result, expected);
@@ -2050,12 +1944,7 @@ mod test {
     fn empty_raw() {
         let input = "Robot cat says: ``!.";
 
-        let expected = ErrorKind::UnexpectedRawTextRunStart {
-            actual: TokenDescription {
-                name: RawDelimiter::NAME,
-                lexeme: "`".into(),
-            },
-        };
+        let expected = ErrorKind::UnexpectedRawTextRunStart;
 
         let result = parse_content_str(input);
         assert_parse_fails(result, expected);
@@ -2065,13 +1954,7 @@ mod test {
     fn raw_with_double_linebreak() {
         let input = "`Erm...\n\nmeow?`";
 
-        let expected = ErrorKind::UnexpectedToken {
-            expected: RawDelimiter::NAME,
-            actual: TokenDescription {
-                name: BlockBreak::NAME,
-                lexeme: "\n\n".into(),
-            },
-        };
+        let expected = ErrorKind::ExpectedToken(RawDelimiter::NAME);
 
         let result = parse_content_str(input);
         assert_parse_fails(result, expected);
@@ -2081,13 +1964,7 @@ mod test {
     fn raw_with_double_linebreak_containing_whitespace() {
         let input = "`Erm...\n \nmeow?`";
 
-        let expected = ErrorKind::UnexpectedToken {
-            expected: RawDelimiter::NAME,
-            actual: TokenDescription {
-                name: BlockBreak::NAME,
-                lexeme: "\n \n".into(),
-            },
-        };
+        let expected = ErrorKind::ExpectedToken(RawDelimiter::NAME);
 
         let result = parse_content_str(input);
         assert_parse_fails(result, expected);
@@ -2097,13 +1974,7 @@ mod test {
     fn strikethrough_with_double_linebreak() {
         let input = "~Erm...\n\nmeow?~";
 
-        let expected = ErrorKind::UnexpectedToken {
-            expected: StrikethroughDelimiter::NAME,
-            actual: TokenDescription {
-                name: BlockBreak::NAME,
-                lexeme: "\n\n".into(),
-            },
-        };
+        let expected = ErrorKind::ExpectedToken(StrikethroughDelimiter::NAME);
 
         let result = parse_content_str(input);
         assert_parse_fails(result, expected);
@@ -2113,13 +1984,7 @@ mod test {
     fn unmatched_emphasis_1() {
         let input = "_.";
 
-        let expected = ErrorKind::UnexpectedToken {
-            expected: EmphasisDelimiter::NAME,
-            actual: TokenDescription {
-                name: EndOfInput::NAME,
-                lexeme: "".into(),
-            },
-        };
+        let expected = ErrorKind::ExpectedToken(EmphasisDelimiter::NAME);
 
         let result = parse_content_str(input);
         assert_parse_fails(result, expected);
@@ -2129,13 +1994,7 @@ mod test {
     fn unmatched_emphasis_2() {
         let input = "meow _meow.";
 
-        let expected = ErrorKind::UnexpectedToken {
-            expected: EmphasisDelimiter::NAME,
-            actual: TokenDescription {
-                name: EndOfInput::NAME,
-                lexeme: "".into(),
-            },
-        };
+        let expected = ErrorKind::ExpectedToken(EmphasisDelimiter::NAME);
 
         let result = parse_content_str(input);
         assert_parse_fails(result, expected);
@@ -2145,12 +2004,7 @@ mod test {
     fn unmatched_emphasis_3() {
         let input = "meow meow_";
 
-        let expected = ErrorKind::UnexpectedTextRunStart {
-            actual: TokenDescription {
-                name: EndOfInput::NAME,
-                lexeme: "".into(),
-            },
-        };
+        let expected = ErrorKind::UnexpectedTextRunStart;
 
         let result = parse_content_str(input);
         assert_parse_fails(result, expected);
@@ -2160,12 +2014,7 @@ mod test {
     fn nested_styled_text() {
         let input = "_*meow!*_";
 
-        let expected = ErrorKind::UnexpectedTextRunStart {
-            actual: TokenDescription {
-                name: StrongDelimiter::NAME,
-                lexeme: "*".into(),
-            },
-        };
+        let expected = ErrorKind::UnexpectedTextRunStart;
 
         let result = parse_content_str(input);
         assert_parse_fails(result, expected);
@@ -2195,12 +2044,7 @@ mod test {
     fn raw_immediately_in_emphasis() {
         let input = "_``_";
 
-        let expected = ErrorKind::UnexpectedTextRunStart {
-            actual: TokenDescription {
-                name: RawDelimiter::NAME,
-                lexeme: "`".into(),
-            },
-        };
+        let expected = ErrorKind::UnexpectedTextRunStart;
 
         let result = parse_content_str(input);
         assert_parse_fails(result, expected);
@@ -2210,13 +2054,7 @@ mod test {
     fn raw_within_in_emphasis() {
         let input = "_a``a_";
 
-        let expected = ErrorKind::UnexpectedToken {
-            expected: EmphasisDelimiter::NAME,
-            actual: TokenDescription {
-                name: RawDelimiter::NAME,
-                lexeme: "`".into(),
-            },
-        };
+        let expected = ErrorKind::ExpectedToken(EmphasisDelimiter::NAME);
 
         let result = parse_content_str(input);
         assert_parse_fails(result, expected);
@@ -2434,13 +2272,7 @@ mod test {
         );
 
         //TODO: double expected is a bit meh
-        let expected = ErrorKind::UnexpectedToken {
-            expected: TitleDirective::NAME,
-            actual: TokenDescription {
-                name: MarkupText::NAME,
-                lexeme: "Document".into(),
-            },
-        };
+        let expected = ErrorKind::ExpectedToken(TitleDirective::NAME);
 
         let result = parse_document_str(input);
         assert_parse_fails(result, expected);
@@ -2456,12 +2288,7 @@ mod test {
             "/ Other Document Title"
         );
 
-        let expected = ErrorKind::UnexpectedBlockStart {
-            actual: TokenDescription {
-                name: TitleDirective::NAME,
-                lexeme: "/ ".into(),
-            },
-        };
+        let expected = ErrorKind::UnexpectedBlockStart;
 
         let result = parse_document_str(input);
         assert_parse_fails(result, expected);
@@ -2479,12 +2306,7 @@ mod test {
             "/Some Document Title"
         );
 
-        let expected = ErrorKind::UnexpectedBlockStart {
-            actual: TokenDescription {
-                name: TitleDirective::NAME,
-                lexeme: "/".into(),
-            },
-        };
+        let expected = ErrorKind::UnexpectedBlockStart;
 
         let result = parse_document_str(input);
         assert_parse_fails(result, expected);
@@ -2496,12 +2318,7 @@ mod test {
 
         let result = parse_document_str(input);
 
-        let expected = ErrorKind::UnexpectedHeaderTextStart {
-            actual: TokenDescription {
-                name: EndOfInput::NAME,
-                lexeme: "".into(),
-            },
-        };
+        let expected = ErrorKind::UnexpectedHeaderTextStart;
 
         assert_parse_fails(result, expected);
     }
@@ -2599,13 +2416,7 @@ mod test {
             "<<<"
         );
 
-        let expected = ErrorKind::UnexpectedToken {
-            expected: LineBreak::NAME,
-            actual: TokenDescription {
-                name: MarkupText::NAME,
-                lexeme: "squeek".into(),
-            },
-        };
+        let expected = ErrorKind::ExpectedToken(LineBreak::NAME);
 
         let result = parse_content_str(input);
         assert_parse_fails(result, expected);
@@ -2620,13 +2431,7 @@ mod test {
             "<<<toy"
         );
 
-        let expected = ErrorKind::UnexpectedToken {
-            expected: BlockBreak::NAME,
-            actual: TokenDescription {
-                name: MarkupText::NAME,
-                lexeme: "toy".into(),
-            },
-        };
+        let expected = ErrorKind::ExpectedToken(BlockBreak::NAME);
 
         let result = parse_content_str(input);
         assert_parse_fails(result, expected);
@@ -2642,13 +2447,7 @@ mod test {
             "toy"
         );
 
-        let expected = ErrorKind::UnexpectedToken {
-            expected: BlockBreak::NAME,
-            actual: TokenDescription {
-                name: LineBreak::NAME,
-                lexeme: "\n".into(),
-            },
-        };
+        let expected = ErrorKind::ExpectedToken(BlockBreak::NAME);
 
         let result = parse_content_str(input);
         assert_parse_fails(result, expected);
@@ -2895,13 +2694,7 @@ mod test {
     fn list_with_emphasis_over_multiple_points() {
         let input = "- f_oo\n  -ba_r";
 
-        let expected = ErrorKind::UnexpectedToken {
-            expected: EmphasisDelimiter::NAME,
-            actual: TokenDescription {
-                name: LineBreak::NAME,
-                lexeme: "\n".into(),
-            },
-        };
+        let expected = ErrorKind::ExpectedToken(EmphasisDelimiter::NAME);
 
         let result = parse_content_str(input);
         assert_parse_fails(result, expected);
@@ -2966,7 +2759,42 @@ mod test {
         let expected = (6, 3);
 
         let error = parse_document_str(input).unwrap_err();
-        let actual = (error.input_column, error.input_line);
+        let position = error.token.position;
+        let actual = (position.column, position.row);
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn error_includes_token_name() {
+        let input = concat!(
+            "/ Document with an silly cat error\n",
+            "\n",
+            "Silly cat\n",
+            "goes *_*"
+        );
+
+        let expected = EmphasisDelimiter::NAME;
+
+        let error = parse_document_str(input).unwrap_err();
+        let actual = error.token.name;
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn error_includes_token_lexeme() {
+        let input = concat!(
+            "/ Document with an silly cat error\n",
+            "\n",
+            "Silly cat\n",
+            "goes *_*"
+        );
+
+        let expected = "_".into();
+
+        let error = parse_document_str(input).unwrap_err();
+        let actual = error.token.lexeme;
 
         assert_eq!(actual, expected);
     }

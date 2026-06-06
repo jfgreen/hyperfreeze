@@ -79,6 +79,7 @@ impl Display for TokenName {
 pub struct TokenDescription {
     pub name: TokenName,
     pub lexeme: LexemeString,
+    pub position: Position,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -180,28 +181,41 @@ type Matcher = for<'a> fn(&Scanner<'a>) -> Option<ScanMatch<'a>>;
 
 #[derive(PartialEq, Eq, Debug)]
 pub struct UnexpectedTokenError {
-    pub position: Position,
     pub expected: TokenName,
     pub actual: TokenDescription,
 }
 
-// TODO: Instead of Spanned being generic,
-// can we solve by composition and a trait impl
-//
-// TODO: store span, not position
-pub struct Spanned<'a, T> {
+pub struct Spanned<'a, T>
+where
+    T: TokenSpec<'a>,
+{
     pub value: T,
     pub position: Position,
     pub lexeme: &'a str,
 }
 
-impl<T> Spanned<'_, T> {
+impl<'a, T> Spanned<'a, T>
+where
+    T: TokenSpec<'a>,
+{
     pub fn lexeme_to_owned(&self) -> LexemeString {
         LexemeString::from(self.lexeme)
     }
+
+    pub fn description(&self) -> TokenDescription {
+        TokenDescription {
+            name: T::NAME,
+            lexeme: self.lexeme_to_owned(),
+            position: self.position,
+        }
+    }
 }
 
-pub type SpannedToken<'a> = Spanned<'a, Token<'a>>;
+pub struct SpannedToken<'a> {
+    pub value: Token<'a>,
+    pub position: Position,
+    pub lexeme: &'a str,
+}
 
 impl<'a> SpannedToken<'a> {
     pub fn require_spanned<T>(&self) -> Result<Spanned<'a, T>, UnexpectedTokenError>
@@ -211,7 +225,6 @@ impl<'a> SpannedToken<'a> {
         self.try_consume_spanned().ok_or(UnexpectedTokenError {
             expected: T::NAME,
             actual: self.description(),
-            position: self.position,
         })
     }
 
@@ -250,8 +263,13 @@ impl<'a> SpannedToken<'a> {
     pub fn description(&self) -> TokenDescription {
         TokenDescription {
             name: self.value.name(),
-            lexeme: self.lexeme_to_owned(),
+            lexeme: LexemeString::from(self.lexeme),
+            position: self.position,
         }
+    }
+
+    pub fn lexeme_to_owned(&self) -> LexemeString {
+        LexemeString::from(self.lexeme)
     }
 }
 
@@ -462,6 +480,7 @@ impl<'a> Tokeniser<'a> {
     }
 }
 
+// TODO: store span, not position
 #[derive(Eq, PartialEq, Clone, Copy, Debug)]
 pub struct Position {
     pub column: u32,
