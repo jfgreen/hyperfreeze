@@ -17,7 +17,7 @@ pub struct ParseError {
 #[derive(PartialEq, Eq, Debug)]
 enum ErrorKind {
     LooseDelimiter,
-    MissingListLevel { from: usize, to: usize },
+    MissingListLevel { from: u8, to: u8 },
     MetadataNotAtStart,
     ReferencesOutOfPlace,
     ExpectedToken(TokenName),
@@ -578,7 +578,7 @@ fn parse_paragraph(tokeniser: &mut Tokeniser) -> ParseResult<doc::Block> {
 
 fn parse_list_level(
     tokeniser: &mut Tokeniser,
-    current_depth: usize,
+    current_depth: u8,
 ) -> ParseResult<Box<[doc::ListItem]>> {
     let mut items = Vec::new();
 
@@ -908,7 +908,8 @@ fn parse_code(tokeniser: &mut Tokeniser) -> ParseResult<doc::Block> {
     Ok(block)
 }
 
-//TODO: Implement a concat with auto newlines macro?
+//TODO: Maybe a builder is less unwieldy after all?
+
 #[cfg(test)]
 mod test {
     use super::*;

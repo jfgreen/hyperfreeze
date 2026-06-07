@@ -43,15 +43,15 @@ const MARKUP_CHARS: &[char; 10] = &[
 
 #[derive(PartialEq, Eq, Clone, Copy, Debug)]
 pub struct Indent {
-    pub space_count: usize,
+    pub space_count: u8,
 }
 
 #[derive(PartialEq, Eq, Debug)]
-pub struct LexemeString(String);
+pub struct LexemeString(Box<str>);
 
 impl<'a> From<&'a str> for LexemeString {
     fn from(value: &'a str) -> Self {
-        LexemeString(value.to_string())
+        LexemeString(value.into())
     }
 }
 
