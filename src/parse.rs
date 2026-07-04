@@ -976,9 +976,10 @@ mod test {
             self.doc.contents = items.into_boxed_slice();
             self
         }
+    }
 
-        //TODO: Clever use of into, could remove explicit build call?
-        fn build(self) -> Document {
+    impl Into<Document> for DocumentBuilder {
+        fn into(self) -> Document {
             self.doc
         }
     }
@@ -1179,7 +1180,8 @@ mod test {
         }
     }
 
-    fn assert_document_eq(actual: Document, expected: Document) {
+    fn assert_document_eq(actual: Document, expected: impl Into<Document>) {
+        let expected = expected.into();
         if actual != expected {
             eprintln!("Actual:\n{:#?}", actual);
             eprintln!("Expected:\n{:#?}", expected);
@@ -1250,8 +1252,7 @@ mod test {
                     ]
                 ],
                 paragraph![text("Yay!")],
-            ])
-            .build();
+            ]);
 
         let actual = parse_str(input).expect_successful();
 
@@ -2081,10 +2082,7 @@ mod test {
             "",
         );
 
-        let expected = document()
-            .title("Some document with metadata")
-            .id("12.03")
-            .build();
+        let expected = document().title("Some document with metadata").id("12.03");
 
         let actual = parse_str(input).expect_successful();
         assert_document_eq(actual, expected);
@@ -2104,8 +2102,7 @@ mod test {
         let expected = document()
             .title("Document with metadata")
             .id("feline.feasts.25")
-            .tags(&["cooking", "eating", "nice-smells"])
-            .build();
+            .tags(&["cooking", "eating", "nice-smells"]);
 
         let actual = parse_str(input).expect_successful();
         assert_document_eq(actual, expected);
@@ -2147,9 +2144,7 @@ mod test {
     fn doc_title() {
         let input = "/ Practical espionage for felines in urban settings";
 
-        let expected = document()
-            .title("Practical espionage for felines in urban settings")
-            .build();
+        let expected = document().title("Practical espionage for felines in urban settings");
 
         let actual = parse_str(input).expect_successful();
         assert_document_eq(actual, expected);
@@ -2168,8 +2163,7 @@ mod test {
 
         let expected = document()
             .title("Some Doc")
-            .contents(vec![paragraph![text("Why hello there cats and kittens")]])
-            .build();
+            .contents(vec![paragraph![text("Why hello there cats and kittens")]]);
 
         let actual = parse_str(input).expect_successful();
         assert_document_eq(actual, expected);
@@ -2179,7 +2173,7 @@ mod test {
     fn doc_title_with_wonky_spacing() {
         let input = document_lines!("/My Very   Cool Document   ", "");
 
-        let expected = document().title("My Very Cool Document").build();
+        let expected = document().title("My Very Cool Document");
 
         let actual = parse_str(input).expect_successful();
         assert_document_eq(actual, expected);
@@ -2189,7 +2183,7 @@ mod test {
     fn doc_title_with_no_trailing_newline() {
         let input = "/Some Doc";
 
-        let expected = document().title("Some Doc").build();
+        let expected = document().title("Some Doc");
 
         let actual = parse_str(input).expect_successful();
         assert_document_eq(actual, expected);
@@ -2769,8 +2763,7 @@ mod test {
                 linked_text("our guide on petting cats", "ripley_2020"),
                 text(", created by our own in house experts.")
             ]])
-            .references(&[("ripley_2020", "https://example.com")])
-            .build();
+            .references(&[("ripley_2020", "https://example.com")]);
 
         let actual = parse_str(input).expect_successful();
         assert_document_eq(actual, expected);
@@ -2794,8 +2787,7 @@ mod test {
                 linked_text("our guide", "some_ref"),
                 text(" for more")
             ]])
-            .references(&[("some_ref", "https://example.com")])
-            .build();
+            .references(&[("some_ref", "https://example.com")]);
 
         let actual = parse_str(input).expect_successful();
         assert_document_eq(actual, expected);
@@ -2824,8 +2816,7 @@ mod test {
                 ("ripley_2022", "https://example.com/c"),
                 ("ripley_2023", "https://example.com/d"),
                 ("ripley_2024", "https://example.com/e"),
-            ])
-            .build();
+            ]);
 
         let actual = parse_str(input).expect_successful();
         assert_document_eq(actual, expected);
@@ -2933,8 +2924,7 @@ mod test {
                     heading = "Conclusion and reflections",
                     paragraph![text("Go go go!")],
                 ],
-            ])
-            .build();
+            ]);
 
         let actual = parse_str(input).expect_successful();
         assert_document_eq(actual, expected);
@@ -2950,8 +2940,7 @@ mod test {
 
         let expected = document()
             .title("Speed running the kitchen at 4am")
-            .contents(vec![paragraph![text("This is a comprehensive guide.")]])
-            .build();
+            .contents(vec![paragraph![text("This is a comprehensive guide.")]]);
 
         let actual = parse_str(input).expect_successful();
         assert_document_eq(actual, expected);
