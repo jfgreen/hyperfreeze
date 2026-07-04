@@ -908,308 +908,78 @@ fn parse_code(tokeniser: &mut Tokeniser) -> ParseResult<doc::Block> {
     Ok(block)
 }
 
-//TODO: Maybe a builder is less unwieldy after all?
+//TODO: See if we can group / order these ever growing tests...
 
 #[cfg(test)]
 mod test {
     use super::*;
 
-    macro_rules! document {
-        ($($token:tt)+) => {
-            build_document!({} $($token)+)
-        };
-    }
-
-    macro_rules! build_document {
-        ({$($fields:tt)*}) => {
-            Document {
-                $($fields)*
-              ..Default::default()
-            }
-        };
-
-        ({$($fields:tt)*} $field:ident : { $($token:tt)+ } $(, $($tail:tt)+)?) => {
-            build_document!(
-                {
-                    //TODO: can we return the field from document_field (foo: bar)
-                    $field: document_field!($field $($token)+),
-                    $($fields)*
-                }
-                $($($tail)+)?
-            )
-
-        };
-
-        ({$($fields:tt)*} $field:ident : $value:expr $(, $($tail:tt)+)?) => {
-            build_document!(
-                {
-                    $field: document_field!($field $value),
-                    $($fields)*
-                }
-                $($($tail)+)?
-            )
-
-        };
-    }
-
-    macro_rules! document_field {
-        (title $value:expr) => {
-            String::from($value)
-        };
-        (metadata $($token:tt)+) => {
-            build_metadata!({} $($token)+)
-        };
-        (contents $($token:tt)+) => {
-            build_contents!($($token)+)
-        };
-        (references $($token:tt)+) => {
-            build_references!($($token)+)
-        };
-    }
-
-    macro_rules! build_metadata {
-        ( {$($fields:tt)*} $field:ident : $value:expr $(, $($tail:tt)*)?) => {
-            build_metadata!(
-                {
-                    $field: metadata_field!($field $value),
-                    $($fields)*
-                }
-                $($($tail)*)?
-            )
-        };
-
-        ( {$($fields:tt)*}) => {
-            doc::Metadata{
-                $($fields)*
-              ..Default::default()
-            }
-        };
-    }
-
-    macro_rules! metadata_field {
-        (tags $tags:expr) => {
-            Some(Box::new($tags.map(|t| t.into())))
-        };
-
-        ($field:ident $value:expr) => {
-            Some($value.into())
-        };
-    }
-
-    macro_rules! build_contents {
-        (
-            $(
-              $element_type:ident
-              $(($element_name:expr))?
-              { $($element_content:tt)* }
-            ),*
-
-        ) => {
-            Box::new(
-                [$(element!(
-                    $element_type
-                    $(($element_name))?
-                    $($element_content)*
-                ),)*]
+    macro_rules! document_lines {
+        ($($line:literal),+ $(,)?) => {
+            concat!(
+                $($line, "\n",)+
             )
         };
     }
 
-    macro_rules! build_references {
-        (
-            $( ($ref_id:expr, $ref_link:expr) ),*
-            $(,)?
-        ) => {
-            Box::new(
-                [$(doc::Reference {
-                    id: $ref_id.to_string(),
-                    link: $ref_link.to_string(),
-                },)*]
+    macro_rules! content_lines {
+        ($($line:literal),+ $(,)?) => {
+            document_lines!(
+                "/ Some doc",
+                "",
+                $($line,)+
             )
         };
     }
 
-    //TODO: Less confusing for macros to be more like (info: {...}) => {...}
-    macro_rules! element {
-        (info $( $block:ident { $($content:tt)* } $(,)? )*) => {
-            doc::Element::Container(doc::Container{
-                content: Box::new([
-                    $(
-                        block!($block $($content)*),
-                    )*
-                ]),
-                kind: doc::ContainerKind::Info,
-            })
-        };
-
-        (section ($name:expr) $( $element:ident $(($element_name:expr))? { $($content:tt)* } $(,)? )*) => {
-            doc::Element::Section(doc::Section{
-                content: Box::new([
-                    $(
-                        section_element!($element $(($element_name))? $($content)*),
-                    )*
-                ]),
-                heading: String::from($name)
-            })
-        };
-
-        ($block:ident $($content:tt)*) => {
-            doc::Element::Block(block!($block $($content)*))
-        };
-
-
-    }
-
-    macro_rules! section_element {
-        (info $( $block:ident { $($content:tt)* } $(,)? )*) => {
-            SectionElement::Container(Container{
-                content: Box::new([
-                    $(
-                        block!($block $($content)*),
-                    )*
-                ]),
-                kind: ContainerKind::Info,
-            })
-        };
-
-        (subsection ($name:expr) $( $element:ident $(($element_name:expr))? { $($content:tt)* } $(,)? )*) => {
-            doc::SectionElement::SubSection(doc::SubSection{
-                content: Box::new([
-                    $(
-                        subsection_element!($element $(($element_name))? $($content)*),
-                    )*
-                ]),
-                heading: String::from($name)
-            })
-        };
-
-        ($block:ident $($content:tt)*) => {
-            doc::SectionElement::Block(block!($block $($content)*))
-        };
-    }
-
-    macro_rules! subsection_element {
-        (info $( $block:ident { $($content:tt)* } $(,)? )*) => {
-            doc::SubSectionElement::Container(doc::Container{
-                content: Box::new([
-                    $(
-                        block!($block $($content)*),
-                    )*
-                ]),
-                kind: ContainerKind::Info,
-            })
-        };
-
-        ($block:ident $($content:tt)*) => {
-            doc::SubSectionElement::Block(block!($block $($content)*))
-        };
-
-    }
-
-    macro_rules! block {
-        (paragraph $($text:expr),* $(,)?) => {
-            doc::Block::Paragraph(Box::new([
-                $(
-                    $text,
-                )*
-            ]))
-        };
-
-        (list $($item:ident { $($content:tt)* } $(,)?)*) => {
-            doc::Block::List(
-                doc::List {
-                    items: Box::new([
-                    $(
-                        list_item!($item $($content)*),
-                    )*
-                    ]),
-                    style: doc::ListStyle::Unordered,
-                }
-            )
-        };
-
-        (ordered_list $($item:ident { $($content:tt)* } $(,)?)*) => {
-            doc::Block::List(
-                doc::List {
-                    items: Box::new([
-                    $(
-                        list_item!($item $($content)*),
-                    )*
-                    ]),
-                    style: doc::ListStyle::Ordered,
-                }
-            )
-        };
-
-        (code $($text:expr),+ $(,)?) => {
-            doc::Block::Code(concat!($($text,)+).to_string())
-        };
-    }
-
-    macro_rules! list_item {
-        (paragraph $($text:expr),* $(,)?) => {
-            doc::ListItem::Text(Box::new([
-                $(
-                    $text,
-                )*
-            ]))
-        };
-
-        (list $($item:ident { $($content:tt)* } $(,)?)*) => {
-            doc::ListItem::SubList(Box::new([
-                $(
-                    list_item!($item $($content)*),
-                )*
-            ]))
-        };
-    }
-
-    macro_rules! info {
-        ($($content:tt)*) => {
-            Box::new([element!(info $($content)*)])
+    // TODO: Try as macro again we know what we are doing?
+    // Use keywords
+    fn document() -> DocumentBuilder {
+        DocumentBuilder {
+            doc: Document::default(),
         }
     }
 
-    macro_rules! list {
-        ($($content:tt)*) => {
-            Box::new([element!(list $($content)*)])
-        }
+    struct DocumentBuilder {
+        doc: Document,
     }
 
-    macro_rules! ordered_list {
-        ($($content:tt)*) => {
-            Box::new([element!(ordered_list $($content)*)])
+    impl DocumentBuilder {
+        fn title(mut self, value: &str) -> Self {
+            self.doc.title = value.to_string();
+            self
         }
-    }
 
-    macro_rules! paragraph {
-        ($($content:tt)*) => {
-            Box::new([element!(paragraph $($content)*)])
+        fn id(mut self, value: &str) -> Self {
+            self.doc.metadata.id = Some(value.to_string());
+            self
         }
-    }
 
-    macro_rules! code {
-        ($($content:tt)*) => {
-            Box::new([element!(code $($content)*)])
+        fn tags(mut self, items: &[&str]) -> Self {
+            self.doc.metadata.tags = Some(items.iter().map(|tag| String::from(*tag)).collect());
+            self
         }
-    }
 
-    macro_rules! elements {
-        (
-            $(
-              $element_type:ident
-              $(($element_name:expr))?
-              { $($element_content:tt)* }
-            ),*
-            $(,)?
-        ) => {
-            Box::new(
-                [$(element!(
-                    $element_type
-                    $(($element_name))?
-                    $($element_content)*
-                ),)*]
-            )
+        fn references(mut self, items: &[(&str, &str)]) -> Self {
+            self.doc.references = items
+                .iter()
+                .map(|(id, link)| doc::Reference {
+                    id: id.to_string(),
+                    link: link.to_string(),
+                })
+                .collect();
+            self
+        }
+
+        fn contents(mut self, items: Vec<doc::Element>) -> Self {
+            //TODO: macro could handle boxed slices?
+            self.doc.contents = items.into_boxed_slice();
+            self
+        }
+
+        //TODO: Clever use of into, could remove explicit build call?
+        fn build(self) -> Document {
+            self.doc
         }
     }
 
@@ -1255,1544 +1025,1691 @@ mod test {
         }
     }
 
-    fn parse_document_str(document: &'static str) -> ParseResult<Document> {
-        parse_str(&document)
-    }
-
-    fn parse_content_str(content: &'static str) -> ParseResult<Document> {
-        let content_with_title = "/ Some Document\n\n".to_string() + content;
-        parse_str(&content_with_title)
-    }
-
-    fn assert_document_eq(result: ParseResult<Document>, expected: Document) {
-        let doc = expect_successful_parse(result);
-        if doc != expected {
-            eprintln!("Actual:\n{:#?}", doc);
-            eprintln!("Expected:\n{:#?}", expected);
-            panic!("Parsed content not what was expected")
+    impl From<doc::Container> for doc::Element {
+        fn from(container: doc::Container) -> Self {
+            doc::Element::Container(container)
         }
     }
 
-    fn assert_content_eq(result: ParseResult<Document>, expected: Box<[doc::Element]>) {
-        let doc = expect_successful_parse(result);
-        if doc.contents != expected {
-            eprintln!("Actual:\n{:#?}", doc.contents);
-            eprintln!("Expected:\n{:#?}", expected);
-            panic!("Parsed content not what was expected")
+    impl From<doc::Section> for doc::Element {
+        fn from(section: doc::Section) -> Self {
+            doc::Element::Section(section)
         }
     }
 
-    fn assert_parse_fails(result: ParseResult<Document>, expected: ErrorKind) {
-        match result {
-            Ok(doc) => {
-                eprintln!("Expected parse to fail, but got doc:");
-                eprintln!("{:#?}\n", doc);
-                panic!("parse unexpectedly succeeded")
+    impl From<doc::Block> for doc::Element {
+        fn from(block: doc::Block) -> Self {
+            doc::Element::Block(block)
+        }
+    }
+
+    impl From<doc::Block> for doc::SectionElement {
+        fn from(block: doc::Block) -> Self {
+            doc::SectionElement::Block(block)
+        }
+    }
+
+    impl From<doc::SubSection> for doc::SectionElement {
+        fn from(sub_section: doc::SubSection) -> Self {
+            doc::SectionElement::SubSection(sub_section)
+        }
+    }
+
+    impl From<doc::Block> for doc::SubSectionElement {
+        fn from(block: doc::Block) -> Self {
+            doc::SubSectionElement::Block(block)
+        }
+    }
+
+    //TODO: All of the following macros should have an into
+    // if they dont, then thats a bit sus
+
+    macro_rules! paragraph {
+        ($($text_run:expr),+ $(,)?) => {
+            doc::Block::Paragraph(
+                Box::new([$($text_run, )+])
+            ).into()
+        };
+    }
+
+    macro_rules! list {
+        ($($item:expr),+ $(,)?) => {
+            doc::Block::List(doc::List {
+                items: Box::new([$($item, )+]),
+                style: doc::ListStyle::Unordered,
+            }).into()
+        };
+    }
+    //TODO, use key word arg for type?
+    macro_rules! ordered_list {
+        ($($item:expr),+ $(,)?) => {
+            doc::Block::List(doc::List {
+                items: Box::new([$($item, )+]),
+                style: doc::ListStyle::Ordered,
+            }).into()
+        };
+    }
+
+    //TODO: Clever use of into would mean we can remove this?
+    macro_rules! sub_list {
+        ($($item:expr),+ $(,)?) => {
+            doc::ListItem::SubList(
+                Box::new([$($item, )+])
+            )
+        }
+    }
+
+    macro_rules! info {
+        ($($item:expr),+ $(,)?) => {
+            doc::Container {
+                content: Box::new([$($item, )+]),
+                kind: doc::ContainerKind::Info,
+            }.into()
+        };
+    }
+
+    //TODO: Clever use of into would mean we can remove this?
+    macro_rules! list_text {
+        ($($text_run:expr),+ $(,)?) => {
+            doc::ListItem::Text(Box::new([$($text_run, )+]))
+        };
+    }
+
+    macro_rules! section {
+        (heading= $heading:literal, $($item:expr),+ $(,)?) => {
+            doc::Section {
+                heading: $heading.to_string(),
+                content: Box::new([
+                    $($item, )+
+                ]),
             }
-            Err(err) => {
-                if err.kind != expected {
-                    eprintln!("Expected error: {:?}", expected);
-                    eprintln!("Actual error: {:?}", err.kind);
+            .into()
+        };
+    }
 
-                    eprintln!("Full failure detail:\n{}", err);
+    macro_rules! subsection {
+        (heading= $heading:literal, $($item:expr),+ $(,)?) => {
+            doc::SubSection {
+                heading: $heading.to_string(),
+                content: Box::new([
+                    $($item, )+
+                ]),
+            }
+            .into()
+        };
+    }
 
-                    panic!("Failed with wrong kind of error")
+    macro_rules! code {
+        ($($line:literal),+ $(,)?) => {
+            doc::Block::Code(concat!($($line, )+).into()).into()
+        };
+    }
+
+    //TODO: try and remove this
+    macro_rules! contents {
+        ($($item:expr),+ $(,)?) => {
+            Box::new([$($item, )+])
+        };
+    }
+
+    trait ParseResultTestHelpers {
+        fn expect_successful(self) -> Document;
+        fn expect_failure(self) -> ParseError;
+    }
+
+    impl ParseResultTestHelpers for ParseResult<Document> {
+        fn expect_successful(self) -> Document {
+            match self {
+                Ok(doc) => doc,
+                Err(error) => {
+                    eprintln!("{}", error);
+                    panic!("parse unexpectedly failed")
                 }
             }
         }
-    }
 
-    fn expect_successful_parse(result: ParseResult<Document>) -> Document {
-        match result {
-            Ok(doc) => doc,
-            Err(error) => {
-                eprintln!("{}", error);
-                panic!("parse unexpectedly failed")
+        fn expect_failure(self) -> ParseError {
+            match self {
+                Ok(doc) => {
+                    eprintln!("{:#?}", doc);
+                    panic!("parse unexpectedly succeeded");
+                }
+                Err(error) => error,
             }
         }
     }
 
-    //TODO: See if we can group / order these ever growing tests...
+    fn assert_document_eq(actual: Document, expected: Document) {
+        if actual != expected {
+            eprintln!("Actual:\n{:#?}", actual);
+            eprintln!("Expected:\n{:#?}", expected);
+            panic!("Parsed document not what was expected")
+        }
+    }
+
+    // TODO: Try accepting Into<Box[Doc::Element]>?
+    // Lose content wrapper in tests?
+    fn assert_contents_eq(actual: Box<[doc::Element]>, expected: Box<[doc::Element]>) {
+        if actual != expected {
+            eprintln!("Actual:\n{:#?}", actual);
+            eprintln!("Expected:\n{:#?}", expected);
+            panic!("Parsed document contents not what was expected")
+        }
+    }
+
+    fn assert_failure_eq(actual: ErrorKind, expected: ErrorKind) {
+        if actual != expected {
+            eprintln!("Actual:\n{:#?}", actual);
+            eprintln!("Expected:\n{:#?}", expected);
+            panic!("Failure reason not what was expected")
+        }
+    }
 
     #[test]
     fn complete_doc_test() {
-        let input = concat!(
-            "@metadata\n",
-            "id: 01.42\n",
-            "\n",
-            "/ Feline friendly flower arranging\n",
-            "\n",
-            "!info\n",
-            "Did you know flower pots are for *more*\n",
-            "than simply knocking on the floor?\n",
-            "\n",
-            "Opposable thumbs\n",
-            "are useful?\n",
-            "\n",
-            "- Nose\n",
-            "- Toes\n",
-            "  - Big one\n",
-            "  - Little one\n",
-            "  - _Other_\n",
-            "     one\n",
-            "\n",
+        let input = document_lines!(
+            "@metadata",
+            "id: 01.42",
+            "",
+            "/ Feline friendly flower arranging",
+            "",
+            "!info",
+            "Did you know flower pots are for *more*",
+            "than simply knocking on the floor?",
+            "",
+            "Opposable thumbs",
+            "are useful?",
+            "",
+            "- Nose",
+            "- Toes",
+            "  - Big one",
+            "  - Little one",
+            "  - _Other_",
+            "     one",
+            "",
             "Yay!"
         );
 
-        //TODO: Simplify macro - dont need explicit nesting of elements ?
-        // document!(
-        // metadata: {...}
-        // references: { ... },
-        // title {},
-        // info {}
-        // )
-        //
+        let expected = document()
+            .title("Feline friendly flower arranging")
+            .id("01.42")
+            .contents(vec![
+                info![paragraph![
+                    text("Did you know flower pots are for "),
+                    strong_text("more"),
+                    text(" than simply knocking on the floor?"),
+                ]],
+                paragraph![text("Opposable thumbs are useful?")],
+                list![
+                    list_text![text("Nose")],
+                    list_text![text("Toes")],
+                    sub_list![
+                        list_text![text("Big one")],
+                        list_text![text("Little one")],
+                        list_text![emphasised_text("Other"), text(" one")],
+                    ]
+                ],
+                paragraph![text("Yay!")],
+            ])
+            .build();
 
-        let expected = document!(
-            title: "Feline friendly flower arranging",
-            metadata: {
-                id: "01.42",
-            },
-            contents: {
-                info {
-                    paragraph {
-                        text("Did you know flower pots are for "),
-                        strong_text("more"),
-                        text(" than simply knocking on the floor?")
-                    }
-                },
-                paragraph {
-                    text("Opposable thumbs are useful?")
-                },
-                list {
-                    paragraph { text("Nose") },
-                    paragraph { text("Toes") },
-                    list {
-                        paragraph { text("Big one") },
-                        paragraph { text("Little one") },
-                        paragraph {
-                            emphasised_text("Other"),
-                            text(" one")
-                        }
-                    }
-                },
-                paragraph {
-                    text("Yay!")
-                }
-            }
-        );
+        let actual = parse_str(input).expect_successful();
 
-        let result = parse_document_str(input);
-        assert_document_eq(result, expected);
+        assert_document_eq(actual, expected);
     }
 
     #[test]
     fn one_line_paragraph() {
-        let input = "We like cats very much";
+        let input = content_lines!("We like cats very much");
 
-        let expected = paragraph! { text("We like cats very much") };
+        let expected = contents![paragraph![text("We like cats very much")]];
 
-        let result = parse_content_str(input);
-        assert_content_eq(result, expected);
+        let actual = parse_str(input).expect_successful().contents;
+
+        assert_contents_eq(actual, expected);
     }
 
     #[test]
     fn explicit_paragraph() {
-        let input = "#paragraph\nCats go meeow!";
+        let input = content_lines!("#paragraph", "Cats go meeow!");
 
-        let expected = paragraph! { text("Cats go meeow!") };
+        let expected = contents![paragraph![text("Cats go meeow!")]];
 
-        let result = parse_content_str(input);
-        assert_content_eq(result, expected);
+        let actual = parse_str(input).expect_successful().contents;
+
+        assert_contents_eq(actual, expected);
     }
 
     #[test]
     fn explicit_paragraph_with_block_break_before_text_is_rejected() {
-        let input = "#paragraph\n\nCats go meeow!";
+        let input = content_lines!("#paragraph", "", "Cats go meeow!");
 
         let expected = ErrorKind::ExpectedToken(LineBreak::NAME);
 
-        let result = parse_content_str(input);
-        assert_parse_fails(result, expected);
+        let actual = parse_str(input).expect_failure().kind;
+
+        assert_failure_eq(actual, expected);
     }
 
     #[test]
     fn unknown_block_directive_is_rejected() {
-        let input = "#meowograph\nMeow?";
+        let input = content_lines!("#meowograph", "Meow?");
 
         let expected = ErrorKind::UnknownDirective("#meowograph".into());
 
-        let result = parse_content_str(input);
-        assert_parse_fails(result, expected);
+        let actual = parse_str(input).expect_failure().kind;
+
+        assert_failure_eq(actual, expected);
     }
 
     #[test]
     fn unknown_data_directive_is_rejected() {
-        let input = "@mrerps\nPurrRR!";
+        let input = content_lines!("@mrerps", "PurrRR!");
 
         let expected = ErrorKind::UnknownDirective("@mrerps".into());
 
-        let result = parse_content_str(input);
-        assert_parse_fails(result, expected);
+        let actual = parse_str(input).expect_failure().kind;
+
+        assert_failure_eq(actual, expected);
     }
 
     #[test]
     fn unknown_container_directive_is_rejected() {
-        let input = "!meeps\nMorps!";
+        let input = content_lines!("!meeps", "Morps!");
 
         let expected = ErrorKind::UnknownDirective("!meeps".into());
 
-        let result = parse_content_str(input);
-        assert_parse_fails(result, expected);
+        let actual = parse_str(input).expect_failure().kind;
+
+        assert_failure_eq(actual, expected);
     }
 
     #[test]
     fn empty_block_name_is_rejected() {
-        let input = "#\nHi";
+        let input = content_lines!("#", "Hi");
 
         let expected = ErrorKind::UnknownDirective("#".into());
 
-        let result = parse_content_str(input);
-        assert_parse_fails(result, expected);
+        let actual = parse_str(input).expect_failure().kind;
+
+        assert_failure_eq(actual, expected);
     }
 
     #[test]
     fn block_without_new_line_is_rejected() {
-        let input = "#paragraph";
+        //TODO: Trailing newline kwarg for content_lines?
+        let input = concat!("/Some doc\n\n", "#paragraph");
 
         let expected = ErrorKind::ExpectedToken(LineBreak::NAME);
 
-        let result = parse_content_str(input);
-        assert_parse_fails(result, expected);
+        let actual = parse_str(input).expect_failure().kind;
+
+        assert_failure_eq(actual, expected);
     }
 
     #[test]
     fn double_space() {
-        let input = "Nice  kitty!";
+        let input = content_lines!("Nice  kitty!");
 
-        let expected = paragraph! { text("Nice kitty!") };
+        let expected = contents![paragraph![text("Nice kitty!")]];
 
-        let result = parse_content_str(input);
-        assert_content_eq(result, expected);
+        let actual = parse_str(input).expect_successful().contents;
+
+        assert_contents_eq(actual, expected);
     }
 
     #[test]
     fn trailing_new_line_is_ignored() {
-        let input = "Cats\n";
+        let input = content_lines!("Cats", "");
 
-        let expected = paragraph! { text("Cats") };
+        let expected = contents![paragraph![text("Cats")]];
 
-        let result = parse_content_str(input);
-        assert_content_eq(result, expected);
+        let actual = parse_str(input).expect_successful().contents;
+
+        assert_contents_eq(actual, expected);
     }
 
     #[test]
     fn space_then_trailing_new_line_is_ignored() {
-        let input = "Cats \n";
+        let input = content_lines!("Cats ", "");
 
-        let expected = paragraph! { text("Cats") };
+        let expected = contents![paragraph![text("Cats")]];
 
-        let result = parse_content_str(input);
-        assert_content_eq(result, expected);
+        let actual = parse_str(input).expect_successful().contents;
+
+        assert_contents_eq(actual, expected);
     }
 
     #[test]
     fn new_line_becomes_whitespace() {
-        let input = "Cats\nwhiskers";
+        let input = content_lines!("Cats", "whiskers");
 
-        let expected = paragraph! { text("Cats whiskers") };
+        let expected = contents![paragraph![text("Cats whiskers")]];
 
-        let result = parse_content_str(input);
-        assert_content_eq(result, expected);
+        let actual = parse_str(input).expect_successful().contents;
+
+        assert_contents_eq(actual, expected);
     }
 
     #[test]
     fn new_line_becomes_whitespace_given_plain_then_styled() {
-        let input = "Cats\n*whiskers*";
+        let input = content_lines!("Cats", "*whiskers*");
 
-        let expected = paragraph! {
-            text("Cats "),
-            strong_text("whiskers"),
-        };
+        let expected = contents![paragraph![text("Cats "), strong_text("whiskers"),]];
 
-        let result = parse_content_str(input);
-        assert_content_eq(result, expected);
+        let actual = parse_str(input).expect_successful().contents;
+
+        assert_contents_eq(actual, expected);
     }
 
     #[test]
     fn new_line_becomes_whitespace_given_plain_then_raw() {
-        let input = "Cats\n`nice whiskers`";
+        let input = content_lines!("Cats", "`nice whiskers`");
 
-        let expected = paragraph! {
-            text("Cats "),
-            raw_text("nice whiskers"),
-        };
+        let expected = contents![paragraph![text("Cats "), raw_text("nice whiskers"),]];
 
-        let result = parse_content_str(input);
-        assert_content_eq(result, expected);
+        let actual = parse_str(input).expect_successful().contents;
+
+        assert_contents_eq(actual, expected);
     }
 
     #[test]
     fn new_line_with_extra_whitespace_collapses() {
-        let input = "Cats    \n    whiskers";
-        let expected = paragraph! { text("Cats whiskers") };
+        let input = content_lines!("Cats    ", "    whiskers");
+        let expected = contents![paragraph![text("Cats whiskers")]];
 
-        let result = parse_content_str(input);
-        assert_content_eq(result, expected);
+        let actual = parse_str(input).expect_successful().contents;
+
+        assert_contents_eq(actual, expected);
     }
 
     #[test]
     fn two_new_lines_become_blocks() {
-        let input = "Cats\n\nwhiskers";
+        let input = content_lines!("Cats", "", "whiskers");
 
-        let expected = elements! {
-            paragraph { text("Cats") },
-            paragraph { text("whiskers") }
-        };
+        let expected = contents![paragraph![text("Cats")], paragraph![text("whiskers")]];
 
-        let result = parse_content_str(input);
-        assert_content_eq(result, expected);
+        let actual = parse_str(input).expect_successful().contents;
+
+        assert_contents_eq(actual, expected);
     }
 
     #[test]
     fn three_new_lines_becomes_blocks() {
-        let input = "Cats\n\n\nwhiskers";
+        let input = content_lines!("Cats", "", "", "whiskers");
 
-        let expected = elements! {
-            paragraph { text("Cats") },
-            paragraph { text("whiskers") }
-        };
+        let expected = contents![paragraph![text("Cats")], paragraph![text("whiskers")]];
 
-        let result = parse_content_str(input);
-        assert_content_eq(result, expected);
+        let actual = parse_str(input).expect_successful().contents;
+
+        assert_contents_eq(actual, expected);
     }
 
     #[test]
     fn two_new_lines_with_whitespace_is_treated_as_blockbreak() {
-        let input = "Cats\n \nwhiskers";
+        let input = content_lines!("Cats", "  ", "whiskers");
 
-        let expected = elements! {
-            paragraph { text("Cats") },
-            paragraph { text("whiskers") }
-        };
+        let expected = contents![paragraph![text("Cats")], paragraph![text("whiskers")]];
 
-        let result = parse_content_str(input);
-        assert_content_eq(result, expected);
+        let actual = parse_str(input).expect_successful().contents;
+
+        assert_contents_eq(actual, expected);
     }
 
     #[test]
     fn blockbreak_with_extra_whitespace() {
-        let input = "Cats  \n    \n  whiskers";
-        let expected = elements!(
-            paragraph { text("Cats") },
-            paragraph { text("whiskers") }
-        );
+        let input = content_lines!("Cats  ", "    ", "  whiskers");
 
-        let result = parse_content_str(input);
-        assert_content_eq(result, expected);
+        let expected = contents!(paragraph![text("Cats")], paragraph![text("whiskers")]);
+
+        let actual = parse_str(input).expect_successful().contents;
+
+        assert_contents_eq(actual, expected);
     }
 
     #[test]
     fn missing_blockbreak_is_rejected() {
-        let input = concat!(
-            "Cats can sometimes be\n",
-            "#paragraph\n",
-            "ever so surprising\n"
-        );
+        let input = content_lines!("Cats can sometimes be", "#paragraph", "ever so surprising");
 
         let expected = ErrorKind::ExpectedToken(BlockBreak::NAME);
 
-        let result = parse_content_str(input);
-        assert_parse_fails(result, expected);
+        let actual = parse_str(input).expect_failure().kind;
+
+        assert_failure_eq(actual, expected);
     }
 
     #[test]
     fn escaped_char() {
-        let input = "\\A";
+        let input = content_lines!("\\A");
 
-        let expected = paragraph! { text("A") };
+        let expected = contents![paragraph![text("A")]];
 
-        let result = parse_content_str(input);
-        assert_content_eq(result, expected);
+        let actual = parse_str(input).expect_successful().contents;
+
+        assert_contents_eq(actual, expected);
     }
 
     #[test]
     fn escaped_underscore_in_markup() {
-        let input = "My cat does backflips \\_coolcat";
+        let input = content_lines!("My cat does backflips \\_coolcat");
 
-        let expected = paragraph! { text("My cat does backflips _coolcat") };
+        let expected = contents![paragraph![text("My cat does backflips _coolcat")]];
 
-        let result = parse_content_str(input);
-        assert_content_eq(result, expected);
+        let actual = parse_str(input).expect_successful().contents;
+
+        assert_contents_eq(actual, expected);
     }
 
     #[test]
     fn escaped_underscore() {
-        let input = "cat\\_case";
+        let input = content_lines!("cat\\_case");
 
-        let expected = paragraph! { text("cat_case") };
+        let expected = contents![paragraph![text("cat_case")]];
 
-        let result = parse_content_str(input);
-        assert_content_eq(result, expected);
+        let actual = parse_str(input).expect_successful().contents;
+
+        assert_contents_eq(actual, expected);
     }
 
     #[test]
     fn escaped_underscore_in_emphasis() {
-        let input = "_cat\\_case_";
+        let input = content_lines!("_cat\\_case_");
 
-        let expected = paragraph! { emphasised_text("cat_case") };
+        let expected = contents![paragraph![emphasised_text("cat_case")]];
 
-        let result = parse_content_str(input);
-        assert_content_eq(result, expected);
+        let actual = parse_str(input).expect_successful().contents;
+
+        assert_contents_eq(actual, expected);
     }
 
     #[test]
     fn escaped_ignored_in_raw() {
-        let input = "`cat\\_case`";
+        let input = content_lines!("`cat\\_case`");
 
-        let expected = paragraph! { raw_text("cat\\_case") };
+        let expected = contents![paragraph![raw_text("cat\\_case")]];
 
-        let result = parse_content_str(input);
-        assert_content_eq(result, expected);
+        let actual = parse_str(input).expect_successful().contents;
+
+        assert_contents_eq(actual, expected);
     }
 
     #[test]
     fn emphasised_words() {
-        let input = "We _totally adore_ them";
+        let input = content_lines!("We _totally adore_ them");
 
-        let expected = paragraph! {
+        let expected = contents![paragraph![
             text("We "),
             emphasised_text("totally adore"),
             text(" them"),
-        };
+        ]];
 
-        let result = parse_content_str(input);
-        assert_content_eq(result, expected);
+        let actual = parse_str(input).expect_successful().contents;
+
+        assert_contents_eq(actual, expected);
     }
 
     #[test]
     fn emphasis_at_end_of_line() {
-        let input = "Cats like to _zoom_\naround";
+        let input = content_lines!("Cats like to _zoom_", "around");
 
-        let expected = paragraph! {
+        let expected = contents![paragraph![
             text("Cats like to "),
             emphasised_text("zoom"),
             text(" around"),
-        };
+        ]];
 
-        let result = parse_content_str(input);
-        assert_content_eq(result, expected);
+        let actual = parse_str(input).expect_successful().contents;
+
+        assert_contents_eq(actual, expected);
     }
 
     #[test]
     fn strong_words() {
-        let input = "I *need to pet that cat* right away.";
+        let input = content_lines!("I *need to pet that cat* right away.");
 
-        let expected = paragraph! {
+        let expected = contents![paragraph![
             text("I "),
             strong_text("need to pet that cat"),
             text(" right away."),
-        };
+        ]];
 
-        let result = parse_content_str(input);
-        assert_content_eq(result, expected);
+        let actual = parse_str(input).expect_successful().contents;
+
+        assert_contents_eq(actual, expected);
     }
 
     #[test]
     fn strong_mid_word() {
-        let input = "I said: mee*ooOOo*ww!";
+        let input = content_lines!("I said: mee*ooOOo*ww!");
 
-        let expected = paragraph! {
+        let expected = contents![paragraph![
             text("I said: mee"),
             strong_text("ooOOo"),
             text("ww!"),
-        };
+        ]];
 
-        let result = parse_content_str(input);
-        assert_content_eq(result, expected);
+        let actual = parse_str(input).expect_successful().contents;
+
+        assert_contents_eq(actual, expected);
     }
 
     #[test]
     fn strong_over_two_lines() {
-        let input = "*me\now*";
+        let input = content_lines!("*me", "ow*");
 
-        let expected = paragraph! { strong_text("me ow") };
+        let expected = contents![paragraph![strong_text("me ow")]];
 
-        let result = parse_content_str(input);
-        assert_content_eq(result, expected);
+        let actual = parse_str(input).expect_successful().contents;
+
+        assert_contents_eq(actual, expected);
     }
 
     #[test]
     fn strikethrough_words() {
-        let input = "Cats are ~ok i guess~ magnificant";
+        let input = content_lines!("Cats are ~ok i guess~ magnificant");
 
-        let expected = paragraph! {
+        let expected = contents![paragraph![
             text("Cats are "),
             strikethrough_text("ok i guess"),
             text(" magnificant"),
-        };
+        ]];
 
-        let result = parse_content_str(input);
-        assert_content_eq(result, expected);
+        let actual = parse_str(input).expect_successful().contents;
+
+        assert_contents_eq(actual, expected);
     }
 
     #[test]
     fn raw_words() {
-        let input = "Robot cat says `bleep bloop`!";
+        let input = content_lines!("Robot cat says `bleep bloop`!");
 
-        let expected = paragraph! {
+        let expected = contents![paragraph![
             text("Robot cat says "),
             raw_text("bleep bloop"),
             text("!"),
-        };
+        ]];
 
-        let result = parse_content_str(input);
-        assert_content_eq(result, expected);
+        let actual = parse_str(input).expect_successful().contents;
+
+        assert_contents_eq(actual, expected);
     }
 
     #[test]
     fn raw_mid_word() {
-        let input = "Bl`eeee`p!";
+        let input = content_lines!("Bl`eeee`p!");
 
-        let expected = paragraph! {
-            text("Bl"),
-            raw_text("eeee"),
-            text("p!"),
-        };
+        let expected = contents![paragraph![text("Bl"), raw_text("eeee"), text("p!"),]];
 
-        let result = parse_content_str(input);
-        assert_content_eq(result, expected);
+        let actual = parse_str(input).expect_successful().contents;
+
+        assert_contents_eq(actual, expected);
     }
 
     #[test]
     fn underscore_in_raw() {
-        let input = "Set `PURR_LOUDLY` to true";
+        let input = content_lines!("Set `PURR_LOUDLY` to true");
 
-        let expected = paragraph! {
+        let expected = contents![paragraph![
             text("Set "),
             raw_text("PURR_LOUDLY"),
             text(" to true"),
-        };
+        ]];
 
-        let result = parse_content_str(input);
-        assert_content_eq(result, expected);
+        let actual = parse_str(input).expect_successful().contents;
+
+        assert_contents_eq(actual, expected);
     }
 
     #[test]
     fn extra_spaces_in_raw() {
-        let input = "`Keep your       distance`";
+        let input = content_lines!("`Keep your       distance`");
 
-        let expected = paragraph! { raw_text("Keep your       distance") };
+        let expected = contents![paragraph![raw_text("Keep your       distance")]];
 
-        let result = parse_content_str(input);
-        assert_content_eq(result, expected);
+        let actual = parse_str(input).expect_successful().contents;
+
+        assert_contents_eq(actual, expected);
     }
 
     #[test]
     fn raw_over_two_lines() {
-        let input = "`Great\ncats`";
+        let input = content_lines!("`Great", "cats`");
 
-        let expected = paragraph! { raw_text("Great cats") };
+        let expected = contents![paragraph![raw_text("Great cats")]];
 
-        let result = parse_content_str(input);
-        assert_content_eq(result, expected);
+        let actual = parse_str(input).expect_successful().contents;
+
+        assert_contents_eq(actual, expected);
     }
 
     #[test]
     fn strikethrough_over_two_lines() {
-        let input = "~Great\ndogs~";
+        let input = content_lines!("~Great", "dogs~");
 
-        let expected = paragraph! { strikethrough_text("Great dogs") };
+        let expected = contents![paragraph![strikethrough_text("Great dogs")]];
 
-        let result = parse_content_str(input);
-        assert_content_eq(result, expected);
+        let actual = parse_str(input).expect_successful().contents;
+
+        assert_contents_eq(actual, expected);
     }
 
     #[test]
     fn raw_leading_with_new_line() {
-        let input = "`\nMeow?`";
+        let input = content_lines!("`", "Meow?`");
 
-        let expected = paragraph! { raw_text(" Meow?") };
+        let expected = contents![paragraph![raw_text(" Meow?")]];
 
-        let result = parse_content_str(input);
-        assert_content_eq(result, expected);
+        let actual = parse_str(input).expect_successful().contents;
+
+        assert_contents_eq(actual, expected);
     }
 
     #[test]
     fn raw_trailing_with_new_line() {
-        let input = "`Meow\n`";
+        let input = content_lines!("`Meow", "`");
 
-        let expected = paragraph! { raw_text("Meow ") };
+        let expected = contents![paragraph![raw_text("Meow ")]];
 
-        let result = parse_content_str(input);
-        assert_content_eq(result, expected);
+        let actual = parse_str(input).expect_successful().contents;
+
+        assert_contents_eq(actual, expected);
     }
 
     #[test]
     fn raw_leading_with_space() {
-        let input = "` Meow`";
+        let input = content_lines!("` Meow`");
 
-        let expected = paragraph! { raw_text(" Meow") };
+        let expected = contents![paragraph![raw_text(" Meow")]];
 
-        let result = parse_content_str(input);
-        assert_content_eq(result, expected);
+        let actual = parse_str(input).expect_successful().contents;
+
+        assert_contents_eq(actual, expected);
     }
 
     #[test]
     fn raw_trailing_with_space() {
-        let input = "`Meow `";
+        let input = content_lines!("`Meow `");
 
-        let expected = paragraph! { raw_text("Meow ") };
+        let expected = contents![paragraph![raw_text("Meow ")]];
 
-        let result = parse_content_str(input);
-        assert_content_eq(result, expected);
+        let actual = parse_str(input).expect_successful().contents;
+
+        assert_contents_eq(actual, expected);
     }
 
     #[test]
     fn raw_over_three_lines() {
-        let input = "`Great\ncats\nassemble!`";
+        let input = content_lines!("`Great", "cats", "assemble!`");
 
-        let expected = paragraph! { raw_text("Great cats assemble!") };
+        let expected = contents![paragraph![raw_text("Great cats assemble!")]];
 
-        let result = parse_content_str(input);
-        assert_content_eq(result, expected);
+        let actual = parse_str(input).expect_successful().contents;
+
+        assert_contents_eq(actual, expected);
     }
 
     #[test]
     fn standalone_dash() {
-        let input = "Felines - fantastic!";
+        let input = content_lines!("Felines - fantastic!");
 
-        let expected = paragraph! { text("Felines - fantastic!") };
+        let expected = contents![paragraph![text("Felines - fantastic!")]];
 
-        let result = parse_content_str(input);
-        assert_content_eq(result, expected);
+        let actual = parse_str(input).expect_successful().contents;
+
+        assert_contents_eq(actual, expected);
     }
 
     #[test]
     fn paragraph_with_trailing_whitespace() {
-        let input = "Cool kitty   ";
+        let input = content_lines!("Cool kitty   ");
 
-        let expected = paragraph! { text("Cool kitty") };
+        let expected = contents![paragraph![text("Cool kitty")]];
 
-        let result = parse_content_str(input);
-        assert_content_eq(result, expected);
+        let actual = parse_str(input).expect_successful().contents;
+
+        assert_contents_eq(actual, expected);
     }
 
     #[test]
     fn underscore_in_awkward_places() {
-        let input = "Cat cat_cat cat_ cat.";
+        let input = content_lines!("Cat cat_cat cat_ cat.");
 
-        let expected = paragraph! {
+        let expected = contents![paragraph![
             text("Cat cat"),
             emphasised_text("cat cat"),
             text(" cat.")
-        };
+        ]];
 
-        let result = parse_content_str(input);
-        assert_content_eq(result, expected);
+        let actual = parse_str(input).expect_successful().contents;
+
+        assert_contents_eq(actual, expected);
     }
 
     #[test]
     fn new_line_then_multiple_spaces_in_plain_text() {
-        let input = "Cat\n  cat";
+        let input = content_lines!("Cat", "  cat");
 
-        let expected = paragraph! { text("Cat cat") };
+        let expected = contents![paragraph![text("Cat cat")]];
 
-        let result = parse_content_str(input);
-        assert_content_eq(result, expected);
+        let actual = parse_str(input).expect_successful().contents;
+
+        assert_contents_eq(actual, expected);
     }
 
     #[test]
     fn new_line_then_multiple_spaces_in_styled() {
-        let input = "*Cat\n  cat*";
+        let input = content_lines!("*Cat", "  cat*");
 
-        let expected = paragraph! { strong_text("Cat cat") };
+        let expected = contents![paragraph![strong_text("Cat cat")]];
 
-        let result = parse_content_str(input);
-        assert_content_eq(result, expected);
+        let actual = parse_str(input).expect_successful().contents;
+
+        assert_contents_eq(actual, expected);
     }
 
     #[test]
     fn new_line_then_multiple_spaces_in_raw() {
-        let input = "`Cat\n  cat`";
+        let input = content_lines!("`Cat", "  cat`");
 
-        let expected = paragraph! { raw_text("Cat   cat") };
+        let expected = contents![paragraph![raw_text("Cat   cat")]];
 
-        let result = parse_content_str(input);
-        assert_content_eq(result, expected);
+        let actual = parse_str(input).expect_successful().contents;
+
+        assert_contents_eq(actual, expected);
     }
 
     #[test]
     fn multiple_spaces_then_new_line_in_plain_text() {
-        let input = "Cat  \ncat";
+        let input = content_lines!("Cat  ", "cat");
 
-        let expected = paragraph! { text("Cat cat") };
+        let expected = contents![paragraph![text("Cat cat")]];
 
-        let result = parse_content_str(input);
-        assert_content_eq(result, expected);
+        let actual = parse_str(input).expect_successful().contents;
+
+        assert_contents_eq(actual, expected);
     }
 
     #[test]
     fn multiple_spaces_then_new_line_in_styled() {
-        let input = "*Cat  \ncat*";
+        let input = content_lines!("*Cat  ", "cat*");
 
-        let expected = paragraph! { strong_text("Cat cat") };
+        let expected = contents![paragraph![strong_text("Cat cat")]];
 
-        let result = parse_content_str(input);
-        assert_content_eq(result, expected);
+        let actual = parse_str(input).expect_successful().contents;
+
+        assert_contents_eq(actual, expected);
     }
 
     #[test]
     fn multiple_spaces_then_new_line_in_raw() {
-        let input = "`Cat  \ncat`";
+        let input = content_lines!("`Cat  ", "cat`");
 
-        let expected = paragraph! { raw_text("Cat   cat") };
+        let expected = contents![paragraph![raw_text("Cat   cat")]];
 
-        let result = parse_content_str(input);
-        assert_content_eq(result, expected);
+        let actual = parse_str(input).expect_successful().contents;
+
+        assert_contents_eq(actual, expected);
     }
 
     #[test]
     fn empty_emphasis() {
-        let input = "Rules cats must follow: __.";
+        let input = content_lines!("Rules cats must follow: __.");
 
         let expected = ErrorKind::UnexpectedTextRunStart;
 
-        let result = parse_content_str(input);
-        assert_parse_fails(result, expected);
+        let actual = parse_str(input).expect_failure().kind;
+
+        assert_failure_eq(actual, expected);
     }
 
     #[test]
     fn empty_raw() {
-        let input = "Robot cat says: ``!.";
+        let input = content_lines!("Robot cat says: ``!.");
 
         let expected = ErrorKind::UnexpectedRawTextRunStart;
 
-        let result = parse_content_str(input);
-        assert_parse_fails(result, expected);
+        let actual = parse_str(input).expect_failure().kind;
+
+        assert_failure_eq(actual, expected);
     }
 
     #[test]
     fn raw_with_double_linebreak() {
-        let input = "`Erm...\n\nmeow?`";
+        let input = content_lines!("`Erm...", "", "meow?`");
 
         let expected = ErrorKind::ExpectedToken(RawDelimiter::NAME);
 
-        let result = parse_content_str(input);
-        assert_parse_fails(result, expected);
+        let actual = parse_str(input).expect_failure().kind;
+
+        assert_failure_eq(actual, expected);
     }
 
     #[test]
     fn raw_with_double_linebreak_containing_whitespace() {
-        let input = "`Erm...\n \nmeow?`";
+        let input = content_lines!("`Erm...", "  ", "meow?`");
 
         let expected = ErrorKind::ExpectedToken(RawDelimiter::NAME);
 
-        let result = parse_content_str(input);
-        assert_parse_fails(result, expected);
+        let actual = parse_str(input).expect_failure().kind;
+
+        assert_failure_eq(actual, expected);
     }
 
     #[test]
     fn strikethrough_with_double_linebreak() {
-        let input = "~Erm...\n\nmeow?~";
+        let input = content_lines!("~Erm...", "", "meow?~");
 
         let expected = ErrorKind::ExpectedToken(StrikethroughDelimiter::NAME);
 
-        let result = parse_content_str(input);
-        assert_parse_fails(result, expected);
+        let actual = parse_str(input).expect_failure().kind;
+
+        assert_failure_eq(actual, expected);
     }
 
     #[test]
     fn unmatched_emphasis_1() {
-        let input = "_.";
+        let input = content_lines!("_.");
 
         let expected = ErrorKind::ExpectedToken(EmphasisDelimiter::NAME);
 
-        let result = parse_content_str(input);
-        assert_parse_fails(result, expected);
+        let actual = parse_str(input).expect_failure().kind;
+
+        assert_failure_eq(actual, expected);
     }
 
     #[test]
     fn unmatched_emphasis_2() {
-        let input = "meow _meow.";
+        let input = content_lines!("meow _meow.");
 
         let expected = ErrorKind::ExpectedToken(EmphasisDelimiter::NAME);
 
-        let result = parse_content_str(input);
-        assert_parse_fails(result, expected);
+        let actual = parse_str(input).expect_failure().kind;
+
+        assert_failure_eq(actual, expected);
     }
 
     #[test]
     fn unmatched_emphasis_3() {
-        let input = "meow meow_";
+        let input = content_lines!("meow meow_");
 
         let expected = ErrorKind::UnexpectedTextRunStart;
 
-        let result = parse_content_str(input);
-        assert_parse_fails(result, expected);
+        let actual = parse_str(input).expect_failure().kind;
+
+        assert_failure_eq(actual, expected);
     }
 
     #[test]
     fn nested_styled_text() {
-        let input = "_*meow!*_";
+        let input = content_lines!("_*meow!*_");
 
         let expected = ErrorKind::UnexpectedTextRunStart;
 
-        let result = parse_content_str(input);
-        assert_parse_fails(result, expected);
+        let actual = parse_str(input).expect_failure().kind;
+
+        assert_failure_eq(actual, expected);
     }
 
     #[test]
     fn loose_strong_delimiter_start() {
-        let input = "* meow meow*";
+        let input = content_lines!("* meow meow*");
 
         let expected = ErrorKind::LooseDelimiter;
 
-        let result = parse_content_str(input);
-        assert_parse_fails(result, expected);
+        let actual = parse_str(input).expect_failure().kind;
+
+        assert_failure_eq(actual, expected);
     }
 
     #[test]
     fn loose_strong_delimiter_end() {
-        let input = "*meow meow *";
+        let input = content_lines!("*meow meow *");
 
         let expected = ErrorKind::LooseDelimiter;
 
-        let result = parse_content_str(input);
-        assert_parse_fails(result, expected);
+        let actual = parse_str(input).expect_failure().kind;
+
+        assert_failure_eq(actual, expected);
     }
 
     #[test]
     fn raw_immediately_in_emphasis() {
-        let input = "_``_";
+        let input = content_lines!("_``_");
 
         let expected = ErrorKind::UnexpectedTextRunStart;
 
-        let result = parse_content_str(input);
-        assert_parse_fails(result, expected);
+        let actual = parse_str(input).expect_failure().kind;
+
+        assert_failure_eq(actual, expected);
     }
 
     #[test]
     fn raw_within_in_emphasis() {
-        let input = "_a``a_";
+        let input = content_lines!("_a``a_");
 
         let expected = ErrorKind::ExpectedToken(EmphasisDelimiter::NAME);
 
-        let result = parse_content_str(input);
-        assert_parse_fails(result, expected);
+        let actual = parse_str(input).expect_failure().kind;
+
+        assert_failure_eq(actual, expected);
     }
 
     #[test]
     fn doc_with_leading_new_line() {
-        let input = "\nCats cats cats";
+        let input = content_lines!("", "Cats cats cats");
 
-        let expected = paragraph!(text("Cats cats cats"));
+        let expected = contents![paragraph![text("Cats cats cats")]];
 
-        let result = parse_content_str(input);
-        assert_content_eq(result, expected);
+        let actual = parse_str(input).expect_successful().contents;
+
+        assert_contents_eq(actual, expected);
     }
 
     #[test]
     fn doc_with_leading_new_lines() {
-        let input = "\n\nCats cats cats";
+        let input = content_lines!("", "", "Cats cats cats");
 
-        let expected = paragraph!(text("Cats cats cats"));
+        let expected = contents![paragraph![text("Cats cats cats")]];
 
-        let result = parse_content_str(input);
-        assert_content_eq(result, expected);
+        let actual = parse_str(input).expect_successful().contents;
+
+        assert_contents_eq(actual, expected);
     }
 
     #[test]
     fn doc_with_leading_spaces_and_new_line() {
-        let input = "   \nCats cats cats";
+        let input = content_lines!("   ", "Cats cats cats");
 
-        let expected = paragraph!(text("Cats cats cats"));
+        let expected = contents![paragraph![text("Cats cats cats")]];
 
-        let result = parse_content_str(input);
-        assert_content_eq(result, expected);
+        let actual = parse_str(input).expect_successful().contents;
+
+        assert_contents_eq(actual, expected);
     }
 
     #[test]
     fn doc_ending_with_new_line() {
-        let input = "Cats are friends\n";
+        let input = content_lines!("Cats are friends");
 
-        let expected = paragraph! { text("Cats are friends") };
+        let expected = contents![paragraph![text("Cats are friends")]];
 
-        let result = parse_content_str(input);
-        assert_content_eq(result, expected);
+        let actual = parse_str(input).expect_successful().contents;
+
+        assert_contents_eq(actual, expected);
     }
 
     #[test]
     fn doc_ending_with_new_lines() {
-        let input = "Feline friends\n\n";
+        let input = content_lines!("Feline friends", "");
 
-        let expected = paragraph! { text("Feline friends") };
+        let expected = contents![paragraph![text("Feline friends")]];
 
-        let result = parse_content_str(input);
-        assert_content_eq(result, expected);
+        let actual = parse_str(input).expect_successful().contents;
+
+        assert_contents_eq(actual, expected);
     }
 
     #[test]
     fn new_line_and_space_between_styled_and_plain_text_runs() {
-        let input = "*Cat*\n cat";
+        let input = content_lines!("*Cat*", " cat");
 
-        let expected = paragraph! {
-            strong_text("Cat"),
-            text(" cat"),
-        };
+        let expected = contents![paragraph![strong_text("Cat"), text(" cat"),]];
 
-        let result = parse_content_str(input);
-        assert_content_eq(result, expected);
+        let actual = parse_str(input).expect_successful().contents;
+
+        assert_contents_eq(actual, expected);
     }
 
     #[test]
     fn leading_whitespace_on_paragraph_is_ignored() {
-        let input = "Cat\n\n  cat";
+        let input = content_lines!("Cat", "", "  cat");
 
-        let expected = elements!(
-            paragraph { text("Cat") },
-            paragraph { text("cat") }
-        );
+        let expected = contents![paragraph![text("Cat")], paragraph![text("cat")]];
 
-        let result = parse_content_str(input);
-        assert_content_eq(result, expected);
+        let actual = parse_str(input).expect_successful().contents;
+
+        assert_contents_eq(actual, expected);
     }
 
     #[test]
     fn doc_metadata() {
-        let input = concat!(
-            "@metadata\n",
-            "id: 12.03\n",
-            "\n",
-            "/ Document with metadata",
+        let input = document_lines!(
+            "@metadata",
+            "id: 12.03",
+            "",
+            "/ Some document with metadata",
+            "",
         );
 
-        let expected = document!(
-            title: "Document with metadata",
-            metadata: {
-                id: "12.03"
-            }
-        );
+        let expected = document()
+            .title("Some document with metadata")
+            .id("12.03")
+            .build();
 
-        let result = parse_document_str(input);
-        assert_document_eq(result, expected);
+        let actual = parse_str(input).expect_successful();
+        assert_document_eq(actual, expected);
     }
 
     #[test]
     fn doc_metadata_with_tags() {
-        let input = concat!(
-            "@metadata\n",
-            "id: feline.feasts.25\n",
-            "tags: cooking | eating | nice-smells\n",
-            "\n",
+        let input = document_lines!(
+            "@metadata",
+            "id: feline.feasts.25",
+            "tags: cooking | eating | nice-smells",
+            "",
             "/ Document with metadata",
+            "",
         );
 
-        let expected = document!(
-            title: "Document with metadata",
-            metadata: {
-                id:"feline.feasts.25",
-                tags: ["cooking", "eating", "nice-smells"],
-            }
-        );
+        let expected = document()
+            .title("Document with metadata")
+            .id("feline.feasts.25")
+            .tags(&["cooking", "eating", "nice-smells"])
+            .build();
 
-        let result = parse_document_str(input);
-        assert_document_eq(result, expected);
+        let actual = parse_str(input).expect_successful();
+        assert_document_eq(actual, expected);
     }
 
     #[test]
     fn doc_metadata_with_unknown_identifier_is_rejected() {
-        let input = "@metadata\nkibble: yes please\n";
+        let input = document_lines!(
+            "@metadata",
+            "kibble: yes please",
+            "",
+            "/ Doc with weird metadata"
+        );
 
         let expected = ErrorKind::UnknownMetadata("kibble".into());
 
-        let result = parse_document_str(input);
-        assert_parse_fails(result, expected);
+        let actual = parse_str(input).expect_failure().kind;
+        assert_failure_eq(actual, expected);
     }
 
     #[test]
     fn doc_metadata_not_at_start_is_rejected() {
-        let input = concat!(
-            "/ Some title\n",
-            "\n",
-            "Helloo there. Metadata should not follow this.!\n",
-            "\n",
-            "@metadata\n",
-            "id: 01.23\n"
+        let input = document_lines!(
+            "/ Some title",
+            "",
+            "Helloo there. Metadata should not follow this.!",
+            "",
+            "@metadata",
+            "id: 01.23"
         );
 
         let expected = ErrorKind::MetadataNotAtStart;
 
-        let result = parse_document_str(input);
-        assert_parse_fails(result, expected);
+        let actual = parse_str(input).expect_failure().kind;
+        assert_failure_eq(actual, expected);
     }
 
     #[test]
     fn doc_title() {
         let input = "/ Practical espionage for felines in urban settings";
 
-        let expected = document!(
-            title: "Practical espionage for felines in urban settings"
-        );
+        let expected = document()
+            .title("Practical espionage for felines in urban settings")
+            .build();
 
-        let result = parse_document_str(input);
-        assert_document_eq(result, expected);
+        let actual = parse_str(input).expect_successful();
+        assert_document_eq(actual, expected);
     }
 
     #[test]
     fn doc_title_with_folowing_para() {
-        let input = concat!(
-            "/ Some Doc\n",
-            "\n",
-            "\n",
-            "\n",
-            "\n",
-            "Hello cats and kittens"
+        let input = document_lines!(
+            "/ Some Doc",
+            "",
+            "",
+            "",
+            "",
+            "Why hello there cats and kittens"
         );
 
-        let expected = document!(
-            title: "Some Doc",
-            contents: {
-                paragraph { text("Hello cats and kittens") }
-            }
-        );
+        let expected = document()
+            .title("Some Doc")
+            .contents(vec![paragraph![text("Why hello there cats and kittens")]])
+            .build();
 
-        let result = parse_document_str(input);
-        assert_document_eq(result, expected);
+        let actual = parse_str(input).expect_successful();
+        assert_document_eq(actual, expected);
     }
 
     #[test]
     fn doc_title_with_wonky_spacing() {
-        let input = "/My Very   Cool Document   \n\n";
+        let input = document_lines!("/My Very   Cool Document   ", "");
 
-        let expected = document!(
-            title: "My Very Cool Document"
-        );
+        let expected = document().title("My Very Cool Document").build();
 
-        let result = parse_document_str(input);
-        assert_document_eq(result, expected);
+        let actual = parse_str(input).expect_successful();
+        assert_document_eq(actual, expected);
     }
 
     #[test]
     fn doc_title_with_no_trailing_newline() {
         let input = "/Some Doc";
 
-        let expected = document!(
-            title: "Some Doc"
-        );
+        let expected = document().title("Some Doc").build();
 
-        let result = parse_document_str(input);
-        assert_document_eq(result, expected);
+        let actual = parse_str(input).expect_successful();
+        assert_document_eq(actual, expected);
     }
 
     #[test]
     fn doc_title_in_not_at_start() {
-        let input = concat!(
-            "Document should not be after this!\n",
-            "\n",
+        let input = document_lines!(
+            "Document should not be after this!",
+            "",
             "/Some Document Title"
         );
 
         let expected = ErrorKind::ExpectedToken(TitleDirective::NAME);
 
-        let result = parse_document_str(input);
-        assert_parse_fails(result, expected);
+        let actual = parse_str(input).expect_failure().kind;
+        assert_failure_eq(actual, expected);
     }
 
     #[test]
     fn doc_title_in_section() {
-        let input = concat!(
-            "/ Some Document Title\n",
-            "\n",
-            "// Some important document section\n",
-            "\n",
+        let input = document_lines!(
+            "/ Some Document Title",
+            "",
+            "// Some important document section",
+            "",
             "/ Other Document Title"
         );
 
         let expected = ErrorKind::UnexpectedBlockStart;
 
-        let result = parse_document_str(input);
-        assert_parse_fails(result, expected);
+        let actual = parse_str(input).expect_failure().kind;
+        assert_failure_eq(actual, expected);
     }
 
     #[test]
     fn doc_title_in_sub_section() {
-        let input = concat!(
-            "/ Some Document Title\n",
-            "\n",
-            "// Some important document section\n",
-            "\n",
-            "/// Some important document sub section\n",
-            "\n",
-            "/Some Document Title"
+        let input = document_lines!(
+            "/ Some Document Title",
+            "",
+            "// Some important document section",
+            "",
+            "/// Some important document sub section",
+            "",
+            "/Some Document Title",
+            "",
+            "Sup",
         );
 
         let expected = ErrorKind::UnexpectedBlockStart;
 
-        let result = parse_document_str(input);
-        assert_parse_fails(result, expected);
+        let actual = parse_str(input).expect_failure().kind;
+        assert_failure_eq(actual, expected);
     }
 
     #[test]
     fn empty_doc_title() {
-        let input = "/";
-
-        let result = parse_document_str(input);
+        let input = document_lines!("/");
 
         let expected = ErrorKind::UnexpectedHeaderTextStart;
 
-        assert_parse_fails(result, expected);
+        let actual = parse_str(input).expect_failure().kind;
+        assert_failure_eq(actual, expected);
     }
 
     #[test]
     fn subsection_missing_parent() {
-        let input = concat!(
-            "/Some Document Title\n",
-            "\n",
-            "/// Some important document sub section\n",
+        let input = document_lines!(
+            "/Some Document Title",
+            "",
+            "/// Some important document sub section",
         );
 
         let expected = ErrorKind::SubSectionNotNested;
 
-        let result = parse_document_str(input);
-        assert_parse_fails(result, expected);
+        let actual = parse_str(input).expect_failure().kind;
+        assert_failure_eq(actual, expected);
     }
 
     #[test]
     fn multi_paragraph_info() {
-        let input = concat!(
-            "!info\n",
-            ">>>\n",
-            "Here are some facts...\n",
-            "\n",
-            "...about the cats!\n",
-            "<<<"
+        let input = content_lines!(
+            "!info",
+            ">>>",
+            "Here are some facts...",
+            "",
+            "...about the cats!",
+            "<<<",
+            //TODO: Relax the parser, make this not be manditory
+            ""
         );
 
-        let expected = info! [
-            paragraph { text("Here are some facts...") },
-            paragraph { text("...about the cats!") }
-        ];
+        let expected = contents![info![
+            paragraph![text("Here are some facts...")],
+            paragraph![text("...about the cats!")]
+        ]];
 
-        let result = parse_content_str(input);
-        assert_content_eq(result, expected);
+        let actual = parse_str(input).expect_successful().contents;
+
+        assert_contents_eq(actual, expected);
     }
 
     #[test]
     fn single_paragraph_info() {
-        let input = concat!(
-            "!info\n",
-            "Did you know that cats sometimes like a nice long massage\n",
-            "\n",
+        let input = content_lines!(
+            "!info",
+            "Did you know that cats sometimes like a nice long massage",
+            "",
         );
 
-        let expected = info! [
-            paragraph {
-                text(
-                    "Did you know that cats sometimes like a nice long massage"
-                )
-            }
-        ];
+        let expected = contents![info![paragraph![text(
+            "Did you know that cats sometimes like a nice long massage"
+        )]]];
 
-        let result = parse_content_str(input);
-        assert_content_eq(result, expected);
+        let actual = parse_str(input).expect_successful().contents;
+
+        assert_contents_eq(actual, expected);
     }
 
     #[test]
     fn container_missing_start_is_rejected() {
-        let input = "Silly cat\n<<<";
+        let input = content_lines!("Silly cat", "<<<");
 
         let expected = ErrorKind::ContainerMissingStart;
 
-        let result = parse_content_str(input);
-        assert_parse_fails(result, expected);
+        let actual = parse_str(input).expect_failure().kind;
+
+        assert_failure_eq(actual, expected);
     }
 
     #[test]
     fn empty_container_is_rejected() {
-        let input = "!info\n";
+        let input = content_lines!("!info");
 
         let expected = ErrorKind::EmptyContainer;
 
-        let result = parse_content_str(input);
-        assert_parse_fails(result, expected);
+        let actual = parse_str(input).expect_failure().kind;
+
+        assert_failure_eq(actual, expected);
     }
 
     #[test]
     fn detactched_container_is_rejected() {
-        let input = "!info\n\ncats!";
+        let input = content_lines!("!info", "", "cats!");
 
         let expected = ErrorKind::EmptyContainer;
 
-        let result = parse_content_str(input);
-        assert_parse_fails(result, expected);
+        let actual = parse_str(input).expect_failure().kind;
+
+        assert_failure_eq(actual, expected);
     }
 
     #[test]
     fn trailing_text_on_delimited_start_is_rejected() {
-        let input = concat!(
-            "!info\n",
-            ">>>squeek\n",
-            "Let me know if you find where I left my\n",
-            "<<<"
+        let input = content_lines!(
+            "!info",
+            ">>>squeek",
+            "Let me know if you find where I left my",
+            "<<<",
+            ""
         );
 
         let expected = ErrorKind::ExpectedToken(LineBreak::NAME);
 
-        let result = parse_content_str(input);
-        assert_parse_fails(result, expected);
+        let actual = parse_str(input).expect_failure().kind;
+
+        assert_failure_eq(actual, expected);
     }
 
     #[test]
     fn trailing_text_on_delimited_end_is_rejected() {
-        let input = concat!(
-            "!info\n",
-            ">>>\n",
-            "Let me know if you find where I left my\n",
-            "<<<toy"
+        let input = content_lines!(
+            "!info",
+            ">>>",
+            "Let me know if you find where I left my",
+            "<<<toy",
+            ""
         );
 
         let expected = ErrorKind::ExpectedToken(BlockBreak::NAME);
 
-        let result = parse_content_str(input);
-        assert_parse_fails(result, expected);
+        let actual = parse_str(input).expect_failure().kind;
+
+        assert_failure_eq(actual, expected);
     }
 
     #[test]
     fn missing_blockbreak_after_container_is_rejected() {
-        let input = concat!(
-            "!info\n",
-            ">>>\n",
-            "Let me know if you find where I left my\n",
-            "<<<\n",
+        let input = content_lines!(
+            "!info",
+            ">>>",
+            "Let me know if you find where I left my",
+            "<<<",
             "toy"
         );
 
         let expected = ErrorKind::ExpectedToken(BlockBreak::NAME);
 
-        let result = parse_content_str(input);
-        assert_parse_fails(result, expected);
+        let actual = parse_str(input).expect_failure().kind;
+
+        assert_failure_eq(actual, expected);
     }
 
     #[test]
     fn dash_in_paragraph_is_treated_as_part_of_text() {
-        let input = "Ripley\n- Cat";
+        let input = content_lines!("Ripley\n- Cat");
 
-        let expected = paragraph! { text("Ripley - Cat") };
+        let expected = contents![paragraph![text("Ripley - Cat")]];
 
-        let result = parse_content_str(input);
-        assert_content_eq(result, expected);
+        let actual = parse_str(input).expect_successful().contents;
+
+        assert_contents_eq(actual, expected);
     }
 
     #[test]
     fn indented_dash_in_paragraph_is_treated_as_part_of_text() {
-        let input = "Ripley\n  - Cat";
+        let input = content_lines!("Ripley\n  - Cat");
 
-        let expected = paragraph! { text("Ripley - Cat") };
+        let expected = contents![paragraph![text("Ripley - Cat")]];
 
-        let result = parse_content_str(input);
-        assert_content_eq(result, expected);
+        let actual = parse_str(input).expect_successful().contents;
+
+        assert_contents_eq(actual, expected);
     }
 
     #[test]
     fn simple_list() {
-        let input = concat!(
-            "- Dry food is ok\n",
-            "- Wet food is much better\n",
-            "- Water is important also\n"
+        let input = content_lines!(
+            "- Dry food is ok",
+            "- Wet food is much better",
+            "- Water is important also"
         );
 
-        let expected = list! {
-            paragraph { text("Dry food is ok")},
-            paragraph { text("Wet food is much better")},
-            paragraph { text("Water is important also")}
-        };
-        let result = parse_content_str(input);
-        assert_content_eq(result, expected);
+        let expected = contents![list![
+            list_text![text("Dry food is ok")],
+            list_text![text("Wet food is much better")],
+            list_text![text("Water is important also")]
+        ]];
+
+        let actual = parse_str(input).expect_successful().contents;
+
+        assert_contents_eq(actual, expected);
     }
 
     #[test]
     fn explicit_list() {
-        let input = concat!(
-            "#list\n",
-            "- Dry food is ok\n",
-            "- Wet food is much better\n",
+        let input = content_lines!(
+            "#list",
+            "- Dry food is ok",
+            "- Wet food is much better",
             "- Water is important also"
         );
 
-        let expected = list! {
-            paragraph { text("Dry food is ok") },
-            paragraph { text("Wet food is much better") },
-            paragraph { text("Water is important also") }
-        };
+        let expected = contents![list![
+            list_text![text("Dry food is ok")],
+            list_text![text("Wet food is much better")],
+            list_text![text("Water is important also")]
+        ]];
 
-        let result = parse_content_str(input);
-        assert_content_eq(result, expected);
+        let actual = parse_str(input).expect_successful().contents;
+
+        assert_contents_eq(actual, expected);
     }
 
     #[test]
     fn ordered_list() {
-        let input = concat!(
-            "#list(style=ordered)\n",
-            "- Dry food is ok\n",
-            "- Wet food is much better\n",
-            "- Water is important also\n"
+        let input = content_lines!(
+            "#list(style=ordered)",
+            "- Dry food is ok",
+            "- Wet food is much better",
+            "- Water is important also"
         );
 
-        let expected = ordered_list! {
-            paragraph { text("Dry food is ok")},
-            paragraph { text("Wet food is much better")},
-            paragraph { text("Water is important also")}
-        };
-        let result = parse_content_str(input);
-        assert_content_eq(result, expected);
+        let expected = contents![ordered_list![
+            list_text![text("Dry food is ok")],
+            list_text![text("Wet food is much better")],
+            list_text![text("Water is important also")]
+        ]];
+
+        let actual = parse_str(input).expect_successful().contents;
+
+        assert_contents_eq(actual, expected);
     }
 
     #[test]
     fn list_with_invalid_style() {
-        let input = concat!(
+        let input = content_lines!(
             "#list(style=cool)\n",
             "- Dont you think this list is really rather neat?\n",
         );
 
         let expected = ErrorKind::InvalidListStyle("cool".into());
 
-        let result = parse_content_str(input);
-        assert_parse_fails(result, expected);
+        let actual = parse_str(input).expect_failure().kind;
+
+        assert_failure_eq(actual, expected);
     }
 
     #[test]
     fn list_with_invalid_parameter() {
-        let input = concat!(
+        let input = content_lines!(
             "#list(up=down)\n",
             "- Dont you think this list is really rather odd?\n",
         );
 
         let expected = ErrorKind::InvalidListParameter("up".into());
 
-        let result = parse_content_str(input);
-        assert_parse_fails(result, expected);
+        let actual = parse_str(input).expect_failure().kind;
+
+        assert_failure_eq(actual, expected);
     }
 
     #[test]
     fn dash_in_list_text_is_not_treated_as_bullet() {
-        let input = concat!("- Meow - meow\n",);
+        let input = content_lines!("- Meow - meow\n",);
 
-        let expected = list! {paragraph { text("Meow - meow") }};
+        let expected = contents![list![list_text![text("Meow - meow")]]];
 
-        let result = parse_content_str(input);
-        assert_content_eq(result, expected);
+        let actual = parse_str(input).expect_successful().contents;
+
+        assert_contents_eq(actual, expected);
     }
 
     #[test]
     fn simple_list_with_continuations() {
-        let input = concat!(
-            "- Dry food\n",
-            "is ok\n",
-            "- Wet food\n",
-            "  is much better\n",
-            "- Water is\n",
-            "    important also\n"
+        let input = content_lines!(
+            "- Dry food",
+            "is ok",
+            "- Wet food",
+            "  is much better",
+            "- Water is",
+            "    important also"
         );
 
-        let expected = list! {
-            paragraph { text("Dry food is ok") },
-            paragraph { text("Wet food is much better") },
-            paragraph { text("Water is important also") },
-        };
+        let expected = contents![list![
+            list_text![text("Dry food is ok")],
+            list_text![text("Wet food is much better")],
+            list_text![text("Water is important also")],
+        ]];
 
-        let result = parse_content_str(input);
-        assert_content_eq(result, expected);
+        let actual = parse_str(input).expect_successful().contents;
+
+        assert_contents_eq(actual, expected);
     }
 
     #[test]
     fn list_with_styled_text() {
-        let input = concat!(
-            "- Dry food is *ok*\n",
-            "- Wet food is _much better_\n",
-            "- Water is `important  also`\n"
+        let input = content_lines!(
+            "- Dry food is *ok*",
+            "- Wet food is _much better_",
+            "- Water is `important  also`"
         );
 
-        let expected = list! {
-            paragraph {
-                text("Dry food is "),
-                strong_text("ok"),
-            }
-            paragraph {
-                text("Wet food is "),
-                emphasised_text("much better"),
-            }
-            paragraph {
-                text("Water is "),
-                raw_text("important  also"),
-            }
-        };
+        let expected = contents![list![
+            list_text![text("Dry food is "), strong_text("ok")],
+            list_text![text("Wet food is "), emphasised_text("much better")],
+            list_text![text("Water is "), raw_text("important  also")]
+        ]];
 
-        let result = parse_content_str(input);
-        assert_content_eq(result, expected);
+        let actual = parse_str(input).expect_successful().contents;
+
+        assert_contents_eq(actual, expected);
     }
 
     #[test]
     fn list_with_sublist() {
-        let input = concat!(
-            "- Nice things to eat\n",
-            "  - Tuna\n",
-            "  - Chicken\n",
-            "  - Beef\n",
+        let input = content_lines!(
+            "- Nice things to eat",
+            "  - Tuna",
+            "  - Chicken",
+            "  - Beef",
         );
 
-        let expected = list! {
-            paragraph { text("Nice things to eat") }
-            list {
-                paragraph { text("Tuna") },
-                paragraph { text("Chicken") },
-                paragraph { text("Beef") },
-            }
-        };
+        let expected = contents![list![
+            list_text![text("Nice things to eat")],
+            sub_list![
+                list_text![text("Tuna")],
+                list_text![text("Chicken")],
+                list_text![text("Beef")],
+            ]
+        ]];
 
-        let result = parse_content_str(input);
-        assert_content_eq(result, expected);
+        let actual = parse_str(input).expect_successful().contents;
+
+        assert_contents_eq(actual, expected);
     }
 
     #[test]
     fn list_with_subsublist() {
-        let input = concat!(
-            "- Nice things to eat\n",
-            "  - Beef\n",
-            "    - Hereford\n",
-            "    - Wagyu\n",
+        let input = content_lines!(
+            "- Nice things to eat",
+            "  - Beef",
+            "    - Hereford",
+            "    - Wagyu",
         );
 
-        let expected = list! {
-            paragraph { text("Nice things to eat") },
-            list {
-                paragraph { text("Beef") },
-                list {
-                    paragraph { text("Hereford") },
-                    paragraph { text("Wagyu") },
-                }
-            }
-        };
+        let expected = contents![list![
+            list_text![text("Nice things to eat")],
+            sub_list![
+                list_text![text("Beef")],
+                sub_list![list_text![text("Hereford")], list_text![text("Wagyu")],]
+            ]
+        ]];
 
-        let result = parse_content_str(input);
-        assert_content_eq(result, expected);
+        let actual = parse_str(input).expect_successful().contents;
+
+        assert_contents_eq(actual, expected);
     }
 
     #[test]
     fn list_with_raw_over_newline() {
-        let input = "- f`oo\n  ba`r\n  - baz";
+        let input = content_lines!("- f`oo", "  ba`r", "  - baz");
 
-        let expected = list! {
-            paragraph {
-                text("f"),
-                raw_text("oo   ba"),
-                text("r"),
-            },
-            list { paragraph { text("baz") }}
-        };
+        let expected = contents![list![
+            list_text![text("f"), raw_text("oo   ba"), text("r"),],
+            sub_list![list_text![text("baz")]]
+        ]];
 
-        let result = parse_content_str(input);
-        assert_content_eq(result, expected);
+        let actual = parse_str(input).expect_successful().contents;
+
+        assert_contents_eq(actual, expected);
     }
 
     #[test]
     fn list_item_with_trailing_whitespace() {
-        let input = "- Foo    \n- Bar";
+        let input = content_lines!("- Foo    ", "- Bar");
 
-        let expected = list! {
-            paragraph { text("Foo")},
-            paragraph { text("Bar")},
-        };
+        let expected = contents![list![list_text![text("Foo")], list_text![text("Bar")],]];
 
-        let result = parse_content_str(input);
-        assert_content_eq(result, expected);
+        let actual = parse_str(input).expect_successful().contents;
+
+        assert_contents_eq(actual, expected);
     }
 
     #[test]
     fn list_with_raw_over_multiple_points() {
-        let input = "- f`oo\n  -ba`r";
+        let input = content_lines!("- f`oo", "  -ba`r");
 
-        let expected = list! {
-            paragraph {
-                text("f"),
-                raw_text("oo   -ba"),
-                text("r"),
-            }
-        };
+        let expected = contents![list![list_text![
+            text("f"),
+            raw_text("oo   -ba"),
+            text("r"),
+        ]]];
 
-        let result = parse_content_str(input);
-        assert_content_eq(result, expected);
+        let actual = parse_str(input).expect_successful().contents;
+
+        assert_contents_eq(actual, expected);
     }
 
     #[test]
     fn list_with_emphasis_over_multiple_points() {
-        let input = "- f_oo\n  -ba_r";
+        let input = content_lines!("- f_oo", "  -ba_r");
 
         let expected = ErrorKind::ExpectedToken(EmphasisDelimiter::NAME);
 
-        let result = parse_content_str(input);
-        assert_parse_fails(result, expected);
+        let actual = parse_str(input).expect_failure().kind;
+
+        assert_failure_eq(actual, expected);
     }
 
     #[test]
     fn list_with_uneven_spaces() {
-        let input = "-foo\n -bar";
+        let input = content_lines!("-foo", " -bar");
 
         let expected = ErrorKind::UnevenListIndent(Indent { space_count: 1 });
 
-        let result = parse_content_str(input);
-        assert_parse_fails(result, expected);
+        let actual = parse_str(input).expect_failure().kind;
+
+        assert_failure_eq(actual, expected);
     }
 
     #[test]
     fn list_that_skips_ascending_indent_level() {
-        let input = concat!(
-            "- Nice things to eat\n",
-            "    - Wagyu beef because it is oh so tender\n",
+        let input = content_lines!(
+            "- Nice things to eat",
+            "    - Wagyu beef because it is oh so tender",
         );
 
         let expected = ErrorKind::MissingListLevel { from: 0, to: 2 };
 
-        let result = parse_content_str(input);
-        assert_parse_fails(result, expected);
+        let actual = parse_str(input).expect_failure().kind;
+
+        assert_failure_eq(actual, expected);
     }
 
     #[test]
     fn list_that_skips_decending_indent_level() {
-        let input = concat!(
-            "- Nice things to eat\n",
-            "  - Beef\n",
-            "    - Wagyu\n",
-            "- Nice things to drink\n",
+        let input = content_lines!(
+            "- Nice things to eat",
+            "  - Beef",
+            "    - Wagyu",
+            "- Nice things to drink",
         );
 
-        let expected = list! {
-            paragraph { text("Nice things to eat") },
-            list {
-                paragraph { text("Beef") },
-                list {
-                    paragraph { text("Wagyu") }
-                }
-            }
-            paragraph { text("Nice things to drink") }
-        };
+        let expected = contents![list![
+            list_text![text("Nice things to eat")],
+            sub_list![
+                list_text![text("Beef")],
+                sub_list![list_text![text("Wagyu")]]
+            ],
+            list_text![text("Nice things to drink")]
+        ]];
 
-        let result = parse_content_str(input);
-        assert_content_eq(result, expected);
+        let actual = parse_str(input).expect_successful().contents;
+
+        assert_contents_eq(actual, expected);
     }
 
     #[test]
     fn error_specifies_correct_row_and_column() {
-        let input = concat!(
-            "/ Document with an silly cat error\n",
-            "\n",
-            "Silly cat\n",
+        let input = document_lines!(
+            "/ Document with an silly cat error",
+            "",
+            "Silly cat",
             "goes *_*"
         );
 
         let expected = (6, 3);
 
-        let error = parse_document_str(input).unwrap_err();
+        let error = parse_str(input).expect_failure();
         let position = error.token.position;
         let actual = (position.column, position.row);
 
@@ -2801,16 +2718,16 @@ mod test {
 
     #[test]
     fn error_includes_token_name() {
-        let input = concat!(
-            "/ Document with an silly cat error\n",
-            "\n",
-            "Silly cat\n",
+        let input = document_lines!(
+            "/ Document with an silly cat error",
+            "",
+            "Silly cat",
             "goes *_*"
         );
 
         let expected = EmphasisDelimiter::NAME;
 
-        let error = parse_document_str(input).unwrap_err();
+        let error = parse_str(input).expect_failure();
         let actual = error.token.name;
 
         assert_eq!(actual, expected);
@@ -2818,7 +2735,7 @@ mod test {
 
     #[test]
     fn error_includes_token_lexeme() {
-        let input = concat!(
+        let input = document_lines!(
             "/ Document with an silly cat error\n",
             "\n",
             "Silly cat\n",
@@ -2827,7 +2744,7 @@ mod test {
 
         let expected = "_".into();
 
-        let error = parse_document_str(input).unwrap_err();
+        let error = parse_str(input).expect_failure();
         let actual = error.token.lexeme;
 
         assert_eq!(actual, expected);
@@ -2835,128 +2752,116 @@ mod test {
 
     #[test]
     fn link_with_reference() {
-        let input = concat!(
-            "@references\n",
-            "ripley_2020: https://example.com\n",
-            "\n",
-            "/ Cat petting tips\n",
-            "\n",
-            "For more info, consult [our guide on petting cats]@ripley_2020,\n",
-            "created by our own in house experts.\n",
+        let input = document_lines!(
+            "@references",
+            "ripley_2020: https://example.com",
+            "",
+            "/ Cat petting tips",
+            "",
+            "For more info, consult [our guide on petting cats]@ripley_2020,",
+            "created by our own in house experts.",
         );
 
-        let expected = document!(
-            title: "Cat petting tips",
-            contents: {
-                paragraph {
-                    text("For more info, consult "),
-                    linked_text("our guide on petting cats", "ripley_2020"),
-                    text(", created by our own in house experts.")
-                }
-            },
-            references: {
-                ("ripley_2020", "https://example.com")
-            }
-        );
+        let expected = document()
+            .title("Cat petting tips")
+            .contents(vec![paragraph![
+                text("For more info, consult "),
+                linked_text("our guide on petting cats", "ripley_2020"),
+                text(", created by our own in house experts.")
+            ]])
+            .references(&[("ripley_2020", "https://example.com")])
+            .build();
 
-        let result = parse_document_str(input);
-        assert_document_eq(result, expected);
+        let actual = parse_str(input).expect_successful();
+        assert_document_eq(actual, expected);
     }
 
     #[test]
     fn link_with_following_space() {
-        let input = concat!(
-            "@references\n",
-            "some_ref: https://example.com\n",
-            "\n",
-            "/ Some doc\n",
-            "\n",
-            "See [our guide]@some_ref for more\n",
+        let input = document_lines!(
+            "@references",
+            "some_ref: https://example.com",
+            "",
+            "/ Some doc",
+            "",
+            "See [our guide]@some_ref for more",
         );
 
-        let expected = document!(
-            title: "Some doc",
-            contents: {
-                paragraph {
-                    text("See "),
-                    linked_text("our guide", "some_ref"),
-                    text(" for more")
-                }
-            },
-            references: {
-                ("some_ref", "https://example.com")
-            }
-        );
+        let expected = document()
+            .title("Some doc")
+            .contents(vec![paragraph![
+                text("See "),
+                linked_text("our guide", "some_ref"),
+                text(" for more")
+            ]])
+            .references(&[("some_ref", "https://example.com")])
+            .build();
 
-        let result = parse_document_str(input);
-        assert_document_eq(result, expected);
+        let actual = parse_str(input).expect_successful();
+        assert_document_eq(actual, expected);
     }
 
     #[test]
     fn references_with_odd_spacing() {
-        let input = concat!(
-            "@references\n",
-            "ripley_2020: https://example.com/a\n",
-            "ripley_2021:https://example.com/b\n",
-            "ripley_2022 :https://example.com/c\n",
-            "ripley_2023 : https://example.com/d\n",
-            "ripley_2024: https://example.com/e  \n",
-            "\n",
+        let input = document_lines!(
+            "@references",
+            "ripley_2020: https://example.com/a",
+            "ripley_2021:https://example.com/b",
+            "ripley_2022 :https://example.com/c",
+            "ripley_2023 : https://example.com/d",
+            "ripley_2024: https://example.com/e  ",
+            "",
             "/ Doc with lots of references",
+            //TODO: Relax parser so the following trailing newline is not reqired
+            "",
         );
 
-        let expected = document!(
-            title: "Doc with lots of references",
-            references: {
+        let expected = document()
+            .title("Doc with lots of references")
+            .references(&[
                 ("ripley_2020", "https://example.com/a"),
                 ("ripley_2021", "https://example.com/b"),
                 ("ripley_2022", "https://example.com/c"),
                 ("ripley_2023", "https://example.com/d"),
                 ("ripley_2024", "https://example.com/e"),
-            }
-        );
+            ])
+            .build();
 
-        let result = parse_document_str(input);
-        assert_document_eq(result, expected);
-
-        //TODO: I guess we should have assert for references and metadata also?
-        // e.g
-        // let result = parse_references_str(input);
-        // assert_references_eq(result, expected)
+        let actual = parse_str(input).expect_successful();
+        assert_document_eq(actual, expected);
     }
 
     #[test]
     fn at_sign_can_be_used_normally() {
-        let input = "C@ts are great @ that";
+        let input = content_lines!("C@ts are great @ that");
 
-        let expected = paragraph! {
-            text("C@ts are great @ that")
-        };
+        let expected = contents![paragraph![text("C@ts are great @ that")]];
 
-        let result = parse_content_str(input);
-        assert_content_eq(result, expected);
+        let actual = parse_str(input).expect_successful().contents;
+
+        assert_contents_eq(actual, expected);
     }
 
     #[test]
     fn whitespace_around_linked_text_is_rejected() {
-        let input = concat!(
-            "@references\n",
-            "ripley_2020: https://example.com\n",
-            "\n",
-            "/ Some Title\n",
-            "\n",
-            "We like [ petting cats ]@ripley_2020 a lot.\n",
+        let input = document_lines!(
+            "@references",
+            "ripley_2020: https://example.com",
+            "",
+            "/ Some Title",
+            "",
+            "We like [ petting cats ]@ripley_2020 a lot.",
         );
 
         let expected = ErrorKind::LooseDelimiter;
 
-        let result = parse_document_str(input);
-        assert_parse_fails(result, expected);
+        let actual = parse_str(input).expect_failure().kind;
+        assert_failure_eq(actual, expected);
     }
 
     #[test]
     fn references_after_content_rejected() {
-        let input = concat!(
+        let input = document_lines!(
             "/ Some Title\n",
             "\n",
             "For more info, consult [our guide on petting cats]@ripley_2020,\n",
@@ -2968,133 +2873,134 @@ mod test {
 
         let expected = ErrorKind::ReferencesOutOfPlace;
 
-        let result = parse_document_str(input);
-        assert_parse_fails(result, expected);
+        let actual = parse_str(input).expect_failure().kind;
+
+        assert_failure_eq(actual, expected);
     }
 
     #[test]
     fn document_with_sections() {
-        let input = concat!(
-            "/Speed running the kitchen at 4am\n",
-            "\n",
-            "This is a comprehensive guide.\n",
-            "\n",
-            "// Motivation\n",
-            "\n",
-            "Set a personal best,\n",
-            "while others rest!\n",
-            "\n",
-            "// Planning the perfect lap\n",
-            "\n",
-            "This requires care.\n",
-            "\n",
-            "/// Selecting a route\n",
-            "\n",
-            "Avoid the toaster.\n",
-            "\n",
-            "/// Choosing a victory scream\n",
-            "\n",
-            "\n",
-            "\n",
-            "Meeaaahhh?\n",
-            "\n",
-            "// Conclusion\n",
-            "\n",
+        let input = document_lines!(
+            "/Speed running the kitchen at 4am",
+            "",
+            "This is a comprehensive guide.",
+            "",
+            "// Motivation",
+            "",
+            "Set a personal best,",
+            "while others rest!",
+            "",
+            "// Planning the perfect lap",
+            "",
+            "This requires care.",
+            "",
+            "/// Selecting a route",
+            "",
+            "Avoid the toaster.",
+            "",
+            "/// Choosing a victory scream",
+            "",
+            "",
+            "",
+            "Meeaaahhh?",
+            "",
+            "// Conclusion and reflections",
+            "",
             "Go go go!"
         );
 
-        let expected = document! {
-            title: "Speed running the kitchen at 4am",
-            contents: {
-                paragraph { text("This is a comprehensive guide.") },
+        let expected = document()
+            .title("Speed running the kitchen at 4am")
+            .contents(vec![
+                paragraph![text("This is a comprehensive guide.")],
+                section![
+                    heading = "Motivation",
+                    paragraph![text("Set a personal best, while others rest!")],
+                ],
+                section![
+                    heading = "Planning the perfect lap",
+                    paragraph![text("This requires care.")],
+                    subsection![
+                        heading = "Selecting a route",
+                        paragraph![text("Avoid the toaster.")],
+                    ],
+                    subsection![
+                        heading = "Choosing a victory scream",
+                        paragraph![text("Meeaaahhh?")],
+                    ],
+                ],
+                section![
+                    heading = "Conclusion and reflections",
+                    paragraph![text("Go go go!")],
+                ],
+            ])
+            .build();
 
-                section("Motivation") {
-                    paragraph { text("Set a personal best, while others rest!") },
-                },
-                section("Planning the perfect lap") {
-                    paragraph { text("This requires care.") },
-                    subsection("Selecting a route") {
-                        paragraph { text("Avoid the toaster.") },
-                    }
-                    subsection("Choosing a victory scream") {
-                        paragraph { text("Meeaaahhh?") },
-                    },
-                },
-                section("Conclusion") {
-                    paragraph { text("Go go go!") },
-                }
-            }
-        };
-
-        let result = parse_document_str(input);
-        assert_document_eq(result, expected);
+        let actual = parse_str(input).expect_successful();
+        assert_document_eq(actual, expected);
     }
 
     #[test]
     fn section_with_trailing_space_in_title() {
-        let input = concat!(
+        let input = document_lines!(
             "/Speed running the kitchen at 4am \n",
             "\n",
             "This is a comprehensive guide.\n",
         );
 
-        let expected = document! {
-            title: "Speed running the kitchen at 4am",
-            contents: {
-                paragraph { text("This is a comprehensive guide.") }
-            }
-        };
+        let expected = document()
+            .title("Speed running the kitchen at 4am")
+            .contents(vec![paragraph![text("This is a comprehensive guide.")]])
+            .build();
 
-        let result = parse_document_str(input);
-        assert_document_eq(result, expected);
+        let actual = parse_str(input).expect_successful();
+        assert_document_eq(actual, expected);
     }
 
     #[test]
     fn code_block() {
-        let input = concat!(
-            "#code\n",
-            "---\n",
-            "Meow?\n",
-            "\n",
-            "Meow.\n",
-            "Me...           ...ow.\n",
-            "Meow!\n",
-            "---\n"
+        let input = content_lines!(
+            "#code",
+            "---",
+            "Meow?",
+            "",
+            "Meow.",
+            "Me...           ...ow.",
+            "Meow!",
+            "---"
         );
 
-        let expected = code! {
+        let expected = contents![code![
             "Meow?\n",
             "\n",
             "Meow.\n",
             "Me...           ...ow.\n",
             "Meow!\n",
-        };
+        ]];
 
-        let result = parse_content_str(input);
-        assert_content_eq(result, expected);
+        let actual = parse_str(input).expect_successful().contents;
+
+        assert_contents_eq(actual, expected);
     }
 
     #[test]
     fn code_block_then_paragraph() {
-        let input = concat!(
-            "#code\n",
-            "---\n",
-            "Meow?\n",
-            "---\n",
-            "\n",
+        let input = content_lines!(
+            "#code",
+            "---",
+            "Meow? Purrr purrr purrr!",
+            "---",
+            "",
             "Hey, whats up?"
         );
 
-        let expected = elements! (
-            code {
-                "Meow?\n",
-            },
-            paragraph {
-                text("Hey, whats up?")
-            }
-        );
+        let expected = contents![
+            code!["Meow? Purrr purrr purrr!\n",],
+            paragraph![text("Hey, whats up?")]
+        ];
 
-        let result = parse_content_str(input);
-        assert_content_eq(result, expected);
+        let actual = parse_str(input).expect_successful().contents;
+
+        assert_contents_eq(actual, expected);
     }
 }
