@@ -1062,6 +1062,24 @@ mod test {
         }
     }
 
+    impl From<doc::Block> for Box<[doc::Element]> {
+        fn from(block: doc::Block) -> Box<[doc::Element]> {
+            Box::new([block.into()])
+        }
+    }
+
+    impl From<doc::Container> for Box<[doc::Element]> {
+        fn from(block: doc::Container) -> Box<[doc::Element]> {
+            Box::new([block.into()])
+        }
+    }
+
+    macro_rules! contents {
+        ($($item:expr),+ $(,)?) => {
+            Box::new([$($item, )+])
+        };
+    }
+
     //TODO: All of the following macros should have an into
     // if they dont, then thats a bit sus
 
@@ -1146,13 +1164,6 @@ mod test {
         };
     }
 
-    //TODO: try and remove this
-    macro_rules! contents {
-        ($($item:expr),+ $(,)?) => {
-            Box::new([$($item, )+])
-        };
-    }
-
     trait ParseResultTestHelpers {
         fn expect_successful(self) -> Document;
         fn expect_failure(self) -> ParseError;
@@ -1189,8 +1200,6 @@ mod test {
         }
     }
 
-    // TODO: Try accepting Into<Box[Doc::Element]>?
-    // Lose content wrapper in tests?
     fn assert_contents_eq(actual: Box<[doc::Element]>, expected: Box<[doc::Element]>) {
         if actual != expected {
             eprintln!("Actual:\n{:#?}", actual);
@@ -1263,7 +1272,7 @@ mod test {
     fn one_line_paragraph() {
         let input = content_lines!("We like cats very much");
 
-        let expected = contents![paragraph![text("We like cats very much")]];
+        let expected = paragraph![text("We like cats very much")];
 
         let actual = parse_str(input).expect_successful().contents;
 
@@ -1274,7 +1283,7 @@ mod test {
     fn explicit_paragraph() {
         let input = content_lines!("#paragraph", "Cats go meeow!");
 
-        let expected = contents![paragraph![text("Cats go meeow!")]];
+        let expected = paragraph![text("Cats go meeow!")];
 
         let actual = parse_str(input).expect_successful().contents;
 
@@ -1352,7 +1361,7 @@ mod test {
     fn double_space() {
         let input = content_lines!("Nice  kitty!");
 
-        let expected = contents![paragraph![text("Nice kitty!")]];
+        let expected = paragraph![text("Nice kitty!")];
 
         let actual = parse_str(input).expect_successful().contents;
 
@@ -1363,7 +1372,7 @@ mod test {
     fn trailing_new_line_is_ignored() {
         let input = content_lines!("Cats", "");
 
-        let expected = contents![paragraph![text("Cats")]];
+        let expected = paragraph![text("Cats")];
 
         let actual = parse_str(input).expect_successful().contents;
 
@@ -1374,7 +1383,7 @@ mod test {
     fn space_then_trailing_new_line_is_ignored() {
         let input = content_lines!("Cats ", "");
 
-        let expected = contents![paragraph![text("Cats")]];
+        let expected = paragraph![text("Cats")];
 
         let actual = parse_str(input).expect_successful().contents;
 
@@ -1385,7 +1394,7 @@ mod test {
     fn new_line_becomes_whitespace() {
         let input = content_lines!("Cats", "whiskers");
 
-        let expected = contents![paragraph![text("Cats whiskers")]];
+        let expected = paragraph![text("Cats whiskers")];
 
         let actual = parse_str(input).expect_successful().contents;
 
@@ -1396,7 +1405,7 @@ mod test {
     fn new_line_becomes_whitespace_given_plain_then_styled() {
         let input = content_lines!("Cats", "*whiskers*");
 
-        let expected = contents![paragraph![text("Cats "), strong_text("whiskers"),]];
+        let expected = paragraph![text("Cats "), strong_text("whiskers"),];
 
         let actual = parse_str(input).expect_successful().contents;
 
@@ -1407,7 +1416,7 @@ mod test {
     fn new_line_becomes_whitespace_given_plain_then_raw() {
         let input = content_lines!("Cats", "`nice whiskers`");
 
-        let expected = contents![paragraph![text("Cats "), raw_text("nice whiskers"),]];
+        let expected = paragraph![text("Cats "), raw_text("nice whiskers"),];
 
         let actual = parse_str(input).expect_successful().contents;
 
@@ -1417,7 +1426,7 @@ mod test {
     #[test]
     fn new_line_with_extra_whitespace_collapses() {
         let input = content_lines!("Cats    ", "    whiskers");
-        let expected = contents![paragraph![text("Cats whiskers")]];
+        let expected = paragraph![text("Cats whiskers")];
 
         let actual = parse_str(input).expect_successful().contents;
 
@@ -1461,7 +1470,7 @@ mod test {
     fn blockbreak_with_extra_whitespace() {
         let input = content_lines!("Cats  ", "    ", "  whiskers");
 
-        let expected = contents!(paragraph![text("Cats")], paragraph![text("whiskers")]);
+        let expected = contents![paragraph![text("Cats")], paragraph![text("whiskers")]];
 
         let actual = parse_str(input).expect_successful().contents;
 
@@ -1483,7 +1492,7 @@ mod test {
     fn escaped_char() {
         let input = content_lines!("\\A");
 
-        let expected = contents![paragraph![text("A")]];
+        let expected = paragraph![text("A")];
 
         let actual = parse_str(input).expect_successful().contents;
 
@@ -1494,7 +1503,7 @@ mod test {
     fn escaped_underscore_in_markup() {
         let input = content_lines!("My cat does backflips \\_coolcat");
 
-        let expected = contents![paragraph![text("My cat does backflips _coolcat")]];
+        let expected = paragraph![text("My cat does backflips _coolcat")];
 
         let actual = parse_str(input).expect_successful().contents;
 
@@ -1505,7 +1514,7 @@ mod test {
     fn escaped_underscore() {
         let input = content_lines!("cat\\_case");
 
-        let expected = contents![paragraph![text("cat_case")]];
+        let expected = paragraph![text("cat_case")];
 
         let actual = parse_str(input).expect_successful().contents;
 
@@ -1516,7 +1525,7 @@ mod test {
     fn escaped_underscore_in_emphasis() {
         let input = content_lines!("_cat\\_case_");
 
-        let expected = contents![paragraph![emphasised_text("cat_case")]];
+        let expected = paragraph![emphasised_text("cat_case")];
 
         let actual = parse_str(input).expect_successful().contents;
 
@@ -1527,7 +1536,7 @@ mod test {
     fn escaped_ignored_in_raw() {
         let input = content_lines!("`cat\\_case`");
 
-        let expected = contents![paragraph![raw_text("cat\\_case")]];
+        let expected = paragraph![raw_text("cat\\_case")];
 
         let actual = parse_str(input).expect_successful().contents;
 
@@ -1538,11 +1547,7 @@ mod test {
     fn emphasised_words() {
         let input = content_lines!("We _totally adore_ them");
 
-        let expected = contents![paragraph![
-            text("We "),
-            emphasised_text("totally adore"),
-            text(" them"),
-        ]];
+        let expected = paragraph![text("We "), emphasised_text("totally adore"), text(" them"),];
 
         let actual = parse_str(input).expect_successful().contents;
 
@@ -1553,11 +1558,11 @@ mod test {
     fn emphasis_at_end_of_line() {
         let input = content_lines!("Cats like to _zoom_", "around");
 
-        let expected = contents![paragraph![
+        let expected = paragraph![
             text("Cats like to "),
             emphasised_text("zoom"),
             text(" around"),
-        ]];
+        ];
 
         let actual = parse_str(input).expect_successful().contents;
 
@@ -1568,11 +1573,11 @@ mod test {
     fn strong_words() {
         let input = content_lines!("I *need to pet that cat* right away.");
 
-        let expected = contents![paragraph![
+        let expected = paragraph![
             text("I "),
             strong_text("need to pet that cat"),
             text(" right away."),
-        ]];
+        ];
 
         let actual = parse_str(input).expect_successful().contents;
 
@@ -1583,11 +1588,7 @@ mod test {
     fn strong_mid_word() {
         let input = content_lines!("I said: mee*ooOOo*ww!");
 
-        let expected = contents![paragraph![
-            text("I said: mee"),
-            strong_text("ooOOo"),
-            text("ww!"),
-        ]];
+        let expected = paragraph![text("I said: mee"), strong_text("ooOOo"), text("ww!"),];
 
         let actual = parse_str(input).expect_successful().contents;
 
@@ -1598,7 +1599,7 @@ mod test {
     fn strong_over_two_lines() {
         let input = content_lines!("*me", "ow*");
 
-        let expected = contents![paragraph![strong_text("me ow")]];
+        let expected = paragraph![strong_text("me ow")];
 
         let actual = parse_str(input).expect_successful().contents;
 
@@ -1609,11 +1610,11 @@ mod test {
     fn strikethrough_words() {
         let input = content_lines!("Cats are ~ok i guess~ magnificant");
 
-        let expected = contents![paragraph![
+        let expected = paragraph![
             text("Cats are "),
             strikethrough_text("ok i guess"),
             text(" magnificant"),
-        ]];
+        ];
 
         let actual = parse_str(input).expect_successful().contents;
 
@@ -1624,11 +1625,7 @@ mod test {
     fn raw_words() {
         let input = content_lines!("Robot cat says `bleep bloop`!");
 
-        let expected = contents![paragraph![
-            text("Robot cat says "),
-            raw_text("bleep bloop"),
-            text("!"),
-        ]];
+        let expected = paragraph![text("Robot cat says "), raw_text("bleep bloop"), text("!"),];
 
         let actual = parse_str(input).expect_successful().contents;
 
@@ -1639,7 +1636,7 @@ mod test {
     fn raw_mid_word() {
         let input = content_lines!("Bl`eeee`p!");
 
-        let expected = contents![paragraph![text("Bl"), raw_text("eeee"), text("p!"),]];
+        let expected = paragraph![text("Bl"), raw_text("eeee"), text("p!"),];
 
         let actual = parse_str(input).expect_successful().contents;
 
@@ -1650,11 +1647,7 @@ mod test {
     fn underscore_in_raw() {
         let input = content_lines!("Set `PURR_LOUDLY` to true");
 
-        let expected = contents![paragraph![
-            text("Set "),
-            raw_text("PURR_LOUDLY"),
-            text(" to true"),
-        ]];
+        let expected = paragraph![text("Set "), raw_text("PURR_LOUDLY"), text(" to true"),];
 
         let actual = parse_str(input).expect_successful().contents;
 
@@ -1665,7 +1658,7 @@ mod test {
     fn extra_spaces_in_raw() {
         let input = content_lines!("`Keep your       distance`");
 
-        let expected = contents![paragraph![raw_text("Keep your       distance")]];
+        let expected = paragraph![raw_text("Keep your       distance")];
 
         let actual = parse_str(input).expect_successful().contents;
 
@@ -1676,7 +1669,7 @@ mod test {
     fn raw_over_two_lines() {
         let input = content_lines!("`Great", "cats`");
 
-        let expected = contents![paragraph![raw_text("Great cats")]];
+        let expected = paragraph![raw_text("Great cats")];
 
         let actual = parse_str(input).expect_successful().contents;
 
@@ -1687,7 +1680,7 @@ mod test {
     fn strikethrough_over_two_lines() {
         let input = content_lines!("~Great", "dogs~");
 
-        let expected = contents![paragraph![strikethrough_text("Great dogs")]];
+        let expected = paragraph![strikethrough_text("Great dogs")];
 
         let actual = parse_str(input).expect_successful().contents;
 
@@ -1698,7 +1691,7 @@ mod test {
     fn raw_leading_with_new_line() {
         let input = content_lines!("`", "Meow?`");
 
-        let expected = contents![paragraph![raw_text(" Meow?")]];
+        let expected = paragraph![raw_text(" Meow?")];
 
         let actual = parse_str(input).expect_successful().contents;
 
@@ -1709,7 +1702,7 @@ mod test {
     fn raw_trailing_with_new_line() {
         let input = content_lines!("`Meow", "`");
 
-        let expected = contents![paragraph![raw_text("Meow ")]];
+        let expected = paragraph![raw_text("Meow ")];
 
         let actual = parse_str(input).expect_successful().contents;
 
@@ -1720,7 +1713,7 @@ mod test {
     fn raw_leading_with_space() {
         let input = content_lines!("` Meow`");
 
-        let expected = contents![paragraph![raw_text(" Meow")]];
+        let expected = paragraph![raw_text(" Meow")];
 
         let actual = parse_str(input).expect_successful().contents;
 
@@ -1731,7 +1724,7 @@ mod test {
     fn raw_trailing_with_space() {
         let input = content_lines!("`Meow `");
 
-        let expected = contents![paragraph![raw_text("Meow ")]];
+        let expected = paragraph![raw_text("Meow ")];
 
         let actual = parse_str(input).expect_successful().contents;
 
@@ -1742,7 +1735,7 @@ mod test {
     fn raw_over_three_lines() {
         let input = content_lines!("`Great", "cats", "assemble!`");
 
-        let expected = contents![paragraph![raw_text("Great cats assemble!")]];
+        let expected = paragraph![raw_text("Great cats assemble!")];
 
         let actual = parse_str(input).expect_successful().contents;
 
@@ -1753,7 +1746,7 @@ mod test {
     fn standalone_dash() {
         let input = content_lines!("Felines - fantastic!");
 
-        let expected = contents![paragraph![text("Felines - fantastic!")]];
+        let expected = paragraph![text("Felines - fantastic!")];
 
         let actual = parse_str(input).expect_successful().contents;
 
@@ -1764,7 +1757,7 @@ mod test {
     fn paragraph_with_trailing_whitespace() {
         let input = content_lines!("Cool kitty   ");
 
-        let expected = contents![paragraph![text("Cool kitty")]];
+        let expected = paragraph![text("Cool kitty")];
 
         let actual = parse_str(input).expect_successful().contents;
 
@@ -1775,11 +1768,7 @@ mod test {
     fn underscore_in_awkward_places() {
         let input = content_lines!("Cat cat_cat cat_ cat.");
 
-        let expected = contents![paragraph![
-            text("Cat cat"),
-            emphasised_text("cat cat"),
-            text(" cat.")
-        ]];
+        let expected = paragraph![text("Cat cat"), emphasised_text("cat cat"), text(" cat.")];
 
         let actual = parse_str(input).expect_successful().contents;
 
@@ -1790,7 +1779,7 @@ mod test {
     fn new_line_then_multiple_spaces_in_plain_text() {
         let input = content_lines!("Cat", "  cat");
 
-        let expected = contents![paragraph![text("Cat cat")]];
+        let expected = paragraph![text("Cat cat")];
 
         let actual = parse_str(input).expect_successful().contents;
 
@@ -1801,7 +1790,7 @@ mod test {
     fn new_line_then_multiple_spaces_in_styled() {
         let input = content_lines!("*Cat", "  cat*");
 
-        let expected = contents![paragraph![strong_text("Cat cat")]];
+        let expected = paragraph![strong_text("Cat cat")];
 
         let actual = parse_str(input).expect_successful().contents;
 
@@ -1812,7 +1801,7 @@ mod test {
     fn new_line_then_multiple_spaces_in_raw() {
         let input = content_lines!("`Cat", "  cat`");
 
-        let expected = contents![paragraph![raw_text("Cat   cat")]];
+        let expected = paragraph![raw_text("Cat   cat")];
 
         let actual = parse_str(input).expect_successful().contents;
 
@@ -1823,7 +1812,7 @@ mod test {
     fn multiple_spaces_then_new_line_in_plain_text() {
         let input = content_lines!("Cat  ", "cat");
 
-        let expected = contents![paragraph![text("Cat cat")]];
+        let expected = paragraph![text("Cat cat")];
 
         let actual = parse_str(input).expect_successful().contents;
 
@@ -1834,7 +1823,7 @@ mod test {
     fn multiple_spaces_then_new_line_in_styled() {
         let input = content_lines!("*Cat  ", "cat*");
 
-        let expected = contents![paragraph![strong_text("Cat cat")]];
+        let expected = paragraph![strong_text("Cat cat")];
 
         let actual = parse_str(input).expect_successful().contents;
 
@@ -1845,7 +1834,7 @@ mod test {
     fn multiple_spaces_then_new_line_in_raw() {
         let input = content_lines!("`Cat  ", "cat`");
 
-        let expected = contents![paragraph![raw_text("Cat   cat")]];
+        let expected = paragraph![raw_text("Cat   cat")];
 
         let actual = parse_str(input).expect_successful().contents;
 
@@ -1999,7 +1988,7 @@ mod test {
     fn doc_with_leading_new_line() {
         let input = content_lines!("", "Cats cats cats");
 
-        let expected = contents![paragraph![text("Cats cats cats")]];
+        let expected = paragraph![text("Cats cats cats")];
 
         let actual = parse_str(input).expect_successful().contents;
 
@@ -2010,7 +1999,7 @@ mod test {
     fn doc_with_leading_new_lines() {
         let input = content_lines!("", "", "Cats cats cats");
 
-        let expected = contents![paragraph![text("Cats cats cats")]];
+        let expected = paragraph![text("Cats cats cats")];
 
         let actual = parse_str(input).expect_successful().contents;
 
@@ -2021,7 +2010,7 @@ mod test {
     fn doc_with_leading_spaces_and_new_line() {
         let input = content_lines!("   ", "Cats cats cats");
 
-        let expected = contents![paragraph![text("Cats cats cats")]];
+        let expected = paragraph![text("Cats cats cats")];
 
         let actual = parse_str(input).expect_successful().contents;
 
@@ -2032,7 +2021,7 @@ mod test {
     fn doc_ending_with_new_line() {
         let input = content_lines!("Cats are friends");
 
-        let expected = contents![paragraph![text("Cats are friends")]];
+        let expected = paragraph![text("Cats are friends")];
 
         let actual = parse_str(input).expect_successful().contents;
 
@@ -2043,7 +2032,7 @@ mod test {
     fn doc_ending_with_new_lines() {
         let input = content_lines!("Feline friends", "");
 
-        let expected = contents![paragraph![text("Feline friends")]];
+        let expected = paragraph![text("Feline friends")];
 
         let actual = parse_str(input).expect_successful().contents;
 
@@ -2054,7 +2043,7 @@ mod test {
     fn new_line_and_space_between_styled_and_plain_text_runs() {
         let input = content_lines!("*Cat*", " cat");
 
-        let expected = contents![paragraph![strong_text("Cat"), text(" cat"),]];
+        let expected = paragraph![strong_text("Cat"), text(" cat"),];
 
         let actual = parse_str(input).expect_successful().contents;
 
@@ -2276,10 +2265,10 @@ mod test {
             ""
         );
 
-        let expected = contents![info![
+        let expected = info![
             paragraph![text("Here are some facts...")],
             paragraph![text("...about the cats!")]
-        ]];
+        ];
 
         let actual = parse_str(input).expect_successful().contents;
 
@@ -2294,9 +2283,9 @@ mod test {
             "",
         );
 
-        let expected = contents![info![paragraph![text(
+        let expected = info![paragraph![text(
             "Did you know that cats sometimes like a nice long massage"
-        )]]];
+        )]];
 
         let actual = parse_str(input).expect_successful().contents;
 
@@ -2391,7 +2380,7 @@ mod test {
     fn dash_in_paragraph_is_treated_as_part_of_text() {
         let input = content_lines!("Ripley\n- Cat");
 
-        let expected = contents![paragraph![text("Ripley - Cat")]];
+        let expected = paragraph![text("Ripley - Cat")];
 
         let actual = parse_str(input).expect_successful().contents;
 
@@ -2402,7 +2391,7 @@ mod test {
     fn indented_dash_in_paragraph_is_treated_as_part_of_text() {
         let input = content_lines!("Ripley\n  - Cat");
 
-        let expected = contents![paragraph![text("Ripley - Cat")]];
+        let expected = paragraph![text("Ripley - Cat")];
 
         let actual = parse_str(input).expect_successful().contents;
 
@@ -2417,11 +2406,11 @@ mod test {
             "- Water is important also"
         );
 
-        let expected = contents![list![
+        let expected = list![
             list_text![text("Dry food is ok")],
             list_text![text("Wet food is much better")],
             list_text![text("Water is important also")]
-        ]];
+        ];
 
         let actual = parse_str(input).expect_successful().contents;
 
@@ -2437,11 +2426,11 @@ mod test {
             "- Water is important also"
         );
 
-        let expected = contents![list![
+        let expected = list![
             list_text![text("Dry food is ok")],
             list_text![text("Wet food is much better")],
             list_text![text("Water is important also")]
-        ]];
+        ];
 
         let actual = parse_str(input).expect_successful().contents;
 
@@ -2457,11 +2446,11 @@ mod test {
             "- Water is important also"
         );
 
-        let expected = contents![ordered_list![
+        let expected = ordered_list![
             list_text![text("Dry food is ok")],
             list_text![text("Wet food is much better")],
             list_text![text("Water is important also")]
-        ]];
+        ];
 
         let actual = parse_str(input).expect_successful().contents;
 
@@ -2500,7 +2489,7 @@ mod test {
     fn dash_in_list_text_is_not_treated_as_bullet() {
         let input = content_lines!("- Meow - meow\n",);
 
-        let expected = contents![list![list_text![text("Meow - meow")]]];
+        let expected = list![list_text![text("Meow - meow")]];
 
         let actual = parse_str(input).expect_successful().contents;
 
@@ -2518,11 +2507,11 @@ mod test {
             "    important also"
         );
 
-        let expected = contents![list![
+        let expected = list![
             list_text![text("Dry food is ok")],
             list_text![text("Wet food is much better")],
             list_text![text("Water is important also")],
-        ]];
+        ];
 
         let actual = parse_str(input).expect_successful().contents;
 
@@ -2537,11 +2526,11 @@ mod test {
             "- Water is `important  also`"
         );
 
-        let expected = contents![list![
+        let expected = list![
             list_text![text("Dry food is "), strong_text("ok")],
             list_text![text("Wet food is "), emphasised_text("much better")],
             list_text![text("Water is "), raw_text("important  also")]
-        ]];
+        ];
 
         let actual = parse_str(input).expect_successful().contents;
 
@@ -2557,14 +2546,14 @@ mod test {
             "  - Beef",
         );
 
-        let expected = contents![list![
+        let expected = list![
             list_text![text("Nice things to eat")],
             sub_list![
                 list_text![text("Tuna")],
                 list_text![text("Chicken")],
                 list_text![text("Beef")],
             ]
-        ]];
+        ];
 
         let actual = parse_str(input).expect_successful().contents;
 
@@ -2580,13 +2569,13 @@ mod test {
             "    - Wagyu",
         );
 
-        let expected = contents![list![
+        let expected = list![
             list_text![text("Nice things to eat")],
             sub_list![
                 list_text![text("Beef")],
                 sub_list![list_text![text("Hereford")], list_text![text("Wagyu")],]
             ]
-        ]];
+        ];
 
         let actual = parse_str(input).expect_successful().contents;
 
@@ -2597,10 +2586,10 @@ mod test {
     fn list_with_raw_over_newline() {
         let input = content_lines!("- f`oo", "  ba`r", "  - baz");
 
-        let expected = contents![list![
+        let expected = list![
             list_text![text("f"), raw_text("oo   ba"), text("r"),],
             sub_list![list_text![text("baz")]]
-        ]];
+        ];
 
         let actual = parse_str(input).expect_successful().contents;
 
@@ -2611,7 +2600,7 @@ mod test {
     fn list_item_with_trailing_whitespace() {
         let input = content_lines!("- Foo    ", "- Bar");
 
-        let expected = contents![list![list_text![text("Foo")], list_text![text("Bar")],]];
+        let expected = list![list_text![text("Foo")], list_text![text("Bar")],];
 
         let actual = parse_str(input).expect_successful().contents;
 
@@ -2622,11 +2611,7 @@ mod test {
     fn list_with_raw_over_multiple_points() {
         let input = content_lines!("- f`oo", "  -ba`r");
 
-        let expected = contents![list![list_text![
-            text("f"),
-            raw_text("oo   -ba"),
-            text("r"),
-        ]]];
+        let expected = list![list_text![text("f"), raw_text("oo   -ba"), text("r"),]];
 
         let actual = parse_str(input).expect_successful().contents;
 
@@ -2678,14 +2663,14 @@ mod test {
             "- Nice things to drink",
         );
 
-        let expected = contents![list![
+        let expected = list![
             list_text![text("Nice things to eat")],
             sub_list![
                 list_text![text("Beef")],
                 sub_list![list_text![text("Wagyu")]]
             ],
             list_text![text("Nice things to drink")]
-        ]];
+        ];
 
         let actual = parse_str(input).expect_successful().contents;
 
@@ -2826,7 +2811,7 @@ mod test {
     fn at_sign_can_be_used_normally() {
         let input = content_lines!("C@ts are great @ that");
 
-        let expected = contents![paragraph![text("C@ts are great @ that")]];
+        let expected = paragraph![text("C@ts are great @ that")];
 
         let actual = parse_str(input).expect_successful().contents;
 
@@ -2959,13 +2944,13 @@ mod test {
             "---"
         );
 
-        let expected = contents![code![
+        let expected = code![
             "Meow?\n",
             "\n",
             "Meow.\n",
             "Me...           ...ow.\n",
             "Meow!\n",
-        ]];
+        ];
 
         let actual = parse_str(input).expect_successful().contents;
 
@@ -2985,7 +2970,7 @@ mod test {
 
         let expected = contents![
             code!["Meow? Purrr purrr purrr!\n",],
-            paragraph![text("Hey, whats up?")]
+            paragraph![text("Hey, whats up?")],
         ];
 
         let actual = parse_str(input).expect_successful().contents;
