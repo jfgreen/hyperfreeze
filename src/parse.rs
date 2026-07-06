@@ -1080,9 +1080,6 @@ mod test {
         };
     }
 
-    //TODO: All of the following macros should have an into
-    // if they dont, then thats a bit sus
-
     macro_rules! paragraph {
         ($($text_run:expr),+ $(,)?) => {
             doc::Block::Paragraph(
@@ -1099,7 +1096,7 @@ mod test {
             }).into()
         };
     }
-    //TODO, use key word arg for type?
+
     macro_rules! ordered_list {
         ($($item:expr),+ $(,)?) => {
             doc::Block::List(doc::List {
@@ -1109,28 +1106,12 @@ mod test {
         };
     }
 
-    //TODO: Clever use of into would mean we can remove this?
-    macro_rules! sub_list {
-        ($($item:expr),+ $(,)?) => {
-            doc::ListItem::SubList(
-                Box::new([$($item, )+])
-            )
-        }
-    }
-
     macro_rules! info {
         ($($item:expr),+ $(,)?) => {
             doc::Container {
                 content: Box::new([$($item, )+]),
                 kind: doc::ContainerKind::Info,
             }.into()
-        };
-    }
-
-    //TODO: Clever use of into would mean we can remove this?
-    macro_rules! list_text {
-        ($($text_run:expr),+ $(,)?) => {
-            doc::ListItem::Text(Box::new([$($text_run, )+]))
         };
     }
 
@@ -1160,7 +1141,25 @@ mod test {
 
     macro_rules! code {
         ($($line:literal),+ $(,)?) => {
-            doc::Block::Code(concat!($($line, )+).into()).into()
+            doc::Block::Code(
+                concat!($($line, )+).to_string()
+            ).into()
+        };
+    }
+
+    macro_rules! sub_list {
+        ($($item:expr),+ $(,)?) => {
+            doc::ListItem::SubList(
+                Box::new([$($item, )+])
+            )
+        }
+    }
+
+    macro_rules! list_text {
+        ($($text_run:expr),+ $(,)?) => {
+            doc::ListItem::Text(
+                Box::new([$($text_run, )+])
+            )
         };
     }
 
@@ -1347,8 +1346,7 @@ mod test {
 
     #[test]
     fn block_without_new_line_is_rejected() {
-        //TODO: Trailing newline kwarg for content_lines?
-        let input = concat!("/Some doc\n\n", "#paragraph");
+        let input = "/Some doc\n\n#paragraph";
 
         let expected = ErrorKind::ExpectedToken(LineBreak::NAME);
 
