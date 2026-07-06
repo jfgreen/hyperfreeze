@@ -1190,28 +1190,72 @@ mod test {
         }
     }
 
-    fn assert_document_eq(actual: Document, expected: impl Into<Document>) {
-        let expected = expected.into();
-        if actual != expected {
-            eprintln!("Actual:\n{:#?}", actual);
-            eprintln!("Expected:\n{:#?}", expected);
-            panic!("Parsed document not what was expected")
+    trait DocumentTestHelpers {
+        fn assert_document_eq(self, expected: impl Into<Document>);
+        fn assert_contents_eq(self, expected: Box<[doc::Element]>);
+    }
+
+    impl DocumentTestHelpers for Document {
+        fn assert_document_eq(self, expected: impl Into<Document>) {
+            let expected = expected.into();
+            if self != expected {
+                eprintln!("Actual:\n{:#?}", self);
+                eprintln!("Expected:\n{:#?}", expected);
+                panic!("Parsed document not what was expected")
+            }
+        }
+
+        fn assert_contents_eq(self, expected: Box<[doc::Element]>) {
+            if self.contents != expected {
+                eprintln!("Actual:\n{:#?}", self.contents);
+                eprintln!("Expected:\n{:#?}", expected);
+                panic!("Parsed document contents not what was expected")
+            }
         }
     }
 
-    fn assert_contents_eq(actual: Box<[doc::Element]>, expected: Box<[doc::Element]>) {
-        if actual != expected {
-            eprintln!("Actual:\n{:#?}", actual);
-            eprintln!("Expected:\n{:#?}", expected);
-            panic!("Parsed document contents not what was expected")
-        }
+    trait ParseErrorTestHelpers {
+        fn assert_error_kind_eq(self, expected: ErrorKind);
+        fn assert_token_position_eq(self, expected: Position);
+        fn assert_token_name_eq(self, expected: TokenName);
+        fn assert_token_lexeme_eq(self, expected: LexemeString);
     }
 
-    fn assert_failure_eq(actual: ErrorKind, expected: ErrorKind) {
-        if actual != expected {
-            eprintln!("Actual:\n{:#?}", actual);
-            eprintln!("Expected:\n{:#?}", expected);
-            panic!("Failure reason not what was expected")
+    impl ParseErrorTestHelpers for ParseError {
+        fn assert_error_kind_eq(self, expected: ErrorKind) {
+            let actual = self.kind;
+            if actual != expected {
+                eprintln!("Actual:\n{:#?}", actual);
+                eprintln!("Expected:\n{:#?}", expected);
+                panic!("Failure reason not what was expected")
+            }
+        }
+
+        fn assert_token_position_eq(self, expected: Position) {
+            let actual = self.token.position;
+            if actual != expected {
+                eprintln!("Actual:\n{:#?}", actual);
+                eprintln!("Expected:\n{:#?}", expected);
+                panic!("Failure position was not expected")
+            }
+        }
+
+        fn assert_token_name_eq(self, expected: TokenName) {
+            let actual = self.token.name;
+            if actual != expected {
+                eprintln!("Actual:\n{:#?}", actual);
+                eprintln!("Expected:\n{:#?}", expected);
+                panic!("Failed token name was not expected")
+            }
+        }
+
+        fn assert_token_lexeme_eq(self, expected: LexemeString) {
+            let actual = self.token.lexeme;
+            if actual != expected {
+                eprintln!("Actual:\n{:#?}", self.kind);
+                eprintln!("Expected:\n{:#?}", expected);
+                panic!("Failed token lexeme was not expected")
+            }
         }
     }
 
@@ -1262,9 +1306,9 @@ mod test {
                 paragraph![text("Yay!")],
             ]);
 
-        let actual = parse_str(input).expect_successful();
-
-        assert_document_eq(actual, expected);
+        parse_str(input)
+            .expect_successful()
+            .assert_document_eq(expected);
     }
 
     #[test]
@@ -1273,9 +1317,9 @@ mod test {
 
         let expected = paragraph![text("We like cats very much")];
 
-        let actual = parse_str(input).expect_successful().contents;
-
-        assert_contents_eq(actual, expected);
+        parse_str(input)
+            .expect_successful()
+            .assert_contents_eq(expected);
     }
 
     #[test]
@@ -1284,9 +1328,9 @@ mod test {
 
         let expected = paragraph![text("Cats go meeow!")];
 
-        let actual = parse_str(input).expect_successful().contents;
-
-        assert_contents_eq(actual, expected);
+        parse_str(input)
+            .expect_successful()
+            .assert_contents_eq(expected);
     }
 
     #[test]
@@ -1295,9 +1339,9 @@ mod test {
 
         let expected = ErrorKind::ExpectedToken(LineBreak::NAME);
 
-        let actual = parse_str(input).expect_failure().kind;
-
-        assert_failure_eq(actual, expected);
+        parse_str(input)
+            .expect_failure()
+            .assert_error_kind_eq(expected);
     }
 
     #[test]
@@ -1306,9 +1350,9 @@ mod test {
 
         let expected = ErrorKind::UnknownDirective("#meowograph".into());
 
-        let actual = parse_str(input).expect_failure().kind;
-
-        assert_failure_eq(actual, expected);
+        parse_str(input)
+            .expect_failure()
+            .assert_error_kind_eq(expected);
     }
 
     #[test]
@@ -1317,9 +1361,9 @@ mod test {
 
         let expected = ErrorKind::UnknownDirective("@mrerps".into());
 
-        let actual = parse_str(input).expect_failure().kind;
-
-        assert_failure_eq(actual, expected);
+        parse_str(input)
+            .expect_failure()
+            .assert_error_kind_eq(expected);
     }
 
     #[test]
@@ -1328,9 +1372,9 @@ mod test {
 
         let expected = ErrorKind::UnknownDirective("!meeps".into());
 
-        let actual = parse_str(input).expect_failure().kind;
-
-        assert_failure_eq(actual, expected);
+        parse_str(input)
+            .expect_failure()
+            .assert_error_kind_eq(expected);
     }
 
     #[test]
@@ -1339,9 +1383,9 @@ mod test {
 
         let expected = ErrorKind::UnknownDirective("#".into());
 
-        let actual = parse_str(input).expect_failure().kind;
-
-        assert_failure_eq(actual, expected);
+        parse_str(input)
+            .expect_failure()
+            .assert_error_kind_eq(expected);
     }
 
     #[test]
@@ -1350,9 +1394,9 @@ mod test {
 
         let expected = ErrorKind::ExpectedToken(LineBreak::NAME);
 
-        let actual = parse_str(input).expect_failure().kind;
-
-        assert_failure_eq(actual, expected);
+        parse_str(input)
+            .expect_failure()
+            .assert_error_kind_eq(expected);
     }
 
     #[test]
@@ -1361,9 +1405,9 @@ mod test {
 
         let expected = paragraph![text("Nice kitty!")];
 
-        let actual = parse_str(input).expect_successful().contents;
-
-        assert_contents_eq(actual, expected);
+        parse_str(input)
+            .expect_successful()
+            .assert_contents_eq(expected);
     }
 
     #[test]
@@ -1372,9 +1416,9 @@ mod test {
 
         let expected = paragraph![text("Cats")];
 
-        let actual = parse_str(input).expect_successful().contents;
-
-        assert_contents_eq(actual, expected);
+        parse_str(input)
+            .expect_successful()
+            .assert_contents_eq(expected);
     }
 
     #[test]
@@ -1383,9 +1427,9 @@ mod test {
 
         let expected = paragraph![text("Cats")];
 
-        let actual = parse_str(input).expect_successful().contents;
-
-        assert_contents_eq(actual, expected);
+        parse_str(input)
+            .expect_successful()
+            .assert_contents_eq(expected);
     }
 
     #[test]
@@ -1394,9 +1438,9 @@ mod test {
 
         let expected = paragraph![text("Cats whiskers")];
 
-        let actual = parse_str(input).expect_successful().contents;
-
-        assert_contents_eq(actual, expected);
+        parse_str(input)
+            .expect_successful()
+            .assert_contents_eq(expected);
     }
 
     #[test]
@@ -1405,9 +1449,9 @@ mod test {
 
         let expected = paragraph![text("Cats "), strong_text("whiskers"),];
 
-        let actual = parse_str(input).expect_successful().contents;
-
-        assert_contents_eq(actual, expected);
+        parse_str(input)
+            .expect_successful()
+            .assert_contents_eq(expected);
     }
 
     #[test]
@@ -1416,9 +1460,9 @@ mod test {
 
         let expected = paragraph![text("Cats "), raw_text("nice whiskers"),];
 
-        let actual = parse_str(input).expect_successful().contents;
-
-        assert_contents_eq(actual, expected);
+        parse_str(input)
+            .expect_successful()
+            .assert_contents_eq(expected);
     }
 
     #[test]
@@ -1426,9 +1470,9 @@ mod test {
         let input = content_lines!("Cats    ", "    whiskers");
         let expected = paragraph![text("Cats whiskers")];
 
-        let actual = parse_str(input).expect_successful().contents;
-
-        assert_contents_eq(actual, expected);
+        parse_str(input)
+            .expect_successful()
+            .assert_contents_eq(expected);
     }
 
     #[test]
@@ -1437,9 +1481,9 @@ mod test {
 
         let expected = contents![paragraph![text("Cats")], paragraph![text("whiskers")]];
 
-        let actual = parse_str(input).expect_successful().contents;
-
-        assert_contents_eq(actual, expected);
+        parse_str(input)
+            .expect_successful()
+            .assert_contents_eq(expected);
     }
 
     #[test]
@@ -1448,9 +1492,9 @@ mod test {
 
         let expected = contents![paragraph![text("Cats")], paragraph![text("whiskers")]];
 
-        let actual = parse_str(input).expect_successful().contents;
-
-        assert_contents_eq(actual, expected);
+        parse_str(input)
+            .expect_successful()
+            .assert_contents_eq(expected);
     }
 
     #[test]
@@ -1459,9 +1503,9 @@ mod test {
 
         let expected = contents![paragraph![text("Cats")], paragraph![text("whiskers")]];
 
-        let actual = parse_str(input).expect_successful().contents;
-
-        assert_contents_eq(actual, expected);
+        parse_str(input)
+            .expect_successful()
+            .assert_contents_eq(expected);
     }
 
     #[test]
@@ -1470,9 +1514,9 @@ mod test {
 
         let expected = contents![paragraph![text("Cats")], paragraph![text("whiskers")]];
 
-        let actual = parse_str(input).expect_successful().contents;
-
-        assert_contents_eq(actual, expected);
+        parse_str(input)
+            .expect_successful()
+            .assert_contents_eq(expected);
     }
 
     #[test]
@@ -1481,9 +1525,9 @@ mod test {
 
         let expected = ErrorKind::ExpectedToken(BlockBreak::NAME);
 
-        let actual = parse_str(input).expect_failure().kind;
-
-        assert_failure_eq(actual, expected);
+        parse_str(input)
+            .expect_failure()
+            .assert_error_kind_eq(expected);
     }
 
     #[test]
@@ -1492,9 +1536,9 @@ mod test {
 
         let expected = paragraph![text("A")];
 
-        let actual = parse_str(input).expect_successful().contents;
-
-        assert_contents_eq(actual, expected);
+        parse_str(input)
+            .expect_successful()
+            .assert_contents_eq(expected);
     }
 
     #[test]
@@ -1503,9 +1547,9 @@ mod test {
 
         let expected = paragraph![text("My cat does backflips _coolcat")];
 
-        let actual = parse_str(input).expect_successful().contents;
-
-        assert_contents_eq(actual, expected);
+        parse_str(input)
+            .expect_successful()
+            .assert_contents_eq(expected);
     }
 
     #[test]
@@ -1514,9 +1558,9 @@ mod test {
 
         let expected = paragraph![text("cat_case")];
 
-        let actual = parse_str(input).expect_successful().contents;
-
-        assert_contents_eq(actual, expected);
+        parse_str(input)
+            .expect_successful()
+            .assert_contents_eq(expected);
     }
 
     #[test]
@@ -1525,9 +1569,9 @@ mod test {
 
         let expected = paragraph![emphasised_text("cat_case")];
 
-        let actual = parse_str(input).expect_successful().contents;
-
-        assert_contents_eq(actual, expected);
+        parse_str(input)
+            .expect_successful()
+            .assert_contents_eq(expected);
     }
 
     #[test]
@@ -1536,9 +1580,9 @@ mod test {
 
         let expected = paragraph![raw_text("cat\\_case")];
 
-        let actual = parse_str(input).expect_successful().contents;
-
-        assert_contents_eq(actual, expected);
+        parse_str(input)
+            .expect_successful()
+            .assert_contents_eq(expected);
     }
 
     #[test]
@@ -1547,9 +1591,9 @@ mod test {
 
         let expected = paragraph![text("We "), emphasised_text("totally adore"), text(" them"),];
 
-        let actual = parse_str(input).expect_successful().contents;
-
-        assert_contents_eq(actual, expected);
+        parse_str(input)
+            .expect_successful()
+            .assert_contents_eq(expected);
     }
 
     #[test]
@@ -1562,9 +1606,9 @@ mod test {
             text(" around"),
         ];
 
-        let actual = parse_str(input).expect_successful().contents;
-
-        assert_contents_eq(actual, expected);
+        parse_str(input)
+            .expect_successful()
+            .assert_contents_eq(expected);
     }
 
     #[test]
@@ -1577,9 +1621,9 @@ mod test {
             text(" right away."),
         ];
 
-        let actual = parse_str(input).expect_successful().contents;
-
-        assert_contents_eq(actual, expected);
+        parse_str(input)
+            .expect_successful()
+            .assert_contents_eq(expected);
     }
 
     #[test]
@@ -1588,9 +1632,9 @@ mod test {
 
         let expected = paragraph![text("I said: mee"), strong_text("ooOOo"), text("ww!"),];
 
-        let actual = parse_str(input).expect_successful().contents;
-
-        assert_contents_eq(actual, expected);
+        parse_str(input)
+            .expect_successful()
+            .assert_contents_eq(expected);
     }
 
     #[test]
@@ -1599,9 +1643,9 @@ mod test {
 
         let expected = paragraph![strong_text("me ow")];
 
-        let actual = parse_str(input).expect_successful().contents;
-
-        assert_contents_eq(actual, expected);
+        parse_str(input)
+            .expect_successful()
+            .assert_contents_eq(expected);
     }
 
     #[test]
@@ -1614,9 +1658,9 @@ mod test {
             text(" magnificant"),
         ];
 
-        let actual = parse_str(input).expect_successful().contents;
-
-        assert_contents_eq(actual, expected);
+        parse_str(input)
+            .expect_successful()
+            .assert_contents_eq(expected);
     }
 
     #[test]
@@ -1625,9 +1669,9 @@ mod test {
 
         let expected = paragraph![text("Robot cat says "), raw_text("bleep bloop"), text("!"),];
 
-        let actual = parse_str(input).expect_successful().contents;
-
-        assert_contents_eq(actual, expected);
+        parse_str(input)
+            .expect_successful()
+            .assert_contents_eq(expected);
     }
 
     #[test]
@@ -1636,9 +1680,9 @@ mod test {
 
         let expected = paragraph![text("Bl"), raw_text("eeee"), text("p!"),];
 
-        let actual = parse_str(input).expect_successful().contents;
-
-        assert_contents_eq(actual, expected);
+        parse_str(input)
+            .expect_successful()
+            .assert_contents_eq(expected);
     }
 
     #[test]
@@ -1647,9 +1691,9 @@ mod test {
 
         let expected = paragraph![text("Set "), raw_text("PURR_LOUDLY"), text(" to true"),];
 
-        let actual = parse_str(input).expect_successful().contents;
-
-        assert_contents_eq(actual, expected);
+        parse_str(input)
+            .expect_successful()
+            .assert_contents_eq(expected);
     }
 
     #[test]
@@ -1658,9 +1702,9 @@ mod test {
 
         let expected = paragraph![raw_text("Keep your       distance")];
 
-        let actual = parse_str(input).expect_successful().contents;
-
-        assert_contents_eq(actual, expected);
+        parse_str(input)
+            .expect_successful()
+            .assert_contents_eq(expected);
     }
 
     #[test]
@@ -1669,9 +1713,9 @@ mod test {
 
         let expected = paragraph![raw_text("Great cats")];
 
-        let actual = parse_str(input).expect_successful().contents;
-
-        assert_contents_eq(actual, expected);
+        parse_str(input)
+            .expect_successful()
+            .assert_contents_eq(expected);
     }
 
     #[test]
@@ -1680,9 +1724,9 @@ mod test {
 
         let expected = paragraph![strikethrough_text("Great dogs")];
 
-        let actual = parse_str(input).expect_successful().contents;
-
-        assert_contents_eq(actual, expected);
+        parse_str(input)
+            .expect_successful()
+            .assert_contents_eq(expected);
     }
 
     #[test]
@@ -1691,9 +1735,9 @@ mod test {
 
         let expected = paragraph![raw_text(" Meow?")];
 
-        let actual = parse_str(input).expect_successful().contents;
-
-        assert_contents_eq(actual, expected);
+        parse_str(input)
+            .expect_successful()
+            .assert_contents_eq(expected);
     }
 
     #[test]
@@ -1702,9 +1746,9 @@ mod test {
 
         let expected = paragraph![raw_text("Meow ")];
 
-        let actual = parse_str(input).expect_successful().contents;
-
-        assert_contents_eq(actual, expected);
+        parse_str(input)
+            .expect_successful()
+            .assert_contents_eq(expected);
     }
 
     #[test]
@@ -1713,9 +1757,9 @@ mod test {
 
         let expected = paragraph![raw_text(" Meow")];
 
-        let actual = parse_str(input).expect_successful().contents;
-
-        assert_contents_eq(actual, expected);
+        parse_str(input)
+            .expect_successful()
+            .assert_contents_eq(expected);
     }
 
     #[test]
@@ -1724,9 +1768,9 @@ mod test {
 
         let expected = paragraph![raw_text("Meow ")];
 
-        let actual = parse_str(input).expect_successful().contents;
-
-        assert_contents_eq(actual, expected);
+        parse_str(input)
+            .expect_successful()
+            .assert_contents_eq(expected);
     }
 
     #[test]
@@ -1735,9 +1779,9 @@ mod test {
 
         let expected = paragraph![raw_text("Great cats assemble!")];
 
-        let actual = parse_str(input).expect_successful().contents;
-
-        assert_contents_eq(actual, expected);
+        parse_str(input)
+            .expect_successful()
+            .assert_contents_eq(expected);
     }
 
     #[test]
@@ -1746,9 +1790,9 @@ mod test {
 
         let expected = paragraph![text("Felines - fantastic!")];
 
-        let actual = parse_str(input).expect_successful().contents;
-
-        assert_contents_eq(actual, expected);
+        parse_str(input)
+            .expect_successful()
+            .assert_contents_eq(expected);
     }
 
     #[test]
@@ -1757,9 +1801,9 @@ mod test {
 
         let expected = paragraph![text("Cool kitty")];
 
-        let actual = parse_str(input).expect_successful().contents;
-
-        assert_contents_eq(actual, expected);
+        parse_str(input)
+            .expect_successful()
+            .assert_contents_eq(expected);
     }
 
     #[test]
@@ -1768,9 +1812,9 @@ mod test {
 
         let expected = paragraph![text("Cat cat"), emphasised_text("cat cat"), text(" cat.")];
 
-        let actual = parse_str(input).expect_successful().contents;
-
-        assert_contents_eq(actual, expected);
+        parse_str(input)
+            .expect_successful()
+            .assert_contents_eq(expected);
     }
 
     #[test]
@@ -1779,9 +1823,9 @@ mod test {
 
         let expected = paragraph![text("Cat cat")];
 
-        let actual = parse_str(input).expect_successful().contents;
-
-        assert_contents_eq(actual, expected);
+        parse_str(input)
+            .expect_successful()
+            .assert_contents_eq(expected);
     }
 
     #[test]
@@ -1790,9 +1834,9 @@ mod test {
 
         let expected = paragraph![strong_text("Cat cat")];
 
-        let actual = parse_str(input).expect_successful().contents;
-
-        assert_contents_eq(actual, expected);
+        parse_str(input)
+            .expect_successful()
+            .assert_contents_eq(expected);
     }
 
     #[test]
@@ -1801,9 +1845,9 @@ mod test {
 
         let expected = paragraph![raw_text("Cat   cat")];
 
-        let actual = parse_str(input).expect_successful().contents;
-
-        assert_contents_eq(actual, expected);
+        parse_str(input)
+            .expect_successful()
+            .assert_contents_eq(expected);
     }
 
     #[test]
@@ -1812,9 +1856,9 @@ mod test {
 
         let expected = paragraph![text("Cat cat")];
 
-        let actual = parse_str(input).expect_successful().contents;
-
-        assert_contents_eq(actual, expected);
+        parse_str(input)
+            .expect_successful()
+            .assert_contents_eq(expected);
     }
 
     #[test]
@@ -1823,9 +1867,9 @@ mod test {
 
         let expected = paragraph![strong_text("Cat cat")];
 
-        let actual = parse_str(input).expect_successful().contents;
-
-        assert_contents_eq(actual, expected);
+        parse_str(input)
+            .expect_successful()
+            .assert_contents_eq(expected);
     }
 
     #[test]
@@ -1834,9 +1878,9 @@ mod test {
 
         let expected = paragraph![raw_text("Cat   cat")];
 
-        let actual = parse_str(input).expect_successful().contents;
-
-        assert_contents_eq(actual, expected);
+        parse_str(input)
+            .expect_successful()
+            .assert_contents_eq(expected);
     }
 
     #[test]
@@ -1845,9 +1889,9 @@ mod test {
 
         let expected = ErrorKind::UnexpectedTextRunStart;
 
-        let actual = parse_str(input).expect_failure().kind;
-
-        assert_failure_eq(actual, expected);
+        parse_str(input)
+            .expect_failure()
+            .assert_error_kind_eq(expected);
     }
 
     #[test]
@@ -1856,9 +1900,9 @@ mod test {
 
         let expected = ErrorKind::UnexpectedRawTextRunStart;
 
-        let actual = parse_str(input).expect_failure().kind;
-
-        assert_failure_eq(actual, expected);
+        parse_str(input)
+            .expect_failure()
+            .assert_error_kind_eq(expected);
     }
 
     #[test]
@@ -1867,9 +1911,9 @@ mod test {
 
         let expected = ErrorKind::ExpectedToken(RawDelimiter::NAME);
 
-        let actual = parse_str(input).expect_failure().kind;
-
-        assert_failure_eq(actual, expected);
+        parse_str(input)
+            .expect_failure()
+            .assert_error_kind_eq(expected);
     }
 
     #[test]
@@ -1878,9 +1922,9 @@ mod test {
 
         let expected = ErrorKind::ExpectedToken(RawDelimiter::NAME);
 
-        let actual = parse_str(input).expect_failure().kind;
-
-        assert_failure_eq(actual, expected);
+        parse_str(input)
+            .expect_failure()
+            .assert_error_kind_eq(expected);
     }
 
     #[test]
@@ -1889,9 +1933,9 @@ mod test {
 
         let expected = ErrorKind::ExpectedToken(StrikethroughDelimiter::NAME);
 
-        let actual = parse_str(input).expect_failure().kind;
-
-        assert_failure_eq(actual, expected);
+        parse_str(input)
+            .expect_failure()
+            .assert_error_kind_eq(expected);
     }
 
     #[test]
@@ -1900,9 +1944,9 @@ mod test {
 
         let expected = ErrorKind::ExpectedToken(EmphasisDelimiter::NAME);
 
-        let actual = parse_str(input).expect_failure().kind;
-
-        assert_failure_eq(actual, expected);
+        parse_str(input)
+            .expect_failure()
+            .assert_error_kind_eq(expected);
     }
 
     #[test]
@@ -1911,9 +1955,9 @@ mod test {
 
         let expected = ErrorKind::ExpectedToken(EmphasisDelimiter::NAME);
 
-        let actual = parse_str(input).expect_failure().kind;
-
-        assert_failure_eq(actual, expected);
+        parse_str(input)
+            .expect_failure()
+            .assert_error_kind_eq(expected);
     }
 
     #[test]
@@ -1922,9 +1966,9 @@ mod test {
 
         let expected = ErrorKind::UnexpectedTextRunStart;
 
-        let actual = parse_str(input).expect_failure().kind;
-
-        assert_failure_eq(actual, expected);
+        parse_str(input)
+            .expect_failure()
+            .assert_error_kind_eq(expected);
     }
 
     #[test]
@@ -1933,9 +1977,9 @@ mod test {
 
         let expected = ErrorKind::UnexpectedTextRunStart;
 
-        let actual = parse_str(input).expect_failure().kind;
-
-        assert_failure_eq(actual, expected);
+        parse_str(input)
+            .expect_failure()
+            .assert_error_kind_eq(expected);
     }
 
     #[test]
@@ -1944,9 +1988,9 @@ mod test {
 
         let expected = ErrorKind::LooseDelimiter;
 
-        let actual = parse_str(input).expect_failure().kind;
-
-        assert_failure_eq(actual, expected);
+        parse_str(input)
+            .expect_failure()
+            .assert_error_kind_eq(expected);
     }
 
     #[test]
@@ -1955,9 +1999,9 @@ mod test {
 
         let expected = ErrorKind::LooseDelimiter;
 
-        let actual = parse_str(input).expect_failure().kind;
-
-        assert_failure_eq(actual, expected);
+        parse_str(input)
+            .expect_failure()
+            .assert_error_kind_eq(expected);
     }
 
     #[test]
@@ -1966,9 +2010,9 @@ mod test {
 
         let expected = ErrorKind::UnexpectedTextRunStart;
 
-        let actual = parse_str(input).expect_failure().kind;
-
-        assert_failure_eq(actual, expected);
+        parse_str(input)
+            .expect_failure()
+            .assert_error_kind_eq(expected);
     }
 
     #[test]
@@ -1977,9 +2021,9 @@ mod test {
 
         let expected = ErrorKind::ExpectedToken(EmphasisDelimiter::NAME);
 
-        let actual = parse_str(input).expect_failure().kind;
-
-        assert_failure_eq(actual, expected);
+        parse_str(input)
+            .expect_failure()
+            .assert_error_kind_eq(expected);
     }
 
     #[test]
@@ -1988,9 +2032,9 @@ mod test {
 
         let expected = paragraph![text("Cats cats cats")];
 
-        let actual = parse_str(input).expect_successful().contents;
-
-        assert_contents_eq(actual, expected);
+        parse_str(input)
+            .expect_successful()
+            .assert_contents_eq(expected);
     }
 
     #[test]
@@ -1999,9 +2043,9 @@ mod test {
 
         let expected = paragraph![text("Cats cats cats")];
 
-        let actual = parse_str(input).expect_successful().contents;
-
-        assert_contents_eq(actual, expected);
+        parse_str(input)
+            .expect_successful()
+            .assert_contents_eq(expected);
     }
 
     #[test]
@@ -2010,9 +2054,9 @@ mod test {
 
         let expected = paragraph![text("Cats cats cats")];
 
-        let actual = parse_str(input).expect_successful().contents;
-
-        assert_contents_eq(actual, expected);
+        parse_str(input)
+            .expect_successful()
+            .assert_contents_eq(expected);
     }
 
     #[test]
@@ -2021,9 +2065,9 @@ mod test {
 
         let expected = paragraph![text("Cats are friends")];
 
-        let actual = parse_str(input).expect_successful().contents;
-
-        assert_contents_eq(actual, expected);
+        parse_str(input)
+            .expect_successful()
+            .assert_contents_eq(expected);
     }
 
     #[test]
@@ -2032,9 +2076,9 @@ mod test {
 
         let expected = paragraph![text("Feline friends")];
 
-        let actual = parse_str(input).expect_successful().contents;
-
-        assert_contents_eq(actual, expected);
+        parse_str(input)
+            .expect_successful()
+            .assert_contents_eq(expected);
     }
 
     #[test]
@@ -2043,9 +2087,9 @@ mod test {
 
         let expected = paragraph![strong_text("Cat"), text(" cat"),];
 
-        let actual = parse_str(input).expect_successful().contents;
-
-        assert_contents_eq(actual, expected);
+        parse_str(input)
+            .expect_successful()
+            .assert_contents_eq(expected);
     }
 
     #[test]
@@ -2054,9 +2098,9 @@ mod test {
 
         let expected = contents![paragraph![text("Cat")], paragraph![text("cat")]];
 
-        let actual = parse_str(input).expect_successful().contents;
-
-        assert_contents_eq(actual, expected);
+        parse_str(input)
+            .expect_successful()
+            .assert_contents_eq(expected);
     }
 
     #[test]
@@ -2071,8 +2115,9 @@ mod test {
 
         let expected = document().title("Some document with metadata").id("12.03");
 
-        let actual = parse_str(input).expect_successful();
-        assert_document_eq(actual, expected);
+        parse_str(input)
+            .expect_successful()
+            .assert_document_eq(expected);
     }
 
     #[test]
@@ -2091,8 +2136,9 @@ mod test {
             .id("feline.feasts.25")
             .tags(&["cooking", "eating", "nice-smells"]);
 
-        let actual = parse_str(input).expect_successful();
-        assert_document_eq(actual, expected);
+        parse_str(input)
+            .expect_successful()
+            .assert_document_eq(expected);
     }
 
     #[test]
@@ -2106,8 +2152,9 @@ mod test {
 
         let expected = ErrorKind::UnknownMetadata("kibble".into());
 
-        let actual = parse_str(input).expect_failure().kind;
-        assert_failure_eq(actual, expected);
+        parse_str(input)
+            .expect_failure()
+            .assert_error_kind_eq(expected);
     }
 
     #[test]
@@ -2123,8 +2170,9 @@ mod test {
 
         let expected = ErrorKind::MetadataNotAtStart;
 
-        let actual = parse_str(input).expect_failure().kind;
-        assert_failure_eq(actual, expected);
+        parse_str(input)
+            .expect_failure()
+            .assert_error_kind_eq(expected);
     }
 
     #[test]
@@ -2133,8 +2181,9 @@ mod test {
 
         let expected = document().title("Practical espionage for felines in urban settings");
 
-        let actual = parse_str(input).expect_successful();
-        assert_document_eq(actual, expected);
+        parse_str(input)
+            .expect_successful()
+            .assert_document_eq(expected);
     }
 
     #[test]
@@ -2152,8 +2201,9 @@ mod test {
             .title("Some Doc")
             .contents(vec![paragraph![text("Why hello there cats and kittens")]]);
 
-        let actual = parse_str(input).expect_successful();
-        assert_document_eq(actual, expected);
+        parse_str(input)
+            .expect_successful()
+            .assert_document_eq(expected);
     }
 
     #[test]
@@ -2162,8 +2212,9 @@ mod test {
 
         let expected = document().title("My Very Cool Document");
 
-        let actual = parse_str(input).expect_successful();
-        assert_document_eq(actual, expected);
+        parse_str(input)
+            .expect_successful()
+            .assert_document_eq(expected);
     }
 
     #[test]
@@ -2172,8 +2223,9 @@ mod test {
 
         let expected = document().title("Some Doc");
 
-        let actual = parse_str(input).expect_successful();
-        assert_document_eq(actual, expected);
+        parse_str(input)
+            .expect_successful()
+            .assert_document_eq(expected);
     }
 
     #[test]
@@ -2186,8 +2238,9 @@ mod test {
 
         let expected = ErrorKind::ExpectedToken(TitleDirective::NAME);
 
-        let actual = parse_str(input).expect_failure().kind;
-        assert_failure_eq(actual, expected);
+        parse_str(input)
+            .expect_failure()
+            .assert_error_kind_eq(expected);
     }
 
     #[test]
@@ -2202,8 +2255,9 @@ mod test {
 
         let expected = ErrorKind::UnexpectedBlockStart;
 
-        let actual = parse_str(input).expect_failure().kind;
-        assert_failure_eq(actual, expected);
+        parse_str(input)
+            .expect_failure()
+            .assert_error_kind_eq(expected);
     }
 
     #[test]
@@ -2222,8 +2276,9 @@ mod test {
 
         let expected = ErrorKind::UnexpectedBlockStart;
 
-        let actual = parse_str(input).expect_failure().kind;
-        assert_failure_eq(actual, expected);
+        parse_str(input)
+            .expect_failure()
+            .assert_error_kind_eq(expected);
     }
 
     #[test]
@@ -2232,8 +2287,9 @@ mod test {
 
         let expected = ErrorKind::UnexpectedHeaderTextStart;
 
-        let actual = parse_str(input).expect_failure().kind;
-        assert_failure_eq(actual, expected);
+        parse_str(input)
+            .expect_failure()
+            .assert_error_kind_eq(expected);
     }
 
     #[test]
@@ -2246,8 +2302,9 @@ mod test {
 
         let expected = ErrorKind::SubSectionNotNested;
 
-        let actual = parse_str(input).expect_failure().kind;
-        assert_failure_eq(actual, expected);
+        parse_str(input)
+            .expect_failure()
+            .assert_error_kind_eq(expected);
     }
 
     #[test]
@@ -2268,9 +2325,9 @@ mod test {
             paragraph![text("...about the cats!")]
         ];
 
-        let actual = parse_str(input).expect_successful().contents;
-
-        assert_contents_eq(actual, expected);
+        parse_str(input)
+            .expect_successful()
+            .assert_contents_eq(expected);
     }
 
     #[test]
@@ -2285,9 +2342,9 @@ mod test {
             "Did you know that cats sometimes like a nice long massage"
         )]];
 
-        let actual = parse_str(input).expect_successful().contents;
-
-        assert_contents_eq(actual, expected);
+        parse_str(input)
+            .expect_successful()
+            .assert_contents_eq(expected);
     }
 
     #[test]
@@ -2296,9 +2353,9 @@ mod test {
 
         let expected = ErrorKind::ContainerMissingStart;
 
-        let actual = parse_str(input).expect_failure().kind;
-
-        assert_failure_eq(actual, expected);
+        parse_str(input)
+            .expect_failure()
+            .assert_error_kind_eq(expected);
     }
 
     #[test]
@@ -2307,9 +2364,9 @@ mod test {
 
         let expected = ErrorKind::EmptyContainer;
 
-        let actual = parse_str(input).expect_failure().kind;
-
-        assert_failure_eq(actual, expected);
+        parse_str(input)
+            .expect_failure()
+            .assert_error_kind_eq(expected);
     }
 
     #[test]
@@ -2318,9 +2375,9 @@ mod test {
 
         let expected = ErrorKind::EmptyContainer;
 
-        let actual = parse_str(input).expect_failure().kind;
-
-        assert_failure_eq(actual, expected);
+        parse_str(input)
+            .expect_failure()
+            .assert_error_kind_eq(expected);
     }
 
     #[test]
@@ -2335,9 +2392,9 @@ mod test {
 
         let expected = ErrorKind::ExpectedToken(LineBreak::NAME);
 
-        let actual = parse_str(input).expect_failure().kind;
-
-        assert_failure_eq(actual, expected);
+        parse_str(input)
+            .expect_failure()
+            .assert_error_kind_eq(expected);
     }
 
     #[test]
@@ -2352,9 +2409,9 @@ mod test {
 
         let expected = ErrorKind::ExpectedToken(BlockBreak::NAME);
 
-        let actual = parse_str(input).expect_failure().kind;
-
-        assert_failure_eq(actual, expected);
+        parse_str(input)
+            .expect_failure()
+            .assert_error_kind_eq(expected);
     }
 
     #[test]
@@ -2369,9 +2426,9 @@ mod test {
 
         let expected = ErrorKind::ExpectedToken(BlockBreak::NAME);
 
-        let actual = parse_str(input).expect_failure().kind;
-
-        assert_failure_eq(actual, expected);
+        parse_str(input)
+            .expect_failure()
+            .assert_error_kind_eq(expected);
     }
 
     #[test]
@@ -2380,9 +2437,9 @@ mod test {
 
         let expected = paragraph![text("Ripley - Cat")];
 
-        let actual = parse_str(input).expect_successful().contents;
-
-        assert_contents_eq(actual, expected);
+        parse_str(input)
+            .expect_successful()
+            .assert_contents_eq(expected);
     }
 
     #[test]
@@ -2391,9 +2448,9 @@ mod test {
 
         let expected = paragraph![text("Ripley - Cat")];
 
-        let actual = parse_str(input).expect_successful().contents;
-
-        assert_contents_eq(actual, expected);
+        parse_str(input)
+            .expect_successful()
+            .assert_contents_eq(expected);
     }
 
     #[test]
@@ -2410,9 +2467,9 @@ mod test {
             list_text![text("Water is important also")]
         ];
 
-        let actual = parse_str(input).expect_successful().contents;
-
-        assert_contents_eq(actual, expected);
+        parse_str(input)
+            .expect_successful()
+            .assert_contents_eq(expected);
     }
 
     #[test]
@@ -2430,9 +2487,9 @@ mod test {
             list_text![text("Water is important also")]
         ];
 
-        let actual = parse_str(input).expect_successful().contents;
-
-        assert_contents_eq(actual, expected);
+        parse_str(input)
+            .expect_successful()
+            .assert_contents_eq(expected);
     }
 
     #[test]
@@ -2450,9 +2507,9 @@ mod test {
             list_text![text("Water is important also")]
         ];
 
-        let actual = parse_str(input).expect_successful().contents;
-
-        assert_contents_eq(actual, expected);
+        parse_str(input)
+            .expect_successful()
+            .assert_contents_eq(expected);
     }
 
     #[test]
@@ -2464,9 +2521,9 @@ mod test {
 
         let expected = ErrorKind::InvalidListStyle("cool".into());
 
-        let actual = parse_str(input).expect_failure().kind;
-
-        assert_failure_eq(actual, expected);
+        parse_str(input)
+            .expect_failure()
+            .assert_error_kind_eq(expected);
     }
 
     #[test]
@@ -2478,9 +2535,9 @@ mod test {
 
         let expected = ErrorKind::InvalidListParameter("up".into());
 
-        let actual = parse_str(input).expect_failure().kind;
-
-        assert_failure_eq(actual, expected);
+        parse_str(input)
+            .expect_failure()
+            .assert_error_kind_eq(expected);
     }
 
     #[test]
@@ -2489,9 +2546,9 @@ mod test {
 
         let expected = list![list_text![text("Meow - meow")]];
 
-        let actual = parse_str(input).expect_successful().contents;
-
-        assert_contents_eq(actual, expected);
+        parse_str(input)
+            .expect_successful()
+            .assert_contents_eq(expected);
     }
 
     #[test]
@@ -2511,9 +2568,9 @@ mod test {
             list_text![text("Water is important also")],
         ];
 
-        let actual = parse_str(input).expect_successful().contents;
-
-        assert_contents_eq(actual, expected);
+        parse_str(input)
+            .expect_successful()
+            .assert_contents_eq(expected);
     }
 
     #[test]
@@ -2530,9 +2587,9 @@ mod test {
             list_text![text("Water is "), raw_text("important  also")]
         ];
 
-        let actual = parse_str(input).expect_successful().contents;
-
-        assert_contents_eq(actual, expected);
+        parse_str(input)
+            .expect_successful()
+            .assert_contents_eq(expected);
     }
 
     #[test]
@@ -2553,9 +2610,9 @@ mod test {
             ]
         ];
 
-        let actual = parse_str(input).expect_successful().contents;
-
-        assert_contents_eq(actual, expected);
+        parse_str(input)
+            .expect_successful()
+            .assert_contents_eq(expected);
     }
 
     #[test]
@@ -2575,9 +2632,9 @@ mod test {
             ]
         ];
 
-        let actual = parse_str(input).expect_successful().contents;
-
-        assert_contents_eq(actual, expected);
+        parse_str(input)
+            .expect_successful()
+            .assert_contents_eq(expected);
     }
 
     #[test]
@@ -2589,9 +2646,9 @@ mod test {
             sub_list![list_text![text("baz")]]
         ];
 
-        let actual = parse_str(input).expect_successful().contents;
-
-        assert_contents_eq(actual, expected);
+        parse_str(input)
+            .expect_successful()
+            .assert_contents_eq(expected);
     }
 
     #[test]
@@ -2600,9 +2657,9 @@ mod test {
 
         let expected = list![list_text![text("Foo")], list_text![text("Bar")],];
 
-        let actual = parse_str(input).expect_successful().contents;
-
-        assert_contents_eq(actual, expected);
+        parse_str(input)
+            .expect_successful()
+            .assert_contents_eq(expected);
     }
 
     #[test]
@@ -2611,9 +2668,9 @@ mod test {
 
         let expected = list![list_text![text("f"), raw_text("oo   -ba"), text("r"),]];
 
-        let actual = parse_str(input).expect_successful().contents;
-
-        assert_contents_eq(actual, expected);
+        parse_str(input)
+            .expect_successful()
+            .assert_contents_eq(expected);
     }
 
     #[test]
@@ -2622,9 +2679,9 @@ mod test {
 
         let expected = ErrorKind::ExpectedToken(EmphasisDelimiter::NAME);
 
-        let actual = parse_str(input).expect_failure().kind;
-
-        assert_failure_eq(actual, expected);
+        parse_str(input)
+            .expect_failure()
+            .assert_error_kind_eq(expected);
     }
 
     #[test]
@@ -2633,9 +2690,9 @@ mod test {
 
         let expected = ErrorKind::UnevenListIndent(Indent { space_count: 1 });
 
-        let actual = parse_str(input).expect_failure().kind;
-
-        assert_failure_eq(actual, expected);
+        parse_str(input)
+            .expect_failure()
+            .assert_error_kind_eq(expected);
     }
 
     #[test]
@@ -2647,9 +2704,9 @@ mod test {
 
         let expected = ErrorKind::MissingListLevel { from: 0, to: 2 };
 
-        let actual = parse_str(input).expect_failure().kind;
-
-        assert_failure_eq(actual, expected);
+        parse_str(input)
+            .expect_failure()
+            .assert_error_kind_eq(expected);
     }
 
     #[test]
@@ -2670,9 +2727,9 @@ mod test {
             list_text![text("Nice things to drink")]
         ];
 
-        let actual = parse_str(input).expect_successful().contents;
-
-        assert_contents_eq(actual, expected);
+        parse_str(input)
+            .expect_successful()
+            .assert_contents_eq(expected);
     }
 
     #[test]
@@ -2684,13 +2741,11 @@ mod test {
             "goes *_*"
         );
 
-        let expected = (6, 3);
+        let expected = Position { column: 6, row: 3 };
 
-        let error = parse_str(input).expect_failure();
-        let position = error.token.position;
-        let actual = (position.column, position.row);
-
-        assert_eq!(actual, expected);
+        parse_str(input)
+            .expect_failure()
+            .assert_token_position_eq(expected);
     }
 
     #[test]
@@ -2704,10 +2759,9 @@ mod test {
 
         let expected = EmphasisDelimiter::NAME;
 
-        let error = parse_str(input).expect_failure();
-        let actual = error.token.name;
-
-        assert_eq!(actual, expected);
+        parse_str(input)
+            .expect_failure()
+            .assert_token_name_eq(expected);
     }
 
     #[test]
@@ -2721,10 +2775,9 @@ mod test {
 
         let expected = "_".into();
 
-        let error = parse_str(input).expect_failure();
-        let actual = error.token.lexeme;
-
-        assert_eq!(actual, expected);
+        parse_str(input)
+            .expect_failure()
+            .assert_token_lexeme_eq(expected);
     }
 
     #[test]
@@ -2748,8 +2801,9 @@ mod test {
             ]])
             .references(&[("ripley_2020", "https://example.com")]);
 
-        let actual = parse_str(input).expect_successful();
-        assert_document_eq(actual, expected);
+        parse_str(input)
+            .expect_successful()
+            .assert_document_eq(expected);
     }
 
     #[test]
@@ -2772,8 +2826,9 @@ mod test {
             ]])
             .references(&[("some_ref", "https://example.com")]);
 
-        let actual = parse_str(input).expect_successful();
-        assert_document_eq(actual, expected);
+        parse_str(input)
+            .expect_successful()
+            .assert_document_eq(expected);
     }
 
     #[test]
@@ -2801,8 +2856,9 @@ mod test {
                 ("ripley_2024", "https://example.com/e"),
             ]);
 
-        let actual = parse_str(input).expect_successful();
-        assert_document_eq(actual, expected);
+        parse_str(input)
+            .expect_successful()
+            .assert_document_eq(expected);
     }
 
     #[test]
@@ -2811,9 +2867,9 @@ mod test {
 
         let expected = paragraph![text("C@ts are great @ that")];
 
-        let actual = parse_str(input).expect_successful().contents;
-
-        assert_contents_eq(actual, expected);
+        parse_str(input)
+            .expect_successful()
+            .assert_contents_eq(expected);
     }
 
     #[test]
@@ -2829,8 +2885,9 @@ mod test {
 
         let expected = ErrorKind::LooseDelimiter;
 
-        let actual = parse_str(input).expect_failure().kind;
-        assert_failure_eq(actual, expected);
+        parse_str(input)
+            .expect_failure()
+            .assert_error_kind_eq(expected);
     }
 
     #[test]
@@ -2847,9 +2904,9 @@ mod test {
 
         let expected = ErrorKind::ReferencesOutOfPlace;
 
-        let actual = parse_str(input).expect_failure().kind;
-
-        assert_failure_eq(actual, expected);
+        parse_str(input)
+            .expect_failure()
+            .assert_error_kind_eq(expected);
     }
 
     #[test]
@@ -2909,8 +2966,9 @@ mod test {
                 ],
             ]);
 
-        let actual = parse_str(input).expect_successful();
-        assert_document_eq(actual, expected);
+        parse_str(input)
+            .expect_successful()
+            .assert_document_eq(expected);
     }
 
     #[test]
@@ -2925,8 +2983,9 @@ mod test {
             .title("Speed running the kitchen at 4am")
             .contents(vec![paragraph![text("This is a comprehensive guide.")]]);
 
-        let actual = parse_str(input).expect_successful();
-        assert_document_eq(actual, expected);
+        parse_str(input)
+            .expect_successful()
+            .assert_document_eq(expected);
     }
 
     #[test]
@@ -2950,9 +3009,9 @@ mod test {
             "Meow!\n",
         ];
 
-        let actual = parse_str(input).expect_successful().contents;
-
-        assert_contents_eq(actual, expected);
+        parse_str(input)
+            .expect_successful()
+            .assert_contents_eq(expected);
     }
 
     #[test]
@@ -2971,8 +3030,8 @@ mod test {
             paragraph![text("Hey, whats up?")],
         ];
 
-        let actual = parse_str(input).expect_successful().contents;
-
-        assert_contents_eq(actual, expected);
+        parse_str(input)
+            .expect_successful()
+            .assert_contents_eq(expected);
     }
 }
