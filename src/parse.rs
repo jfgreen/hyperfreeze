@@ -932,58 +932,6 @@ mod test {
         };
     }
 
-    // TODO: Try as macro again we know what we are doing?
-    // Use keywords
-    fn document() -> DocumentBuilder {
-        DocumentBuilder {
-            doc: Document::default(),
-        }
-    }
-
-    struct DocumentBuilder {
-        doc: Document,
-    }
-
-    impl DocumentBuilder {
-        fn title(mut self, value: &str) -> Self {
-            self.doc.title = value.to_string();
-            self
-        }
-
-        fn id(mut self, value: &str) -> Self {
-            self.doc.metadata.id = Some(value.to_string());
-            self
-        }
-
-        fn tags(mut self, items: &[&str]) -> Self {
-            self.doc.metadata.tags = Some(items.iter().map(|tag| String::from(*tag)).collect());
-            self
-        }
-
-        fn references(mut self, items: &[(&str, &str)]) -> Self {
-            self.doc.references = items
-                .iter()
-                .map(|(id, link)| doc::Reference {
-                    id: id.to_string(),
-                    link: link.to_string(),
-                })
-                .collect();
-            self
-        }
-
-        fn contents(mut self, items: Vec<doc::Element>) -> Self {
-            //TODO: macro could handle boxed slices?
-            self.doc.contents = items.into_boxed_slice();
-            self
-        }
-    }
-
-    impl Into<Document> for DocumentBuilder {
-        fn into(self) -> Document {
-            self.doc
-        }
-    }
-
     fn text(text: &str) -> doc::TextRun {
         doc::TextRun {
             text: text.to_string(),
@@ -1072,6 +1020,56 @@ mod test {
         fn from(block: doc::Container) -> Box<[doc::Element]> {
             Box::new([block.into()])
         }
+    }
+
+    macro_rules! document {
+        (
+            $(title: $title:expr,)?
+            $(id: $id:expr,)?
+            $(tags: $tags:expr,)?
+            $(references: $references:expr,)?
+            $(contents: $contents:expr,)?
+        ) => {
+            {
+
+            let mut doc = Document::default();
+
+            $(
+                doc.title = $title.to_string();
+            )?
+
+            $(
+                doc.metadata.id = Some($id.to_string());
+            )?
+
+            $(
+                doc.metadata.tags = Some(
+                    //TODO: simplify? skip iter
+                    $tags.iter().map(|tag| String::from(*tag)).collect()
+                );
+            )?
+
+            $(
+                //TODO: simplify? skip iter
+                doc.references = $references
+                    .iter()
+                    .map(|(id, link)| doc::Reference {
+                        id: id.to_string(),
+                        link: link.to_string(),
+                    })
+                    .collect();
+
+            )?
+
+            $(
+                doc.contents = $contents.into();
+            )?
+
+            doc
+
+            }
+
+        };
     }
 
     macro_rules! contents {
@@ -1284,10 +1282,10 @@ mod test {
             "Yay!"
         );
 
-        let expected = document()
-            .title("Feline friendly flower arranging")
-            .id("01.42")
-            .contents(vec![
+        let expected = document! {
+            title: "Feline friendly flower arranging",
+            id: "01.42",
+            contents: [
                 info![paragraph![
                     text("Did you know flower pots are for "),
                     strong_text("more"),
@@ -1304,7 +1302,8 @@ mod test {
                     ]
                 ],
                 paragraph![text("Yay!")],
-            ]);
+            ],
+        };
 
         parse_str(input)
             .expect_successful()
@@ -2113,7 +2112,10 @@ mod test {
             "",
         );
 
-        let expected = document().title("Some document with metadata").id("12.03");
+        let expected = document! {
+            title: "Some document with metadata",
+            id: "12.03",
+        };
 
         parse_str(input)
             .expect_successful()
@@ -2131,10 +2133,11 @@ mod test {
             "",
         );
 
-        let expected = document()
-            .title("Document with metadata")
-            .id("feline.feasts.25")
-            .tags(&["cooking", "eating", "nice-smells"]);
+        let expected = document! {
+            title: "Document with metadata",
+            id: "feline.feasts.25",
+            tags: ["cooking", "eating", "nice-smells"],
+        };
 
         parse_str(input)
             .expect_successful()
@@ -2179,7 +2182,9 @@ mod test {
     fn doc_title() {
         let input = "/ Practical espionage for felines in urban settings";
 
-        let expected = document().title("Practical espionage for felines in urban settings");
+        let expected = document! {
+            title: "Practical espionage for felines in urban settings",
+        };
 
         parse_str(input)
             .expect_successful()
@@ -2197,9 +2202,12 @@ mod test {
             "Why hello there cats and kittens"
         );
 
-        let expected = document()
-            .title("Some Doc")
-            .contents(vec![paragraph![text("Why hello there cats and kittens")]]);
+        let expected = document! {
+            title: "Some Doc",
+            contents: [
+                paragraph![text("Why hello there cats and kittens")]
+            ],
+        };
 
         parse_str(input)
             .expect_successful()
@@ -2210,7 +2218,9 @@ mod test {
     fn doc_title_with_wonky_spacing() {
         let input = document_lines!("/My Very   Cool Document   ", "");
 
-        let expected = document().title("My Very Cool Document");
+        let expected = document! {
+            title: "My Very Cool Document",
+        };
 
         parse_str(input)
             .expect_successful()
@@ -2221,7 +2231,9 @@ mod test {
     fn doc_title_with_no_trailing_newline() {
         let input = "/Some Doc";
 
-        let expected = document().title("Some Doc");
+        let expected = document! {
+            title: "Some Doc",
+        };
 
         parse_str(input)
             .expect_successful()
@@ -2792,14 +2804,17 @@ mod test {
             "created by our own in house experts.",
         );
 
-        let expected = document()
-            .title("Cat petting tips")
-            .contents(vec![paragraph![
-                text("For more info, consult "),
-                linked_text("our guide on petting cats", "ripley_2020"),
-                text(", created by our own in house experts.")
-            ]])
-            .references(&[("ripley_2020", "https://example.com")]);
+        let expected = document! {
+            title: "Cat petting tips",
+            references: [("ripley_2020", "https://example.com")],
+            contents: [
+                paragraph![
+                    text("For more info, consult "),
+                    linked_text("our guide on petting cats", "ripley_2020"),
+                    text(", created by our own in house experts.")
+                ]
+            ],
+        };
 
         parse_str(input)
             .expect_successful()
@@ -2817,14 +2832,17 @@ mod test {
             "See [our guide]@some_ref for more",
         );
 
-        let expected = document()
-            .title("Some doc")
-            .contents(vec![paragraph![
-                text("See "),
-                linked_text("our guide", "some_ref"),
-                text(" for more")
-            ]])
-            .references(&[("some_ref", "https://example.com")]);
+        let expected = document! {
+            title: "Some doc",
+            references: [("some_ref", "https://example.com")],
+            contents: [
+                paragraph![
+                    text("See "),
+                    linked_text("our guide", "some_ref"),
+                    text(" for more")
+                ]
+            ],
+        };
 
         parse_str(input)
             .expect_successful()
@@ -2846,15 +2864,16 @@ mod test {
             "",
         );
 
-        let expected = document()
-            .title("Doc with lots of references")
-            .references(&[
+        let expected = document! {
+            title: "Doc with lots of references",
+            references: [
                 ("ripley_2020", "https://example.com/a"),
                 ("ripley_2021", "https://example.com/b"),
                 ("ripley_2022", "https://example.com/c"),
                 ("ripley_2023", "https://example.com/d"),
                 ("ripley_2024", "https://example.com/e"),
-            ]);
+            ],
+        };
 
         parse_str(input)
             .expect_successful()
@@ -2940,9 +2959,9 @@ mod test {
             "Go go go!"
         );
 
-        let expected = document()
-            .title("Speed running the kitchen at 4am")
-            .contents(vec![
+        let expected = document! {
+            title: "Speed running the kitchen at 4am",
+            contents: [
                 paragraph![text("This is a comprehensive guide.")],
                 section![
                     heading = "Motivation",
@@ -2964,7 +2983,8 @@ mod test {
                     heading = "Conclusion and reflections",
                     paragraph![text("Go go go!")],
                 ],
-            ]);
+            ],
+        };
 
         parse_str(input)
             .expect_successful()
@@ -2979,9 +2999,14 @@ mod test {
             "This is a comprehensive guide.\n",
         );
 
-        let expected = document()
-            .title("Speed running the kitchen at 4am")
-            .contents(vec![paragraph![text("This is a comprehensive guide.")]]);
+        let expected = document! {
+            title: "Speed running the kitchen at 4am",
+            contents: [
+                paragraph![
+                    text("This is a comprehensive guide.")
+                ]
+            ],
+        };
 
         parse_str(input)
             .expect_successful()
