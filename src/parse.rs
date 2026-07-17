@@ -1024,10 +1024,10 @@ mod test {
 
     macro_rules! document {
         (
-            $(title: $title:expr,)?
-            $(id: $id:expr,)?
-            $(tags: $tags:expr,)?
-            $(references: $references:expr,)?
+            $(title: $title:literal,)?
+            $(id: $id:literal,)?
+            $(tags: [$($tag:literal),+ $(,)?],)?
+            $(references: [$(($ref_id:literal, $ref_link:literal)),+ $(,)?],)?
             $(contents: $contents:expr,)?
         ) => {
             {
@@ -1043,22 +1043,18 @@ mod test {
             )?
 
             $(
-                doc.metadata.tags = Some(
-                    //TODO: simplify? skip iter
-                    $tags.iter().map(|tag| String::from(*tag)).collect()
-                );
+                doc.metadata.tags = Some([
+                    $($tag.to_string() ,)+
+                ].into());
             )?
 
             $(
-                //TODO: simplify? skip iter
-                doc.references = $references
-                    .iter()
-                    .map(|(id, link)| doc::Reference {
-                        id: id.to_string(),
-                        link: link.to_string(),
-                    })
-                    .collect();
-
+                doc.references = [
+                    $(doc::Reference {
+                        id: $ref_id.to_string(),
+                        link: $ref_link.to_string(),
+                    },)+
+                ].into();
             )?
 
             $(
