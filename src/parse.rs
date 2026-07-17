@@ -2324,8 +2324,6 @@ mod test {
             "",
             "...about the cats!",
             "<<<",
-            //TODO: Relax the parser, make this not be manditory
-            ""
         );
 
         let expected = info![
@@ -2368,7 +2366,7 @@ mod test {
 
     #[test]
     fn empty_container_is_rejected() {
-        let input = content_lines!("!info");
+        let input = content_lines!("!info", "");
 
         let expected = ErrorKind::EmptyContainer;
 
@@ -2856,8 +2854,6 @@ mod test {
             "ripley_2024: https://example.com/e  ",
             "",
             "/ Doc with lots of references",
-            //TODO: Relax parser so the following trailing newline is not reqired
-            "",
         );
 
         let expected = document! {

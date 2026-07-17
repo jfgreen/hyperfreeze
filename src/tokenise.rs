@@ -945,6 +945,10 @@ fn match_linebreak<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
 fn match_end_of_input<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
     let mut head = scanner.read_head.clone();
 
+    if head.current == Some(NEW_LINE) {
+        head.read_next_char();
+    }
+
     while let Some(SPACE) = head.current {
         head.read_next_char();
     }
@@ -1428,12 +1432,12 @@ fn match_unknown<'a>(scanner: &Scanner<'a>) -> ScanMatch<'a> {
 }
 
 fn match_generic<'a>(scanner: &Scanner<'a>) -> ScanMatch<'a> {
-    if let Some(blockbreak) = match_blockbreak(scanner) {
+    if let Some(end_of_input) = match_end_of_input(scanner) {
+        end_of_input
+    } else if let Some(blockbreak) = match_blockbreak(scanner) {
         blockbreak
     } else if let Some(linebreak) = match_linebreak(scanner) {
         linebreak
-    } else if let Some(end_of_input) = match_end_of_input(scanner) {
-        end_of_input
     } else {
         match_unknown(scanner)
     }
