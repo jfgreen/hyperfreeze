@@ -390,10 +390,8 @@ impl<'a> Tokeniser<'a> {
         self.mode_stack.push(mode);
     }
 
-    pub fn pop_mode(&mut self) -> ScanMode {
-        //TODO: Instead of stack underflow, default to generic?
-        debug_assert!(self.mode_stack.len() > 1, "Cannot pop the base mode");
-        self.mode_stack.pop().expect("mode stack underflow")
+    pub fn pop_mode(&mut self) {
+        self.mode_stack.pop();
     }
 
     fn current_matchers(&self) -> &'static [Matcher] {
