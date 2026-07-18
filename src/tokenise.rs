@@ -394,27 +394,9 @@ impl<'a> Tokeniser<'a> {
         self.mode_stack.pop();
     }
 
-    fn current_matchers(&self) -> &'static [Matcher] {
-        let scan_mode = self.mode_stack.last().unwrap_or(&ScanMode::Generic);
-
-        match scan_mode {
-            ScanMode::ElementStart => SCAN_ELEMENT_START,
-            ScanMode::Markup => SCAN_MARKUP,
-            ScanMode::ListMarkup => SCAN_LIST_MARKUP,
-            ScanMode::Raw => SCAN_RAW,
-            ScanMode::Title => SCAN_TITLE,
-            ScanMode::Header => SCAN_HEADER,
-            ScanMode::HeaderValue => SCAN_HEADER_VALUE,
-            ScanMode::StructuredData => SCAN_STRUCTURED_DATA,
-            ScanMode::LinkReference => SCAN_LINK_REFERENCE,
-            ScanMode::Code => SCAN_CODE,
-            ScanMode::Generic => SCAN_GENERIC,
-        }
-    }
-
     pub fn peek(&self) -> SpannedToken<'a> {
         //TODO: re-use with advance
-        let matchers = self.current_matchers();
+        let matchers = self.resolve_matchers();
         let position = self.scanner.position();
         let start = self.scanner.read_head.index;
         let scan_match = self.scan(matchers);
@@ -434,7 +416,7 @@ impl<'a> Tokeniser<'a> {
             "Posible infinite loop detected"
         );
 
-        let matchers = self.current_matchers();
+        let matchers = self.resolve_matchers();
         let position = self.scanner.position();
 
         let start = self.scanner.read_head.index;
@@ -459,6 +441,24 @@ impl<'a> Tokeniser<'a> {
             // TODO: This is a bit clumsy, why not have match generic always be
             // at the base of the stack?
             .unwrap_or_else(|| match_generic(&self.scanner))
+    }
+
+    fn resolve_matchers(&self) -> &'static [Matcher] {
+        let scan_mode = self.mode_stack.last().unwrap_or(&ScanMode::Generic);
+
+        match scan_mode {
+            ScanMode::ElementStart => SCAN_ELEMENT_START,
+            ScanMode::Markup => SCAN_MARKUP,
+            ScanMode::ListMarkup => SCAN_LIST_MARKUP,
+            ScanMode::Raw => SCAN_RAW,
+            ScanMode::Title => SCAN_TITLE,
+            ScanMode::Header => SCAN_HEADER,
+            ScanMode::HeaderValue => SCAN_HEADER_VALUE,
+            ScanMode::StructuredData => SCAN_STRUCTURED_DATA,
+            ScanMode::LinkReference => SCAN_LINK_REFERENCE,
+            ScanMode::Code => SCAN_CODE,
+            ScanMode::Generic => SCAN_GENERIC,
+        }
     }
 }
 
