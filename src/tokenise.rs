@@ -382,7 +382,7 @@ impl<'a> Tokeniser<'a> {
             scanner,
             token_count: 0,
             max_tokens: input.len(),
-            mode_stack: vec![ScanMode::Generic],
+            mode_stack: vec![],
         }
     }
 
@@ -395,8 +395,9 @@ impl<'a> Tokeniser<'a> {
     }
 
     fn current_matchers(&self) -> &'static [Matcher] {
-        //TODO: meh expect
-        match self.mode_stack.last().expect("empty mode stack") {
+        let scan_mode = self.mode_stack.last().unwrap_or(&ScanMode::Generic);
+
+        match scan_mode {
             ScanMode::ElementStart => SCAN_ELEMENT_START,
             ScanMode::Markup => SCAN_MARKUP,
             ScanMode::ListMarkup => SCAN_LIST_MARKUP,
