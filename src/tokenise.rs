@@ -363,7 +363,25 @@ pub enum ScanMode {
     StructuredData,
     LinkReference,
     Code,
-    Generic,
+}
+
+impl ScanMode {
+    fn try_match<'a>(self, scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
+        let matchers = match self {
+            ScanMode::ElementStart => SCAN_ELEMENT_START,
+            ScanMode::Markup => SCAN_MARKUP,
+            ScanMode::ListMarkup => SCAN_LIST_MARKUP,
+            ScanMode::Raw => SCAN_RAW,
+            ScanMode::Title => SCAN_TITLE,
+            ScanMode::Header => SCAN_HEADER,
+            ScanMode::HeaderValue => SCAN_HEADER_VALUE,
+            ScanMode::StructuredData => SCAN_STRUCTURED_DATA,
+            ScanMode::LinkReference => SCAN_LINK_REFERENCE,
+            ScanMode::Code => SCAN_CODE,
+        };
+
+        matchers.iter().find_map(|m| (m)(scanner))
+    }
 }
 
 pub struct Tokeniser<'a> {
@@ -396,10 +414,9 @@ impl<'a> Tokeniser<'a> {
 
     pub fn peek(&self) -> SpannedToken<'a> {
         //TODO: re-use with advance
-        let matchers = self.resolve_matchers();
         let position = self.scanner.position();
         let start = self.scanner.read_head.index;
-        let scan_match = self.scan(matchers);
+        let scan_match = self.scan();
         let end = scan_match.end.index;
         let lexeme = &self.scanner.input[start..end];
 
@@ -416,11 +433,10 @@ impl<'a> Tokeniser<'a> {
             "Posible infinite loop detected"
         );
 
-        let matchers = self.resolve_matchers();
         let position = self.scanner.position();
 
         let start = self.scanner.read_head.index;
-        let scan_match = self.scan(matchers);
+        let scan_match = self.scan();
         let end = scan_match.end.index;
         let lexeme = &self.scanner.input[start..end];
 
@@ -434,31 +450,11 @@ impl<'a> Tokeniser<'a> {
         }
     }
 
-    fn scan(&self, matchers: &[Matcher]) -> ScanMatch<'a> {
-        matchers
-            .iter()
-            .find_map(|m| (m)(&self.scanner))
-            // TODO: This is a bit clumsy, why not have match generic always be
-            // at the base of the stack?
-            .unwrap_or_else(|| match_generic(&self.scanner))
-    }
-
-    fn resolve_matchers(&self) -> &'static [Matcher] {
-        let scan_mode = self.mode_stack.last().unwrap_or(&ScanMode::Generic);
-
-        match scan_mode {
-            ScanMode::ElementStart => SCAN_ELEMENT_START,
-            ScanMode::Markup => SCAN_MARKUP,
-            ScanMode::ListMarkup => SCAN_LIST_MARKUP,
-            ScanMode::Raw => SCAN_RAW,
-            ScanMode::Title => SCAN_TITLE,
-            ScanMode::Header => SCAN_HEADER,
-            ScanMode::HeaderValue => SCAN_HEADER_VALUE,
-            ScanMode::StructuredData => SCAN_STRUCTURED_DATA,
-            ScanMode::LinkReference => SCAN_LINK_REFERENCE,
-            ScanMode::Code => SCAN_CODE,
-            ScanMode::Generic => SCAN_GENERIC,
-        }
+    fn scan(&self) -> ScanMatch<'a> {
+        self.mode_stack
+            .last()
+            .and_then(|mode| mode.try_match(&self.scanner))
+            .unwrap_or(match_generic(&self.scanner))
     }
 }
 
@@ -1568,5 +1564,3 @@ const SCAN_STRUCTURED_DATA: &[Matcher] = &[
 const SCAN_LINK_REFERENCE: &[Matcher] = &[LINK_TO_REFERENCE_JOINER, DATA_IDENTIFIER];
 
 const SCAN_CODE: &[Matcher] = &[CODE_DELIMITER, CODE_BLOCK];
-
-const SCAN_GENERIC: &[Matcher] = &[];
