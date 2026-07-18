@@ -115,8 +115,6 @@ pub enum Token<'a> {
     //TODO: More rubbish naming
     DelimitedContainerStart,
     DelimitedContainerEnd,
-    // TODO: dont need the indirection here?
-    // just have values in place?
     UnknownDirective(&'a str),
     Unknown(&'a str),
     BlockParameterName(&'a str),
@@ -355,8 +353,7 @@ token!(ListBullet(Indent));
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum ScanMode {
-    //TODO: Should BlockStart be element start?
-    BlockStart,
+    ElementStart,
     Markup,
     ListMarkup,
     Raw,
@@ -402,7 +399,7 @@ impl<'a> Tokeniser<'a> {
     fn current_matchers(&self) -> &'static [Matcher] {
         //TODO: meh expect
         match self.mode_stack.last().expect("empty mode stack") {
-            ScanMode::BlockStart => SCAN_BLOCK_START,
+            ScanMode::ElementStart => SCAN_ELEMENT_START,
             ScanMode::Markup => SCAN_MARKUP,
             ScanMode::ListMarkup => SCAN_LIST_MARKUP,
             ScanMode::Raw => SCAN_RAW,
@@ -1496,7 +1493,7 @@ const DATA_VALUE: Matcher = match_data_value;
 const CODE_DELIMITER: Matcher = match_code_delimiter;
 const CODE_BLOCK: Matcher = match_code_block;
 
-const SCAN_BLOCK_START: &[Matcher] = &[
+const SCAN_ELEMENT_START: &[Matcher] = &[
     CONTAINER_START,
     CONTAINER_END,
     SUBSECTION_DIRECTIVE,

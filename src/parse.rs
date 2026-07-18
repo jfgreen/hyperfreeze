@@ -192,7 +192,7 @@ fn parse_document(tokeniser: &mut Tokeniser) -> ParseResult<Document> {
     let mut references = Vec::new();
     let mut elements = Vec::new();
 
-    tokeniser.push_mode(ScanMode::BlockStart);
+    tokeniser.push_mode(ScanMode::ElementStart);
 
     if tokeniser.peek().is::<MetadataDirective>() {
         metadata = parse_metadata(tokeniser)?;
