@@ -551,7 +551,7 @@ impl<'a> Scanner<'a> {
         }
     }
 
-    pub(crate) fn advance_past(&mut self, scan_match: &ScanMatch<'a>) {
+    pub fn advance_past(&mut self, scan_match: &ScanMatch<'a>) {
         //TODO: read head is a bit chunky to clone about the place no?
         self.read_head = scan_match.end.clone();
     }
