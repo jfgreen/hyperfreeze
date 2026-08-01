@@ -46,7 +46,8 @@ impl Display for ParseError {
 
 impl ParseError {
     fn write_token(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        let position = self.token.position;
+        let span = self.token.span;
+        let position = span.start;
         writeln!(
             f,
             "parsing error on line {} column {} at {} token '{}'",
@@ -1210,7 +1211,7 @@ mod test {
 
     trait ParseErrorTestHelpers {
         fn assert_error_kind_eq(self, expected: ErrorKind);
-        fn assert_token_position_eq(self, expected: Position);
+        fn assert_token_span_eq(self, expected: Span);
         fn assert_token_name_eq(self, expected: TokenName);
         fn assert_token_lexeme_eq(self, expected: LexemeString);
     }
@@ -1225,8 +1226,8 @@ mod test {
             }
         }
 
-        fn assert_token_position_eq(self, expected: Position) {
-            let actual = self.token.position;
+        fn assert_token_span_eq(self, expected: Span) {
+            let actual = self.token.span;
             if actual != expected {
                 eprintln!("Actual:\n{:#?}", actual);
                 eprintln!("Expected:\n{:#?}", expected);
@@ -2739,7 +2740,7 @@ mod test {
     }
 
     #[test]
-    fn error_specifies_correct_row_and_column() {
+    fn error_specifies_correct_span() {
         let input = document_lines!(
             "/ Document with an silly cat error",
             "",
@@ -2747,11 +2748,22 @@ mod test {
             "goes *_*"
         );
 
-        let expected = Position { column: 6, row: 3 };
+        let expected = Span {
+            start: Position {
+                column: 6,
+                row: 3,
+                index: 52,
+            },
+            end: Position {
+                column: 7,
+                row: 3,
+                index: 53,
+            },
+        };
 
         parse_str(input)
             .expect_failure()
-            .assert_token_position_eq(expected);
+            .assert_token_span_eq(expected);
     }
 
     #[test]

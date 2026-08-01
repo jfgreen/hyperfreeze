@@ -80,7 +80,7 @@ impl Display for TokenName {
 pub struct TokenDescription {
     pub name: TokenName,
     pub lexeme: LexemeString,
-    pub position: Position,
+    pub span: Span,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -189,7 +189,7 @@ where
     T: TokenSpec<'a>,
 {
     pub value: T,
-    pub position: Position,
+    pub span: Span,
     pub lexeme: &'a str,
 }
 
@@ -205,15 +205,15 @@ where
         TokenDescription {
             name: T::NAME,
             lexeme: self.lexeme_to_owned(),
-            position: self.position,
+            span: self.span,
         }
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub struct SpannedToken<'a> {
     pub value: Token<'a>,
-    pub position: Position,
+    pub span: Span,
     pub lexeme: &'a str,
 }
 
@@ -234,7 +234,7 @@ impl<'a> SpannedToken<'a> {
     {
         T::try_from(self.value).ok().map(|token| Spanned {
             value: token,
-            position: self.position,
+            span: self.span,
             lexeme: self.lexeme,
         })
     }
@@ -250,7 +250,7 @@ impl<'a> SpannedToken<'a> {
         TokenDescription {
             name: self.value.name(),
             lexeme: LexemeString::from(self.lexeme),
-            position: self.position,
+            span: self.span,
         }
     }
 
@@ -388,9 +388,9 @@ impl ScanMode {
 
 pub struct Tokeniser<'a> {
     scanner: Scanner<'a>,
+    peeked: Option<SpannedToken<'a>>,
     token_count: usize,
     max_tokens: usize,
-    mode_stack: Vec<ScanMode>,
 }
 
 impl<'a> Tokeniser<'a> {
@@ -400,71 +400,57 @@ impl<'a> Tokeniser<'a> {
 
         Tokeniser {
             scanner,
+            peeked: None,
             token_count: 0,
             max_tokens: input.len(),
-            mode_stack: vec![],
         }
     }
 
     pub fn push_mode(&mut self, mode: ScanMode) {
-        self.mode_stack.push(mode);
+        self.scanner.push_mode(mode);
+        // self.peeked = None;
     }
 
     pub fn pop_mode(&mut self) {
-        self.mode_stack.pop();
+        self.scanner.pop_mode();
+        // self.peeked = None;
     }
 
-    pub fn peek(&self) -> SpannedToken<'a> {
-        //TODO: re-use with advance
-        let position = self.scanner.position();
-        let start = self.scanner.read_head.index;
-        let scan_match = self.scan();
-        let end = scan_match.end.index;
-        let lexeme = &self.scanner.input[start..end];
-
-        SpannedToken {
-            value: scan_match.token,
-            lexeme,
-            position,
-        }
+    pub fn peek(&mut self) -> SpannedToken<'a> {
+        *self.peeked.get_or_insert_with(|| self.scanner.scan())
     }
 
     pub fn advance(&mut self) -> SpannedToken<'a> {
+        let next = if let Some(peeked_token) = self.peeked.take() {
+            peeked_token
+        } else {
+            self.scanner.scan()
+        };
+
         assert!(
             self.token_count <= self.max_tokens,
             "Posible infinite loop detected"
         );
 
-        let position = self.scanner.position();
+        // if !matches!(next.value, Token::EndOfInput) {
+        self.scanner.advance_to(next.span.end);
+        // }
 
-        let start = self.scanner.read_head.index;
-        let scan_match = self.scan();
-        let end = scan_match.end.index;
-        let lexeme = &self.scanner.input[start..end];
-
-        self.scanner.advance_past(&scan_match);
-        self.token_count += 1;
-
-        SpannedToken {
-            value: scan_match.token,
-            lexeme,
-            position,
-        }
-    }
-
-    fn scan(&self) -> ScanMatch<'a> {
-        self.mode_stack
-            .last()
-            .and_then(|mode| mode.try_match(&self.scanner))
-            .unwrap_or(match_generic(&self.scanner))
+        next
     }
 }
 
-// TODO: store span, not position
+#[derive(Eq, PartialEq, Clone, Copy, Debug)]
+pub struct Span {
+    pub start: Position,
+    pub end: Position,
+}
+
 #[derive(Eq, PartialEq, Clone, Copy, Debug)]
 pub struct Position {
     pub column: u32,
     pub row: u32,
+    pub index: usize,
 }
 
 //TODO: Ideally we wouldn't need a copyable read head
@@ -502,6 +488,19 @@ impl<'a> ReadHead<'a> {
         Position {
             column: self.column,
             row: self.row,
+            index: self.index,
+        }
+    }
+
+    fn move_to(&mut self, position: Position) {
+        self.column = position.column;
+        self.row = position.row;
+        self.index = position.index;
+
+        if self.index < self.input_len {
+            self.current = Some(self.input_bytes[self.index]);
+        } else {
+            self.current = None;
         }
     }
 
@@ -537,6 +536,7 @@ impl<'a> ReadHead<'a> {
 struct Scanner<'a> {
     //TODO: Actually store a peek
     input: &'a str,
+    mode_stack: Vec<ScanMode>,
     read_head: ReadHead<'a>,
 }
 
@@ -545,19 +545,41 @@ impl<'a> Scanner<'a> {
         Self {
             input,
             read_head: ReadHead::new(input),
+            mode_stack: vec![],
         }
+    }
+
+    fn push_mode(&mut self, mode: ScanMode) {
+        self.mode_stack.push(mode);
+    }
+
+    fn pop_mode(&mut self) {
+        self.mode_stack.pop();
     }
 
     fn position(&self) -> Position {
         self.read_head.position()
     }
 
-    // fn is_on_empty_line(&self) -> bool {
-    //     todo!()
-    //     // self.input[self.read_head.index..]
-    //     //     .trim_start_matches(SPACE)
-    //     //     .starts_with(NEW_LINE)
-    // }
+    fn scan(&self) -> SpannedToken<'a> {
+        let scan_match = self
+            .mode_stack
+            .last()
+            //TODO: passing self is a bit hmm
+            .and_then(|mode| mode.try_match(&self))
+            .unwrap_or(match_generic(&self));
+
+        let start = self.read_head.position();
+        let end = scan_match.end.position();
+        let lexeme = &self.input[start.index..end.index];
+        let span = Span { start, end };
+
+        SpannedToken {
+            value: scan_match.token,
+            lexeme,
+            span,
+        }
+    }
 
     //TODO: can we avoid skipping on empty line being special handling?
 
@@ -587,9 +609,8 @@ impl<'a> Scanner<'a> {
         // }
     }
 
-    pub fn advance_past(&mut self, scan_match: &ScanMatch<'a>) {
-        //TODO: read head is a bit chunky to clone about the place no?
-        self.read_head = scan_match.end.clone();
+    pub fn advance_to(&mut self, position: Position) {
+        self.read_head.move_to(position);
     }
 }
 
