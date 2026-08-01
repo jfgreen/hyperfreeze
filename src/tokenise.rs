@@ -80,7 +80,7 @@ impl Display for TokenName {
 pub struct TokenDescription {
     pub name: TokenName,
     pub lexeme: LexemeString,
-    pub span: Span,
+    pub position: Position,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -205,7 +205,7 @@ where
         TokenDescription {
             name: T::NAME,
             lexeme: self.lexeme_to_owned(),
-            span: self.span,
+            position: self.span.start,
         }
     }
 }
@@ -250,7 +250,7 @@ impl<'a> SpannedToken<'a> {
         TokenDescription {
             name: self.value.name(),
             lexeme: LexemeString::from(self.lexeme),
-            span: self.span,
+            position: self.span.start,
         }
     }
 
