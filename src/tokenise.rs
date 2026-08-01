@@ -1,7 +1,8 @@
 use std::fmt::{self, Display, Formatter, Write};
 
-//TODO: Some kind of annotated example that describes the terminology
-//TODO: Make terminology less confusing
+// TODO: Some kind of annotated example that describes the terminology
+// Could even be a doc test?
+// TODO: Make terminology less confusing
 
 //TODO: phase these out?
 const CONTAINER_START_PATTERN: &str = ">>>";
@@ -475,7 +476,7 @@ impl<'a> ReadHead<'a> {
         //TODO: meh
         //FIXME: Handle empty input strings
         Self {
-            input_bytes: input_bytes,
+            input_bytes,
             current: Some(input_bytes[0]),
             index: 0,
             column: 0,
@@ -566,8 +567,8 @@ impl<'a> Scanner<'a> {
             .mode_stack
             .last()
             //TODO: passing self is a bit hmm
-            .and_then(|mode| mode.try_match(&self))
-            .unwrap_or(match_generic(&self));
+            .and_then(|mode| mode.try_match(self))
+            .unwrap_or(match_generic(self));
 
         let start = self.read_head.position();
         let end = scan_match.end.position();
@@ -957,7 +958,7 @@ fn match_blockbreak<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
         if head.current == Some(SPACE) {
             // TODO: meh
         } else if head.current == Some(NEW_LINE) {
-            new_line_count += 1
+            new_line_count += 1;
         } else {
             break;
         }
