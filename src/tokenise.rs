@@ -457,17 +457,12 @@ pub struct Position {
 //TODO: Ideally we wouldn't need a copyable read head
 #[derive(Debug, Clone)]
 struct ReadHead<'a> {
-    // TODO: all a bit much?
-    // try working just on byte stream?
     //TODO: Do we still need this to be option?
     current: Option<u8>,
-    //TODO: It would be nice if we didn't have to maintain both input
-    // and input_bytes
     input_bytes: &'a [u8],
     index: usize,
     column: u32,
     row: u32,
-    input_len: usize,
 }
 
 impl<'a> ReadHead<'a> {
@@ -481,7 +476,6 @@ impl<'a> ReadHead<'a> {
             index: 0,
             column: 0,
             row: 0,
-            input_len: input.len(),
         }
     }
 
@@ -498,7 +492,7 @@ impl<'a> ReadHead<'a> {
         self.row = position.row;
         self.index = position.index;
 
-        if self.index < self.input_len {
+        if self.index < self.input_bytes.len() {
             self.current = Some(self.input_bytes[self.index]);
         } else {
             self.current = None;
@@ -507,7 +501,7 @@ impl<'a> ReadHead<'a> {
 
     fn read_next_byte(&mut self) {
         let next_index = self.index + 1;
-        if next_index < self.input_len {
+        if next_index < self.input_bytes.len() {
             if self.current == Some(b'\n') {
                 self.column = 0;
                 self.row += 1;
@@ -517,14 +511,10 @@ impl<'a> ReadHead<'a> {
             self.index = next_index;
             self.current = Some(self.input_bytes[self.index]);
         } else {
-            self.index = self.input_len;
+            self.index = self.input_bytes.len();
             self.current = None;
         }
     }
-
-    // fn is_on(&self, c: u8) -> bool {
-    //     self.input_bytes[self.index] == c
-    // }
 }
 
 // TODO: having stuff split across scanner and head is meh
