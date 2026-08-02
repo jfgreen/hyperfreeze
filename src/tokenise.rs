@@ -354,6 +354,10 @@ token!(Code<'a>(&'a str));
 token!(Unknown<'a>(&'a str));
 token!(ListBullet(Indent));
 
+//TODO: Could we make the state push/pop transitions
+// a) Be data driven
+// b) Live inside the tokeniser?
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum ScanMode {
     ElementStart,
@@ -363,6 +367,7 @@ pub enum ScanMode {
     Title,
     Header,
     HeaderValue,
+    MetadataStart,
     StructuredData,
     LinkReference,
     Code,
@@ -378,6 +383,7 @@ impl ScanMode {
             ScanMode::Title => SCAN_TITLE,
             ScanMode::Header => SCAN_HEADER,
             ScanMode::HeaderValue => SCAN_HEADER_VALUE,
+            ScanMode::MetadataStart => SCAN_METADATA_START,
             ScanMode::StructuredData => SCAN_STRUCTURED_DATA,
             ScanMode::LinkReference => SCAN_LINK_REFERENCE,
             ScanMode::Code => SCAN_CODE,
@@ -1482,14 +1488,6 @@ fn match_generic<'a>(scanner: &Scanner<'a>) -> ScanMatch<'a> {
 }
 
 //TODO: do we really need this?
-fn match_data_identifier_at_start<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
-    if scanner.position().column != 0 {
-        return None;
-    }
-    match_data_identifier(scanner)
-}
-
-//TODO: do we really need this?
 fn match_list_bullet_at_start<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
     if scanner.position().column != 0 {
         return None;
@@ -1526,7 +1524,6 @@ const PARAMETERS_END: Matcher = match_parameters_end;
 const PARAMETER_NAME_VALUE_SEP: Matcher = match_parameter_name_value_seperator;
 const PARAMETER_NAME: Matcher = match_parameter_name;
 const PARAMETER_VALUE: Matcher = match_parameter_value;
-const DATA_IDENTIFIER_AT_START: Matcher = match_data_identifier_at_start;
 const DATA_IDENTIFIER: Matcher = match_data_identifier;
 const DATA_KEY_VALUE_SEP: Matcher = match_data_key_value_seperator;
 const DATA_LIST_SEP: Matcher = match_data_list_seperator;
@@ -1600,12 +1597,11 @@ const SCAN_HEADER: &[Matcher] = &[
 
 const SCAN_HEADER_VALUE: &[Matcher] = &[PARAMETER_VALUE];
 
-const SCAN_STRUCTURED_DATA: &[Matcher] = &[
-    DATA_IDENTIFIER_AT_START,
-    DATA_KEY_VALUE_SEP,
-    DATA_LIST_SEP,
-    DATA_VALUE,
-];
+//TODO: Could we lose this if we had a single token for both ident and value?
+// OR we can specialise by allowing to match on last token also?
+const SCAN_METADATA_START: &[Matcher] = &[DATA_IDENTIFIER];
+
+const SCAN_STRUCTURED_DATA: &[Matcher] = &[DATA_KEY_VALUE_SEP, DATA_LIST_SEP, DATA_VALUE];
 
 const SCAN_LINK_REFERENCE: &[Matcher] = &[LINK_TO_REFERENCE_JOINER, DATA_IDENTIFIER];
 

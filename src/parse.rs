@@ -238,10 +238,12 @@ fn parse_metadata(tokeniser: &mut Tokeniser) -> ParseResult<doc::Metadata> {
     tokeniser.advance().require::<MetadataDirective>()?;
     tokeniser.advance().require::<LineBreak>()?;
 
-    tokeniser.push_mode(ScanMode::StructuredData);
+    tokeniser.push_mode(ScanMode::MetadataStart);
 
     while let Some(identifier_token) = tokeniser.peek().try_consume() {
         let DataIdentifier(key) = identifier_token.value;
+        tokeniser.push_mode(ScanMode::StructuredData);
+
         tokeniser.advance();
         tokeniser.advance().require::<DataKeyValueSeperator>()?;
 
@@ -267,6 +269,7 @@ fn parse_metadata(tokeniser: &mut Tokeniser) -> ParseResult<doc::Metadata> {
         if tokeniser.peek().is::<LineBreak>() {
             tokeniser.advance();
         }
+        tokeniser.pop_mode();
     }
 
     tokeniser.pop_mode();
@@ -282,12 +285,14 @@ fn parse_references(tokeniser: &mut Tokeniser) -> ParseResult<Box<[doc::Referenc
     tokeniser.advance().require::<ReferencesDirective>()?;
     tokeniser.advance().require::<LineBreak>()?;
 
-    tokeniser.push_mode(ScanMode::StructuredData);
+    tokeniser.push_mode(ScanMode::MetadataStart);
 
     let mut references = Vec::new();
 
     while let Some(id_token) = tokeniser.peek().try_consume() {
         let DataIdentifier(id) = id_token.value;
+
+        tokeniser.push_mode(ScanMode::StructuredData);
 
         tokeniser.advance();
         tokeniser.advance().require::<DataKeyValueSeperator>()?;
@@ -305,6 +310,7 @@ fn parse_references(tokeniser: &mut Tokeniser) -> ParseResult<Box<[doc::Referenc
         };
 
         references.push(reference);
+        tokeniser.pop_mode();
     }
 
     tokeniser.pop_mode();
