@@ -534,6 +534,7 @@ struct Scanner<'a> {
     //TODO: Actually store a peek
     input: &'a str,
     mode_stack: Vec<ScanMode>,
+    last_token: Option<Token<'a>>,
     read_head: ReadHead<'a>,
 }
 
@@ -541,8 +542,9 @@ impl<'a> Scanner<'a> {
     fn new(input: &'a str) -> Self {
         Self {
             input,
-            read_head: ReadHead::new(input),
             mode_stack: vec![],
+            last_token: None,
+            read_head: ReadHead::new(input),
         }
     }
 
@@ -554,11 +556,7 @@ impl<'a> Scanner<'a> {
         self.mode_stack.pop();
     }
 
-    fn position(&self) -> Position {
-        self.read_head.position()
-    }
-
-    fn scan(&self) -> SpannedToken<'a> {
+    fn scan(&mut self) -> SpannedToken<'a> {
         let scan_match = self
             .mode_stack
             .last()
@@ -570,6 +568,8 @@ impl<'a> Scanner<'a> {
         let end = scan_match.end.position();
         let lexeme = &self.input[start.index..end.index];
         let span = Span { start, end };
+
+        self.last_token = Some(scan_match.token);
 
         SpannedToken {
             value: scan_match.token,
@@ -623,6 +623,13 @@ pub struct ScanMatch<'a> {
 
 fn match_list_bullet<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
     let mut head = scanner.read_head.clone();
+
+    if !matches!(
+        scanner.last_token,
+        Some(Token::LineBreak) | Some(Token::BlockBreak) | None
+    ) {
+        return None;
+    }
 
     let mut space_count = 0;
 
@@ -1487,14 +1494,6 @@ fn match_generic<'a>(scanner: &Scanner<'a>) -> ScanMatch<'a> {
     }
 }
 
-//TODO: do we really need this?
-fn match_list_bullet_at_start<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
-    if scanner.position().column != 0 {
-        return None;
-    }
-    match_list_bullet(scanner)
-}
-
 const CONTAINER_START: Matcher = match_container_start;
 const CONTAINER_END: Matcher = match_container_end;
 const SUBSECTION_DIRECTIVE: Matcher = match_subsection_directive;
@@ -1504,7 +1503,6 @@ const DATA_DIRECTIVE: Matcher = match_data_directive;
 const CONTAINER_DIRECTIVE: Matcher = match_container_directive;
 const BLOCK_DIRECTIVE: Matcher = match_block_directive;
 const LIST_BULLET: Matcher = match_list_bullet;
-const LIST_BULLET_AT_START: Matcher = match_list_bullet_at_start;
 const RAW_DELIMITER: Matcher = match_raw_delimiter;
 const RAW_FRAGMENT: Matcher = match_raw_fragment;
 const LINK_OPENING: Matcher = match_link_opening_delimiter;
@@ -1563,8 +1561,8 @@ const SCAN_MARKUP: &[Matcher] = &[
 ];
 
 const SCAN_LIST_MARKUP: &[Matcher] = &[
+    LIST_BULLET,
     RAW_DELIMITER,
-    LIST_BULLET_AT_START,
     LINK_OPENING,
     LINK_CLOSING,
     STRONG_DELIMITER,
