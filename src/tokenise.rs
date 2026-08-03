@@ -4,11 +4,6 @@ use std::fmt::{self, Display, Formatter, Write};
 // Could even be a doc test?
 // TODO: Make terminology less confusing
 
-//TODO: phase these out?
-const CONTAINER_START_PATTERN: &str = ">>>";
-const CONTAINER_END_PATTERN: &str = "<<<";
-const CODE_DELIMITER_PATTERN: &str = "---";
-
 const SPACE: u8 = b' ';
 const NEW_LINE: u8 = b'\n';
 const COLON: u8 = b':';
@@ -29,6 +24,10 @@ const AT_SIGN: u8 = b'@';
 const EXCLAMATION_MARK: u8 = b'!';
 const VERTICAL_BAR: u8 = b'|';
 const FULL_STOP: u8 = b'.';
+
+const CODE_DELIMITER_PATTERN: [u8; 3] = [b'-', b'-', b'-'];
+const CONTAINER_START_PATTERN: [u8; 3] = [b'>', b'>', b'>'];
+const CONTAINER_END_PATTERN: [u8; 3] = [b'<', b'<', b'<'];
 
 const MARKUP_CHARS: &[u8; 10] = &[
     UNDERSCORE,
@@ -455,7 +454,8 @@ pub struct Position {
 //TODO: Ideally we wouldn't need a copyable read head
 #[derive(Debug, Clone)]
 struct ReadHead<'a> {
-    //TODO: Do we still need this to be option?
+    //TODO: direct usage of curren is a bit meh
+    // TODO: do we even _need_ current, doable via index?
     current: Option<u8>,
     input_bytes: &'a [u8],
     index: usize,
@@ -512,6 +512,10 @@ impl<'a> ReadHead<'a> {
             self.index = self.input_bytes.len();
             self.current = None;
         }
+    }
+
+    fn is_on_bytes(&self, pattern: &[u8]) -> bool {
+        self.input_bytes[self.index..].starts_with(pattern)
     }
 }
 
@@ -650,13 +654,13 @@ fn match_markup_text_space<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
         head.read_next_byte();
     }
 
-    let mut has_new_line = false;
-    if head.current == Some(NEW_LINE) {
+    let has_new_line = head.current == Some(NEW_LINE);
+
+    if has_new_line {
         head.read_next_byte();
-        has_new_line = true;
     }
 
-    if has_new_line && scanner.input[head.index..].starts_with(CONTAINER_END_PATTERN) {
+    if has_new_line && head.is_on_bytes(&CONTAINER_END_PATTERN) {
         return None;
     }
 
@@ -690,13 +694,13 @@ fn match_list_markup_text_space<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'
         head.read_next_byte();
     }
 
-    let mut has_new_line = false;
-    if head.current == Some(NEW_LINE) {
+    let has_new_line = head.current == Some(NEW_LINE);
+
+    if has_new_line {
         head.read_next_byte();
-        has_new_line = true;
     }
 
-    if has_new_line && scanner.input[head.index..].starts_with(CONTAINER_END_PATTERN) {
+    if has_new_line && head.is_on_bytes(&CONTAINER_END_PATTERN) {
         return None;
     }
 
@@ -923,7 +927,7 @@ fn match_strikethrough_delimiter<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<
 fn match_code_delimiter<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
     let mut head = scanner.read_head.clone();
 
-    for byte in CODE_DELIMITER_PATTERN.bytes() {
+    for byte in CODE_DELIMITER_PATTERN {
         if head.current == Some(byte) {
             head.read_next_byte();
         } else {
@@ -944,7 +948,7 @@ fn match_code_block<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
 
     loop {
         let on_start_of_line = head.column == 0;
-        let prefix_matches = scanner.input[head.index..].starts_with(CODE_DELIMITER_PATTERN);
+        let prefix_matches = head.is_on_bytes(&CODE_DELIMITER_PATTERN);
         if on_start_of_line && prefix_matches {
             let i2 = head.index;
             let text = &scanner.input[i1..i2];
@@ -1452,7 +1456,7 @@ fn match_title_directive<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
 fn match_container_start<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
     let mut head = scanner.read_head.clone();
 
-    for char in CONTAINER_START_PATTERN.bytes() {
+    for char in CONTAINER_START_PATTERN {
         if head.current == Some(char) {
             head.read_next_byte();
         } else {
@@ -1473,7 +1477,7 @@ fn match_container_start<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
 fn match_container_end<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
     let mut head = scanner.read_head.clone();
 
-    for char in CONTAINER_END_PATTERN.bytes() {
+    for char in CONTAINER_END_PATTERN {
         if head.current == Some(char) {
             head.read_next_byte();
         } else {
