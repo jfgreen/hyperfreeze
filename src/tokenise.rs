@@ -367,7 +367,6 @@ pub enum ScanMode {
     Title,
     Header,
     HeaderValue,
-    MetadataStart,
     StructuredData,
     LinkReference,
     Code,
@@ -383,7 +382,6 @@ impl ScanMode {
             ScanMode::Title => SCAN_TITLE,
             ScanMode::Header => SCAN_HEADER,
             ScanMode::HeaderValue => SCAN_HEADER_VALUE,
-            ScanMode::MetadataStart => SCAN_METADATA_START,
             ScanMode::StructuredData => SCAN_STRUCTURED_DATA,
             ScanMode::LinkReference => SCAN_LINK_REFERENCE,
             ScanMode::Code => SCAN_CODE,
@@ -1203,6 +1201,13 @@ fn match_data_identifier<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
 
     let i1 = head.index;
 
+    if !matches!(
+        scanner.last_token,
+        Some(Token::LineBreak) | Some(Token::LinkToReferenceJoiner)
+    ) {
+        return None;
+    }
+
     while head.current.is_some_and(|c| {
         c.is_ascii_alphanumeric() || c == UNDERSCORE || c == DASH || c == FULL_STOP
     }) {
@@ -1595,11 +1600,12 @@ const SCAN_HEADER: &[Matcher] = &[
 
 const SCAN_HEADER_VALUE: &[Matcher] = &[PARAMETER_VALUE];
 
-//TODO: Could we lose this if we had a single token for both ident and value?
-// OR we can specialise by allowing to match on last token also?
-const SCAN_METADATA_START: &[Matcher] = &[DATA_IDENTIFIER];
-
-const SCAN_STRUCTURED_DATA: &[Matcher] = &[DATA_KEY_VALUE_SEP, DATA_LIST_SEP, DATA_VALUE];
+const SCAN_STRUCTURED_DATA: &[Matcher] = &[
+    DATA_IDENTIFIER,
+    DATA_KEY_VALUE_SEP,
+    DATA_LIST_SEP,
+    DATA_VALUE,
+];
 
 const SCAN_LINK_REFERENCE: &[Matcher] = &[LINK_TO_REFERENCE_JOINER, DATA_IDENTIFIER];
 
