@@ -366,7 +366,6 @@ pub enum ScanMode {
     Raw,
     Title,
     Header,
-    HeaderValue,
     StructuredData,
     LinkReference,
     Code,
@@ -381,7 +380,6 @@ impl ScanMode {
             ScanMode::Raw => SCAN_RAW,
             ScanMode::Title => SCAN_TITLE,
             ScanMode::Header => SCAN_HEADER,
-            ScanMode::HeaderValue => SCAN_HEADER_VALUE,
             ScanMode::StructuredData => SCAN_STRUCTURED_DATA,
             ScanMode::LinkReference => SCAN_LINK_REFERENCE,
             ScanMode::Code => SCAN_CODE,
@@ -413,12 +411,10 @@ impl<'a> Tokeniser<'a> {
 
     pub fn push_mode(&mut self, mode: ScanMode) {
         self.scanner.push_mode(mode);
-        // self.peeked = None;
     }
 
     pub fn pop_mode(&mut self) {
         self.scanner.pop_mode();
-        // self.peeked = None;
     }
 
     pub fn peek(&mut self) -> SpannedToken<'a> {
@@ -1143,6 +1139,13 @@ fn match_title_text<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
 fn match_parameter_value<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
     let mut head = scanner.read_head.clone();
 
+    if !matches!(
+        scanner.last_token,
+        Some(Token::BlockParameterNameValueSeperator)
+    ) {
+        return None;
+    }
+
     let i1 = head.index;
 
     while head.current.is_some_and(|c| {
@@ -1595,10 +1598,9 @@ const SCAN_HEADER: &[Matcher] = &[
     PARAMETERS_START,
     PARAMETERS_END,
     PARAMETER_NAME_VALUE_SEP,
+    PARAMETER_VALUE,
     PARAMETER_NAME,
 ];
-
-const SCAN_HEADER_VALUE: &[Matcher] = &[PARAMETER_VALUE];
 
 const SCAN_STRUCTURED_DATA: &[Matcher] = &[
     DATA_IDENTIFIER,

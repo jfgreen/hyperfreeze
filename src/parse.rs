@@ -642,11 +642,8 @@ fn parse_list(tokeniser: &mut Tokeniser) -> ParseResult<doc::Block> {
                     .advance()
                     .require::<BlockParameterNameValueSeperator>()?;
 
-                tokeniser.push_mode(ScanMode::HeaderValue);
                 let param_value_token = tokeniser.advance().require()?;
                 let BlockParameterValue(value) = param_value_token.value;
-
-                tokeniser.pop_mode();
 
                 match name {
                     "style" => {
