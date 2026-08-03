@@ -557,7 +557,7 @@ impl<'a> Scanner<'a> {
             .unwrap_or(match_generic(self));
 
         let start = self.read_head.position();
-        let end = scan_match.end.position();
+        let end = scan_match.end;
         let lexeme = &self.input[start.index..end.index];
         let span = Span { start, end };
 
@@ -603,14 +603,10 @@ impl<'a> Scanner<'a> {
     }
 }
 
-// TODO: Could hold different positions for full extent of
-// matching text vs the sub text we are interested in
-// e.g escaped chars
 #[derive(Debug)]
 pub struct ScanMatch<'a> {
     token: Token<'a>,
-    // TODO: Store a position instead of a head
-    end: ReadHead<'a>,
+    end: Position,
 }
 
 fn match_list_bullet<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
@@ -642,7 +638,7 @@ fn match_list_bullet<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
 
     Some(ScanMatch {
         token: Token::ListBullet(Indent { space_count }),
-        end: head,
+        end: head.position(),
     })
 }
 
@@ -682,7 +678,7 @@ fn match_markup_text_space<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
 
     Some(ScanMatch {
         token: Token::MarkupTextSpace,
-        end: head,
+        end: head.position(),
     })
 }
 
@@ -726,7 +722,7 @@ fn match_list_markup_text_space<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'
 
     Some(ScanMatch {
         token: Token::MarkupTextSpace,
-        end: head,
+        end: head.position(),
     })
 }
 
@@ -751,7 +747,7 @@ fn match_title_text_space<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
 
     Some(ScanMatch {
         token: Token::TitleTextSpace,
-        end: head,
+        end: head.position(),
     })
 }
 
@@ -766,7 +762,7 @@ fn match_parameters_start<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
 
     Some(ScanMatch {
         token: Token::BlockParametersStart,
-        end: head,
+        end: head.position(),
     })
 }
 
@@ -781,7 +777,7 @@ fn match_parameters_end<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
 
     Some(ScanMatch {
         token: Token::BlockParametersEnd,
-        end: head,
+        end: head.position(),
     })
 }
 
@@ -796,7 +792,7 @@ fn match_parameter_name_value_seperator<'a>(scanner: &Scanner<'a>) -> Option<Sca
 
     Some(ScanMatch {
         token: Token::BlockParameterNameValueSeperator,
-        end: head,
+        end: head.position(),
     })
 }
 
@@ -811,7 +807,7 @@ fn match_raw_delimiter<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
 
     Some(ScanMatch {
         token: Token::RawDelimiter,
-        end: head,
+        end: head.position(),
     })
 }
 
@@ -826,7 +822,7 @@ fn match_link_opening_delimiter<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'
 
     Some(ScanMatch {
         token: Token::LinkOpeningDelimiter,
-        end: head,
+        end: head.position(),
     })
 }
 
@@ -841,7 +837,7 @@ fn match_link_closing_delimiter<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'
 
     Some(ScanMatch {
         token: Token::LinkClosingDelimiter,
-        end: head,
+        end: head.position(),
     })
 }
 
@@ -875,7 +871,7 @@ fn match_link_to_reference<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
 
     Some(ScanMatch {
         token: Token::LinkToReference(text),
-        end: head,
+        end: head.position(),
     })
 }
 
@@ -890,7 +886,7 @@ fn match_strong_delimiter<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
 
     Some(ScanMatch {
         token: Token::StrongDelimiter,
-        end: head,
+        end: head.position(),
     })
 }
 
@@ -905,7 +901,7 @@ fn match_emphasis_delimiter<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> 
 
     Some(ScanMatch {
         token: Token::EmphasisDelimiter,
-        end: head,
+        end: head.position(),
     })
 }
 
@@ -920,7 +916,7 @@ fn match_strikethrough_delimiter<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<
 
     Some(ScanMatch {
         token: Token::StrikethroughDelimiter,
-        end: head,
+        end: head.position(),
     })
 }
 
@@ -937,7 +933,7 @@ fn match_code_delimiter<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
 
     Some(ScanMatch {
         token: Token::CodeDelimiter,
-        end: head,
+        end: head.position(),
     })
 }
 
@@ -954,7 +950,7 @@ fn match_code_block<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
             let text = &scanner.input[i1..i2];
             return Some(ScanMatch {
                 token: Token::Code(text),
-                end: head,
+                end: head.position(),
             });
         } else if head.current.is_none() {
             return None;
@@ -982,7 +978,7 @@ fn match_blockbreak<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
     if new_line_count > 1 {
         Some(ScanMatch {
             token: Token::BlockBreak,
-            end: head,
+            end: head.position(),
         })
     } else {
         None
@@ -1000,7 +996,7 @@ fn match_linebreak<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
         head.read_next_byte();
         Some(ScanMatch {
             token: Token::LineBreak,
-            end: head,
+            end: head.position(),
         })
     } else {
         None
@@ -1021,7 +1017,7 @@ fn match_end_of_input<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
     if head.current.is_none() {
         Some(ScanMatch {
             token: Token::EndOfInput,
-            end: head,
+            end: head.position(),
         })
     } else {
         None
@@ -1050,7 +1046,7 @@ fn match_escaped_markup_text<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>>
 
     Some(ScanMatch {
         token: Token::MarkupText(text),
-        end: head,
+        end: head.position(),
     })
 }
 
@@ -1074,7 +1070,7 @@ fn match_raw_fragment<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
     } else {
         Some(ScanMatch {
             token: Token::RawFragment(text),
-            end: head,
+            end: head.position(),
         })
     }
 }
@@ -1104,7 +1100,7 @@ fn match_data_value<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
         Some(ScanMatch {
             //TODO: meh amounts of ceremony here
             token: Token::DataValue(text),
-            end: head,
+            end: head.position(),
         })
     }
 }
@@ -1126,7 +1122,7 @@ fn match_markup_text<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
     } else {
         Some(ScanMatch {
             token: Token::MarkupText(text),
-            end: head,
+            end: head.position(),
         })
     }
 }
@@ -1148,7 +1144,7 @@ fn match_title_text<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
     } else {
         Some(ScanMatch {
             token: Token::TitleText(text),
-            end: head,
+            end: head.position(),
         })
     }
 }
@@ -1184,7 +1180,7 @@ fn match_parameter_value<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
 
     Some(ScanMatch {
         token: Token::BlockParameterValue(text),
-        end: head,
+        end: head.position(),
     })
 }
 
@@ -1212,7 +1208,7 @@ fn match_parameter_name<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
 
     Some(ScanMatch {
         token: Token::BlockParameterName(text),
-        end: head,
+        end: head.position(),
     })
 }
 
@@ -1240,7 +1236,7 @@ fn match_data_identifier<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
 
     Some(ScanMatch {
         token: Token::DataIdentifier(text),
-        end: head,
+        end: head.position(),
     })
 }
 
@@ -1263,7 +1259,7 @@ fn match_data_key_value_seperator<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch
 
     Some(ScanMatch {
         token: Token::DataKeyValueSeperator,
-        end: head,
+        end: head.position(),
     })
 }
 
@@ -1282,7 +1278,7 @@ fn match_data_list_seperator<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>>
 
     Some(ScanMatch {
         token: Token::DataListSeperator,
-        end: head,
+        end: head.position(),
     })
 }
 
@@ -1311,7 +1307,10 @@ fn match_data_directive<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
         _ => Token::UnknownDirective(text),
     };
 
-    Some(ScanMatch { token, end: head })
+    Some(ScanMatch {
+        token,
+        end: head.position(),
+    })
 }
 
 fn match_container_directive<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
@@ -1337,7 +1336,10 @@ fn match_container_directive<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>>
         _ => Token::UnknownDirective(text),
     };
 
-    Some(ScanMatch { token, end: head })
+    Some(ScanMatch {
+        token,
+        end: head.position(),
+    })
 }
 
 //TODO: should be seperate match functions?
@@ -1366,7 +1368,10 @@ fn match_block_directive<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
         _ => Token::UnknownDirective(text),
     };
 
-    Some(ScanMatch { token, end: head })
+    Some(ScanMatch {
+        token,
+        end: head.position(),
+    })
 }
 
 fn match_subsection_directive<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
@@ -1396,7 +1401,7 @@ fn match_subsection_directive<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>
 
     Some(ScanMatch {
         token: Token::SubSectionDirective,
-        end: head,
+        end: head.position(),
     })
 }
 
@@ -1421,7 +1426,7 @@ fn match_section_directive<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
 
     Some(ScanMatch {
         token: Token::SectionDirective,
-        end: head,
+        end: head.position(),
     })
 }
 
@@ -1440,7 +1445,7 @@ fn match_title_directive<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
 
     Some(ScanMatch {
         token: Token::TitleDirective,
-        end: head,
+        end: head.position(),
     })
 }
 
@@ -1461,7 +1466,7 @@ fn match_container_start<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
 
     Some(ScanMatch {
         token: Token::DelimitedContainerStart,
-        end: head,
+        end: head.position(),
     })
 }
 
@@ -1482,7 +1487,7 @@ fn match_container_end<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
 
     Some(ScanMatch {
         token: Token::DelimitedContainerEnd,
-        end: head,
+        end: head.position(),
     })
 }
 
@@ -1500,7 +1505,7 @@ fn match_unknown<'a>(scanner: &Scanner<'a>) -> ScanMatch<'a> {
 
     ScanMatch {
         token: Token::Unknown(text),
-        end: head,
+        end: head.position(),
     }
 }
 
