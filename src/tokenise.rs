@@ -166,7 +166,7 @@ impl Token<'_> {
             Token::BlockParameterValue(_) => BlockParameterValue::NAME,
             Token::DataIdentifier(_) => DataIdentifier::NAME,
             Token::DataValue(_) => DataValue::NAME,
-            Token::LinkToReference(_) => DataValue::NAME,
+            Token::LinkToReference(_) => LinkToReference::NAME,
             Token::TitleText(_) => TitleText::NAME,
             Token::MarkupText(_) => MarkupText::NAME,
             Token::RawFragment(_) => RawFragment::NAME,
@@ -312,6 +312,7 @@ macro_rules! token {
     };
 }
 
+//TODO: tokens! ?
 token!(MetadataDirective);
 token!(ReferencesDirective);
 token!(ParagraphDirective);
@@ -618,7 +619,7 @@ fn match_list_bullet<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
 
     if !matches!(
         scanner.last_token,
-        Some(Token::LineBreak) | Some(Token::BlockBreak) | None
+        Some(Token::LineBreak | Token::BlockBreak) | None
     ) {
         return None;
     }
