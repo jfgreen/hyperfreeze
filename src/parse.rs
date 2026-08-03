@@ -768,14 +768,8 @@ fn parse_linked_text_run(tokeniser: &mut Tokeniser) -> ParseResult<doc::TextRun>
 
     tokeniser.advance().require::<LinkClosingDelimiter>()?;
 
-    tokeniser.push_mode(ScanMode::LinkReference);
-
-    tokeniser.advance().require::<LinkToReferenceJoiner>()?;
-
-    let identifier_token = tokeniser.advance().require()?;
-    let DataIdentifier(identifier) = identifier_token.value;
-
-    tokeniser.pop_mode();
+    let reference_token = tokeniser.advance().require()?;
+    let LinkToReference(identifier) = reference_token.value;
 
     Ok(doc::TextRun {
         text: run,

@@ -112,7 +112,6 @@ pub enum Token<'a> {
     MarkupTextSpace,
     LinkOpeningDelimiter,
     LinkClosingDelimiter,
-    LinkToReferenceJoiner,
     CodeDelimiter,
     //TODO: More rubbish naming
     DelimitedContainerStart,
@@ -123,6 +122,7 @@ pub enum Token<'a> {
     BlockParameterValue(&'a str),
     DataIdentifier(&'a str),
     DataValue(&'a str),
+    LinkToReference(&'a str),
     TitleText(&'a str),
     MarkupText(&'a str),
     RawFragment(&'a str),
@@ -158,7 +158,6 @@ impl Token<'_> {
             Token::MarkupTextSpace => MarkupTextSpace::NAME,
             Token::LinkOpeningDelimiter => LinkOpeningDelimiter::NAME,
             Token::LinkClosingDelimiter => LinkClosingDelimiter::NAME,
-            Token::LinkToReferenceJoiner => LinkToReferenceJoiner::NAME,
             Token::CodeDelimiter => CodeDelimiter::NAME,
             Token::DelimitedContainerStart => DelimitedContainerStart::NAME,
             Token::DelimitedContainerEnd => DelimitedContainerEnd::NAME,
@@ -168,6 +167,7 @@ impl Token<'_> {
             Token::BlockParameterValue(_) => BlockParameterValue::NAME,
             Token::DataIdentifier(_) => DataIdentifier::NAME,
             Token::DataValue(_) => DataValue::NAME,
+            Token::LinkToReference(_) => DataValue::NAME,
             Token::TitleText(_) => TitleText::NAME,
             Token::MarkupText(_) => MarkupText::NAME,
             Token::RawFragment(_) => RawFragment::NAME,
@@ -338,7 +338,6 @@ token!(RawDelimiter);
 token!(MarkupTextSpace);
 token!(LinkOpeningDelimiter);
 token!(LinkClosingDelimiter);
-token!(LinkToReferenceJoiner);
 token!(CodeDelimiter);
 token!(DelimitedContainerStart);
 token!(DelimitedContainerEnd);
@@ -347,6 +346,7 @@ token!(BlockParameterName<'a>(&'a str));
 token!(BlockParameterValue<'a>(&'a str));
 token!(DataIdentifier<'a>(&'a str));
 token!(DataValue<'a>(&'a str));
+token!(LinkToReference<'a>(&'a str));
 token!(TitleText<'a>(&'a str));
 token!(MarkupText<'a>(&'a str));
 token!(RawFragment<'a>(&'a str));
@@ -367,7 +367,6 @@ pub enum ScanMode {
     Title,
     Header,
     StructuredData,
-    LinkReference,
     Code,
 }
 
@@ -381,7 +380,6 @@ impl ScanMode {
             ScanMode::Title => SCAN_TITLE,
             ScanMode::Header => SCAN_HEADER,
             ScanMode::StructuredData => SCAN_STRUCTURED_DATA,
-            ScanMode::LinkReference => SCAN_LINK_REFERENCE,
             ScanMode::Code => SCAN_CODE,
         };
 
@@ -847,8 +845,12 @@ fn match_link_closing_delimiter<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'
     })
 }
 
-fn match_link_to_reference_joiner<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
+fn match_link_to_reference<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
     let mut head = scanner.read_head.clone();
+
+    if !matches!(scanner.last_token, Some(Token::LinkClosingDelimiter)) {
+        return None;
+    }
 
     if head.current == Some(AT_SIGN) {
         head.read_next_byte();
@@ -856,8 +858,23 @@ fn match_link_to_reference_joiner<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch
         return None;
     }
 
+    let i1 = head.index;
+
+    while head.current.is_some_and(|c| {
+        c.is_ascii_alphanumeric() || c == UNDERSCORE || c == DASH || c == FULL_STOP
+    }) {
+        head.read_next_byte();
+    }
+
+    let i2 = head.index;
+    let text = &scanner.input[i1..i2];
+
+    if i1 == i2 {
+        return None;
+    }
+
     Some(ScanMatch {
-        token: Token::LinkToReferenceJoiner,
+        token: Token::LinkToReference(text),
         end: head,
     })
 }
@@ -1204,10 +1221,7 @@ fn match_data_identifier<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
 
     let i1 = head.index;
 
-    if !matches!(
-        scanner.last_token,
-        Some(Token::LineBreak) | Some(Token::LinkToReferenceJoiner)
-    ) {
+    if !matches!(scanner.last_token, Some(Token::LineBreak)) {
         return None;
     }
 
@@ -1515,7 +1529,7 @@ const RAW_DELIMITER: Matcher = match_raw_delimiter;
 const RAW_FRAGMENT: Matcher = match_raw_fragment;
 const LINK_OPENING: Matcher = match_link_opening_delimiter;
 const LINK_CLOSING: Matcher = match_link_closing_delimiter;
-const LINK_TO_REFERENCE_JOINER: Matcher = match_link_to_reference_joiner;
+const LINK_TO_REFERENCE: Matcher = match_link_to_reference;
 const STRONG_DELIMITER: Matcher = match_strong_delimiter;
 const EMPHASIS_DELIMITER: Matcher = match_emphasis_delimiter;
 const STRIKETHROUGH_DELIMITER: Matcher = match_strikethrough_delimiter;
@@ -1560,6 +1574,7 @@ const SCAN_MARKUP: &[Matcher] = &[
     RAW_DELIMITER,
     LINK_OPENING,
     LINK_CLOSING,
+    LINK_TO_REFERENCE,
     STRONG_DELIMITER,
     EMPHASIS_DELIMITER,
     STRIKETHROUGH_DELIMITER,
@@ -1573,6 +1588,7 @@ const SCAN_LIST_MARKUP: &[Matcher] = &[
     RAW_DELIMITER,
     LINK_OPENING,
     LINK_CLOSING,
+    LINK_TO_REFERENCE,
     STRONG_DELIMITER,
     EMPHASIS_DELIMITER,
     STRIKETHROUGH_DELIMITER,
@@ -1608,7 +1624,5 @@ const SCAN_STRUCTURED_DATA: &[Matcher] = &[
     DATA_LIST_SEP,
     DATA_VALUE,
 ];
-
-const SCAN_LINK_REFERENCE: &[Matcher] = &[LINK_TO_REFERENCE_JOINER, DATA_IDENTIFIER];
 
 const SCAN_CODE: &[Matcher] = &[CODE_DELIMITER, CODE_BLOCK];
