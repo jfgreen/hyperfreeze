@@ -83,6 +83,7 @@ pub struct TokenDescription {
     pub position: Position,
 }
 
+//TODO: put in tokens!
 #[derive(Clone, Copy, Debug)]
 pub enum Token<'a> {
     EndOfInput,
@@ -129,6 +130,7 @@ pub enum Token<'a> {
     ListBullet(Indent),
 }
 
+//TODO: put in tokens!
 impl Token<'_> {
     fn name(&self) -> TokenName {
         match self {
@@ -312,47 +314,54 @@ macro_rules! token {
     };
 }
 
-//TODO: tokens! ?
-token!(MetadataDirective);
-token!(ReferencesDirective);
-token!(ParagraphDirective);
-token!(ListDirective);
-token!(CodeDirective);
-token!(InfoContainerDirective);
-token!(EndOfInput);
-token!(TitleDirective);
-token!(SectionDirective);
-token!(SubSectionDirective);
-token!(BlockParametersStart);
-token!(BlockParametersEnd);
-token!(BlockParameterNameValueSeperator);
-token!(BlockBreak);
-token!(DataListSeperator);
-token!(DataKeyValueSeperator);
-token!(TitleTextSpace);
-token!(LineBreak);
-token!(StrongDelimiter);
-token!(EmphasisDelimiter);
-token!(StrikethroughDelimiter);
-token!(RawDelimiter);
-token!(MarkupTextSpace);
-token!(LinkOpeningDelimiter);
-token!(LinkClosingDelimiter);
-token!(CodeDelimiter);
-token!(DelimitedContainerStart);
-token!(DelimitedContainerEnd);
-token!(UnknownDirective<'a>(&'a str));
-token!(BlockParameterName<'a>(&'a str));
-token!(BlockParameterValue<'a>(&'a str));
-token!(DataIdentifier<'a>(&'a str));
-token!(DataValue<'a>(&'a str));
-token!(LinkToReference<'a>(&'a str));
-token!(TitleText<'a>(&'a str));
-token!(MarkupText<'a>(&'a str));
-token!(RawFragment<'a>(&'a str));
-token!(Code<'a>(&'a str));
-token!(Unknown<'a>(&'a str));
-token!(ListBullet(Indent));
+macro_rules! tokens {
+    ($($name:ident $(<$lifetime:lifetime>)? $(($value:ty))?),+ $(,)?) => {
+        $(token!($name $(<$lifetime>)?$(($value))?);)+
+    };
+}
+
+tokens!(
+    MetadataDirective,
+    ReferencesDirective,
+    ParagraphDirective,
+    ListDirective,
+    CodeDirective,
+    InfoContainerDirective,
+    EndOfInput,
+    TitleDirective,
+    SectionDirective,
+    SubSectionDirective,
+    BlockParametersStart,
+    BlockParametersEnd,
+    BlockParameterNameValueSeperator,
+    BlockBreak,
+    DataListSeperator,
+    DataKeyValueSeperator,
+    TitleTextSpace,
+    LineBreak,
+    StrongDelimiter,
+    EmphasisDelimiter,
+    StrikethroughDelimiter,
+    RawDelimiter,
+    MarkupTextSpace,
+    LinkOpeningDelimiter,
+    LinkClosingDelimiter,
+    CodeDelimiter,
+    DelimitedContainerStart,
+    DelimitedContainerEnd,
+    UnknownDirective<'a>(&'a str),
+    BlockParameterName<'a>(&'a str),
+    BlockParameterValue<'a>(&'a str),
+    DataIdentifier<'a>(&'a str),
+    DataValue<'a>(&'a str),
+    LinkToReference<'a>(&'a str),
+    TitleText<'a>(&'a str),
+    MarkupText<'a>(&'a str),
+    RawFragment<'a>(&'a str),
+    Code<'a>(&'a str),
+    Unknown<'a>(&'a str),
+    ListBullet(Indent),
+);
 
 //TODO: Could we make the state push/pop transitions
 // a) Be data driven
