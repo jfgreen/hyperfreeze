@@ -455,10 +455,8 @@ pub struct Position {
 //TODO: Ideally we wouldn't need a copyable read head
 #[derive(Debug, Clone)]
 struct ReadHead<'a> {
-    //TODO: direct usage of curren is a bit meh
-    // TODO: do we even _need_ current, doable via index?
-    current: Option<u8>,
     input_bytes: &'a [u8],
+    //TODO: direct usage of index, column is a bit meh
     index: usize,
     column: u32,
     row: u32,
@@ -466,12 +464,8 @@ struct ReadHead<'a> {
 
 impl<'a> ReadHead<'a> {
     fn new(input: &'a str) -> Self {
-        let input_bytes = input.as_bytes();
-        //TODO: meh
-        //FIXME: Handle empty input strings
         Self {
-            input_bytes,
-            current: Some(input_bytes[0]),
+            input_bytes: input.as_bytes(),
             index: 0,
             column: 0,
             row: 0,
@@ -490,33 +484,47 @@ impl<'a> ReadHead<'a> {
         self.column = position.column;
         self.row = position.row;
         self.index = position.index;
-
-        if self.index < self.input_bytes.len() {
-            self.current = Some(self.input_bytes[self.index]);
-        } else {
-            self.current = None;
-        }
     }
 
     fn read_next_byte(&mut self) {
         let next_index = self.index + 1;
         if next_index < self.input_bytes.len() {
-            if self.current == Some(b'\n') {
+            if self.input_bytes[self.index] == b'\n' {
                 self.column = 0;
                 self.row += 1;
             } else {
                 self.column += 1;
             }
             self.index = next_index;
-            self.current = Some(self.input_bytes[self.index]);
         } else {
             self.index = self.input_bytes.len();
-            self.current = None;
         }
+    }
+
+    fn is_on(&self, byte: u8) -> bool {
+        self.input_bytes.get(self.index).copied() == Some(byte)
     }
 
     fn is_on_bytes(&self, pattern: &[u8]) -> bool {
         self.input_bytes[self.index..].starts_with(pattern)
+    }
+
+    fn is_on_one_of(&self, bytes: &[u8]) -> bool {
+        bytes.into_iter().copied().any(|b| self.is_on(b))
+    }
+
+    fn is_end_of_input(&self) -> bool {
+        self.index >= self.input_bytes.len()
+    }
+
+    fn is_on_ascii_alphanumeric(&self) -> bool {
+        self.input_bytes
+            .get(self.index)
+            .is_some_and(u8::is_ascii_alphanumeric)
+    }
+
+    fn has_input_remaining(&self) -> bool {
+        !self.is_end_of_input()
     }
 }
 
@@ -582,11 +590,11 @@ impl<'a> Scanner<'a> {
         let mut head = start_of_line.clone();
 
         loop {
-            while head.current == Some(SPACE) {
+            while head.is_on(SPACE) {
                 head.read_next_byte();
             }
 
-            if head.current == Some(NEW_LINE) {
+            if head.is_on(NEW_LINE) {
                 head.read_next_byte();
                 start_of_line = head.clone();
             } else {
@@ -626,18 +634,18 @@ fn match_list_bullet<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
 
     let mut space_count = 0;
 
-    while head.current == Some(SPACE) {
+    while head.is_on(SPACE) {
         space_count += 1;
         head.read_next_byte();
     }
 
-    if head.current == Some(DASH) {
+    if head.is_on(DASH) {
         head.read_next_byte();
     } else {
         return None;
     }
 
-    while head.current == Some(SPACE) {
+    while head.is_on(SPACE) {
         head.read_next_byte();
     }
 
@@ -651,11 +659,11 @@ fn match_markup_text_space<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
     let mut head = scanner.read_head.clone();
     let i1 = head.index;
 
-    while head.current == Some(SPACE) {
+    while head.is_on(SPACE) {
         head.read_next_byte();
     }
 
-    let has_new_line = head.current == Some(NEW_LINE);
+    let has_new_line = head.is_on(NEW_LINE);
 
     if has_new_line {
         head.read_next_byte();
@@ -665,11 +673,11 @@ fn match_markup_text_space<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
         return None;
     }
 
-    while head.current == Some(SPACE) {
+    while head.is_on(SPACE) {
         head.read_next_byte();
     }
 
-    if head.current == Some(NEW_LINE) {
+    if head.is_on(NEW_LINE) {
         return None;
     }
 
@@ -679,7 +687,9 @@ fn match_markup_text_space<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
         return None;
     }
 
-    head.current?;
+    if head.is_end_of_input() {
+        return None;
+    }
 
     Some(ScanMatch {
         token: Token::MarkupTextSpace,
@@ -691,11 +701,11 @@ fn match_list_markup_text_space<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'
     let mut head = scanner.read_head.clone();
     let i1 = head.index;
 
-    while head.current == Some(SPACE) {
+    while head.is_on(SPACE) {
         head.read_next_byte();
     }
 
-    let has_new_line = head.current == Some(NEW_LINE);
+    let has_new_line = head.is_on(NEW_LINE);
 
     if has_new_line {
         head.read_next_byte();
@@ -705,11 +715,11 @@ fn match_list_markup_text_space<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'
         return None;
     }
 
-    while head.current == Some(SPACE) {
+    while head.is_on(SPACE) {
         head.read_next_byte();
     }
 
-    if head.current == Some(NEW_LINE) {
+    if head.is_on(NEW_LINE) {
         return None;
     }
 
@@ -719,11 +729,13 @@ fn match_list_markup_text_space<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'
         return None;
     }
 
-    if has_new_line && head.current == Some(DASH) {
+    if has_new_line && head.is_on(DASH) {
         return None;
     }
 
-    head.current?;
+    if head.is_end_of_input() {
+        return None;
+    }
 
     Some(ScanMatch {
         token: Token::MarkupTextSpace,
@@ -734,17 +746,17 @@ fn match_list_markup_text_space<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'
 fn match_title_text_space<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
     let mut head = scanner.read_head.clone();
 
-    if head.current == Some(SPACE) {
+    if head.is_on(SPACE) {
         head.read_next_byte();
     } else {
         return None;
     }
 
-    while head.current == Some(SPACE) {
+    while head.is_on(SPACE) {
         head.read_next_byte();
     }
 
-    let has_text_next = head.current.is_some_and(|c| c != SPACE && c != NEW_LINE);
+    let has_text_next = head.has_input_remaining() && !head.is_on_one_of(&[SPACE, NEW_LINE]);
 
     if !has_text_next {
         return None;
@@ -759,7 +771,7 @@ fn match_title_text_space<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
 fn match_parameters_start<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
     let mut head = scanner.read_head.clone();
 
-    if head.current == Some(LEFT_BRACKET) {
+    if head.is_on(LEFT_BRACKET) {
         head.read_next_byte();
     } else {
         return None;
@@ -774,7 +786,7 @@ fn match_parameters_start<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
 fn match_parameters_end<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
     let mut head = scanner.read_head.clone();
 
-    if head.current == Some(RIGHT_BRACKET) {
+    if head.is_on(RIGHT_BRACKET) {
         head.read_next_byte();
     } else {
         return None;
@@ -789,7 +801,7 @@ fn match_parameters_end<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
 fn match_parameter_name_value_seperator<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
     let mut head = scanner.read_head.clone();
 
-    if head.current == Some(EQUALS) {
+    if head.is_on(EQUALS) {
         head.read_next_byte();
     } else {
         return None;
@@ -804,7 +816,7 @@ fn match_parameter_name_value_seperator<'a>(scanner: &Scanner<'a>) -> Option<Sca
 fn match_raw_delimiter<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
     let mut head = scanner.read_head.clone();
 
-    if head.current == Some(BACKTICK) {
+    if head.is_on(BACKTICK) {
         head.read_next_byte();
     } else {
         return None;
@@ -819,7 +831,7 @@ fn match_raw_delimiter<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
 fn match_link_opening_delimiter<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
     let mut head = scanner.read_head.clone();
 
-    if head.current == Some(LEFT_SQUARE_BRACKET) {
+    if head.is_on(LEFT_SQUARE_BRACKET) {
         head.read_next_byte();
     } else {
         return None;
@@ -834,7 +846,7 @@ fn match_link_opening_delimiter<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'
 fn match_link_closing_delimiter<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
     let mut head = scanner.read_head.clone();
 
-    if head.current == Some(RIGHT_SQUARE_BRACKET) {
+    if head.is_on(RIGHT_SQUARE_BRACKET) {
         head.read_next_byte();
     } else {
         return None;
@@ -853,7 +865,7 @@ fn match_link_to_reference<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
         return None;
     }
 
-    if head.current == Some(AT_SIGN) {
+    if head.is_on(AT_SIGN) {
         head.read_next_byte();
     } else {
         return None;
@@ -861,9 +873,7 @@ fn match_link_to_reference<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
 
     let i1 = head.index;
 
-    while head.current.is_some_and(|c| {
-        c.is_ascii_alphanumeric() || c == UNDERSCORE || c == DASH || c == FULL_STOP
-    }) {
+    while head.is_on_ascii_alphanumeric() || head.is_on_one_of(&[UNDERSCORE, DASH, FULL_STOP]) {
         head.read_next_byte();
     }
 
@@ -883,7 +893,7 @@ fn match_link_to_reference<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
 fn match_strong_delimiter<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
     let mut head = scanner.read_head.clone();
 
-    if head.current == Some(ASTERISK) {
+    if head.is_on(ASTERISK) {
         head.read_next_byte();
     } else {
         return None;
@@ -898,7 +908,7 @@ fn match_strong_delimiter<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
 fn match_emphasis_delimiter<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
     let mut head = scanner.read_head.clone();
 
-    if head.current == Some(UNDERSCORE) {
+    if head.is_on(UNDERSCORE) {
         head.read_next_byte();
     } else {
         return None;
@@ -913,7 +923,7 @@ fn match_emphasis_delimiter<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> 
 fn match_strikethrough_delimiter<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
     let mut head = scanner.read_head.clone();
 
-    if head.current == Some(TILDE) {
+    if head.is_on(TILDE) {
         head.read_next_byte();
     } else {
         return None;
@@ -929,7 +939,7 @@ fn match_code_delimiter<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
     let mut head = scanner.read_head.clone();
 
     for byte in CODE_DELIMITER_PATTERN {
-        if head.current == Some(byte) {
+        if head.is_on(byte) {
             head.read_next_byte();
         } else {
             return None;
@@ -957,7 +967,7 @@ fn match_code_block<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
                 token: Token::Code(text),
                 end: head.position(),
             });
-        } else if head.current.is_none() {
+        } else if head.is_end_of_input() {
             return None;
         }
 
@@ -970,9 +980,9 @@ fn match_blockbreak<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
 
     let mut new_line_count = 0;
     loop {
-        if head.current == Some(SPACE) {
+        if head.is_on(SPACE) {
             // TODO: meh
-        } else if head.current == Some(NEW_LINE) {
+        } else if head.is_on(NEW_LINE) {
             new_line_count += 1;
         } else {
             break;
@@ -993,11 +1003,11 @@ fn match_blockbreak<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
 fn match_linebreak<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
     let mut head = scanner.read_head.clone();
 
-    while head.current == Some(SPACE) {
+    while head.is_on(SPACE) {
         head.read_next_byte();
     }
 
-    if head.current == Some(NEW_LINE) {
+    if head.is_on(NEW_LINE) {
         head.read_next_byte();
         Some(ScanMatch {
             token: Token::LineBreak,
@@ -1011,15 +1021,15 @@ fn match_linebreak<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
 fn match_end_of_input<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
     let mut head = scanner.read_head.clone();
 
-    if head.current == Some(NEW_LINE) {
+    if head.is_on(NEW_LINE) {
         head.read_next_byte();
     }
 
-    while head.current == Some(SPACE) {
+    while head.is_on(SPACE) {
         head.read_next_byte();
     }
 
-    if head.current.is_none() {
+    if head.is_end_of_input() {
         Some(ScanMatch {
             token: Token::EndOfInput,
             end: head.position(),
@@ -1032,7 +1042,7 @@ fn match_end_of_input<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
 fn match_escaped_markup_text<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
     let mut head = scanner.read_head.clone();
 
-    if head.current == Some(BACKSLASH) {
+    if head.is_on(BACKSLASH) {
         head.read_next_byte();
     } else {
         return None;
@@ -1040,7 +1050,7 @@ fn match_escaped_markup_text<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>>
 
     let i1 = head.index;
 
-    if head.current.is_some() {
+    if head.has_input_remaining() {
         head.read_next_byte();
     } else {
         return None;
@@ -1060,10 +1070,7 @@ fn match_raw_fragment<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
 
     let i1 = head.index;
 
-    while head
-        .current
-        .is_some_and(|c| !(c == BACKTICK || c == NEW_LINE))
-    {
+    while head.has_input_remaining() && !head.is_on_one_of(&[BACKTICK, NEW_LINE]) {
         head.read_next_byte();
     }
 
@@ -1085,17 +1092,14 @@ fn match_data_value<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
 
     let i1 = head.index;
 
-    while head
-        .current
-        .is_some_and(|c| !(c == SPACE || c == NEW_LINE || c == VERTICAL_BAR))
-    {
+    while head.has_input_remaining() && !head.is_on_one_of(&[SPACE, NEW_LINE, VERTICAL_BAR]) {
         head.read_next_byte();
     }
 
     let i2 = head.index;
     let text = &scanner.input[i1..i2];
 
-    while head.current.is_some_and(|c| c == SPACE) {
+    while head.is_on(SPACE) {
         head.read_next_byte();
     }
 
@@ -1115,7 +1119,7 @@ fn match_markup_text<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
 
     let i1 = head.index;
 
-    while head.current.is_some_and(|c| !MARKUP_CHARS.contains(&c)) {
+    while head.has_input_remaining() && !head.is_on_one_of(MARKUP_CHARS) {
         head.read_next_byte();
     }
 
@@ -1137,7 +1141,7 @@ fn match_title_text<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
 
     let i1 = head.index;
 
-    while head.current.is_some_and(|c| !MARKUP_CHARS.contains(&c)) {
+    while head.has_input_remaining() && !head.is_on_one_of(MARKUP_CHARS) {
         head.read_next_byte();
     }
 
@@ -1166,9 +1170,7 @@ fn match_parameter_value<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
 
     let i1 = head.index;
 
-    while head.current.is_some_and(|c| {
-        c.is_ascii_alphanumeric() || c == UNDERSCORE || c == DASH || c == FULL_STOP
-    }) {
+    while head.is_on_one_of(&[UNDERSCORE, HASH, FULL_STOP]) || head.is_on_ascii_alphanumeric() {
         head.read_next_byte();
     }
 
@@ -1179,7 +1181,7 @@ fn match_parameter_value<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
         return None;
     }
 
-    while head.current.is_some_and(|c| c == SPACE) {
+    while head.is_on(SPACE) {
         head.read_next_byte();
     }
 
@@ -1194,9 +1196,7 @@ fn match_parameter_name<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
 
     let i1 = head.index;
 
-    while head.current.is_some_and(|c| {
-        c.is_ascii_alphanumeric() || c == UNDERSCORE || c == DASH || c == FULL_STOP
-    }) {
+    while head.is_on_ascii_alphanumeric() || head.is_on_one_of(&[UNDERSCORE, DASH, FULL_STOP]) {
         head.read_next_byte();
     }
 
@@ -1207,7 +1207,7 @@ fn match_parameter_name<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
         return None;
     }
 
-    while head.current.is_some_and(|c| c == SPACE) {
+    while head.is_on(SPACE) {
         head.read_next_byte();
     }
 
@@ -1226,9 +1226,7 @@ fn match_data_identifier<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
         return None;
     }
 
-    while head.current.is_some_and(|c| {
-        c.is_ascii_alphanumeric() || c == UNDERSCORE || c == DASH || c == FULL_STOP
-    }) {
+    while head.is_on_ascii_alphanumeric() || head.is_on_one_of(&[UNDERSCORE, DASH, FULL_STOP]) {
         head.read_next_byte();
     }
 
@@ -1248,17 +1246,17 @@ fn match_data_identifier<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
 fn match_data_key_value_seperator<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
     let mut head = scanner.read_head.clone();
 
-    while head.current.is_some_and(|c| c == SPACE) {
+    while head.is_on(SPACE) {
         head.read_next_byte();
     }
 
-    if head.current == Some(COLON) {
+    if head.is_on(COLON) {
         head.read_next_byte();
     } else {
         return None;
     }
 
-    while head.current.is_some_and(|c| c == SPACE) {
+    while head.is_on(SPACE) {
         head.read_next_byte();
     }
 
@@ -1271,13 +1269,13 @@ fn match_data_key_value_seperator<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch
 fn match_data_list_seperator<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
     let mut head = scanner.read_head.clone();
 
-    if head.current == Some(VERTICAL_BAR) {
+    if head.is_on(VERTICAL_BAR) {
         head.read_next_byte();
     } else {
         return None;
     }
 
-    while head.current.is_some_and(|c| c == SPACE) {
+    while head.is_on(SPACE) {
         head.read_next_byte();
     }
 
@@ -1293,13 +1291,13 @@ fn match_data_directive<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
 
     let i1 = head.index;
 
-    if head.current == Some(AT_SIGN) {
+    if head.is_on(AT_SIGN) {
         head.read_next_byte();
     } else {
         return None;
     }
 
-    while head.current.is_some_and(|c| c.is_ascii_alphanumeric()) {
+    while head.is_on_ascii_alphanumeric() {
         head.read_next_byte();
     }
 
@@ -1323,13 +1321,13 @@ fn match_container_directive<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>>
 
     let i1 = head.index;
 
-    if head.current == Some(EXCLAMATION_MARK) {
+    if head.is_on(EXCLAMATION_MARK) {
         head.read_next_byte();
     } else {
         return None;
     }
 
-    while head.current.is_some_and(|c| c.is_ascii_alphanumeric()) {
+    while head.is_on_ascii_alphanumeric() {
         head.read_next_byte();
     }
 
@@ -1353,13 +1351,13 @@ fn match_block_directive<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
 
     let i1 = head.index;
 
-    if head.current == Some(HASH) {
+    if head.is_on(HASH) {
         head.read_next_byte();
     } else {
         return None;
     }
 
-    while head.current.is_some_and(|c| c.is_ascii_alphanumeric()) {
+    while head.is_on_ascii_alphanumeric() {
         head.read_next_byte();
     }
 
@@ -1382,25 +1380,25 @@ fn match_block_directive<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
 fn match_subsection_directive<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
     let mut head = scanner.read_head.clone();
 
-    if head.current == Some(SLASH) {
+    if head.is_on(SLASH) {
         head.read_next_byte();
     } else {
         return None;
     }
 
-    if head.current == Some(SLASH) {
+    if head.is_on(SLASH) {
         head.read_next_byte();
     } else {
         return None;
     }
 
-    if head.current == Some(SLASH) {
+    if head.is_on(SLASH) {
         head.read_next_byte();
     } else {
         return None;
     }
 
-    while head.current.is_some_and(|c| c == SPACE) {
+    while head.is_on(SPACE) {
         head.read_next_byte();
     }
 
@@ -1413,19 +1411,19 @@ fn match_subsection_directive<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>
 fn match_section_directive<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
     let mut head = scanner.read_head.clone();
 
-    if head.current == Some(SLASH) {
+    if head.is_on(SLASH) {
         head.read_next_byte();
     } else {
         return None;
     }
 
-    if head.current == Some(SLASH) {
+    if head.is_on(SLASH) {
         head.read_next_byte();
     } else {
         return None;
     }
 
-    while head.current.is_some_and(|c| c == SPACE) {
+    while head.is_on(SPACE) {
         head.read_next_byte();
     }
 
@@ -1438,13 +1436,13 @@ fn match_section_directive<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
 fn match_title_directive<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
     let mut head = scanner.read_head.clone();
 
-    if head.current == Some(SLASH) {
+    if head.is_on(SLASH) {
         head.read_next_byte();
     } else {
         return None;
     }
 
-    while head.current.is_some_and(|c| c == SPACE) {
+    while head.is_on(SPACE) {
         head.read_next_byte();
     }
 
@@ -1458,14 +1456,14 @@ fn match_container_start<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
     let mut head = scanner.read_head.clone();
 
     for char in CONTAINER_START_PATTERN {
-        if head.current == Some(char) {
+        if head.is_on(char) {
             head.read_next_byte();
         } else {
             return None;
         }
     }
 
-    while head.current.is_some_and(|c| c == SPACE) {
+    while head.is_on(SPACE) {
         head.read_next_byte();
     }
 
@@ -1479,14 +1477,14 @@ fn match_container_end<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
     let mut head = scanner.read_head.clone();
 
     for char in CONTAINER_END_PATTERN {
-        if head.current == Some(char) {
+        if head.is_on(char) {
             head.read_next_byte();
         } else {
             return None;
         }
     }
 
-    while head.current.is_some_and(|c| c == SPACE) {
+    while head.is_on(SPACE) {
         head.read_next_byte();
     }
 
@@ -1501,7 +1499,7 @@ fn match_unknown<'a>(scanner: &Scanner<'a>) -> ScanMatch<'a> {
 
     let i1 = head.index;
 
-    while head.current.is_some_and(|c| !(c == SPACE || c == NEW_LINE)) {
+    while head.has_input_remaining() && !head.is_on_one_of(&[SPACE, NEW_LINE]) {
         head.read_next_byte();
     }
 
