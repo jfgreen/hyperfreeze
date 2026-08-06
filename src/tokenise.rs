@@ -316,7 +316,7 @@ impl<'a> ReadHead<'a> {
     }
 
     fn is_on_one_of(&self, bytes: &[u8]) -> bool {
-        bytes.into_iter().copied().any(|b| self.is_on(b))
+        bytes.iter().copied().any(|b| self.is_on(b))
     }
 
     fn is_end_of_input(&self) -> bool {

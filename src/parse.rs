@@ -3,9 +3,10 @@ use std::fmt::{self, Display};
 
 use crate::document::{self as doc, Document};
 
+// TODO: Can we solve these lint with a prelude?
+#[allow(clippy::wildcard_imports)]
 use crate::tokenise::*;
 
-// TODO: Can we solve this lint with a prelude?
 #[allow(clippy::wildcard_imports)]
 use crate::token::*;
 
