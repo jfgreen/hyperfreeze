@@ -5,7 +5,7 @@ use crate::document::{self as doc, Document};
 
 // TODO: Can we solve these lint with a prelude?
 #[allow(clippy::wildcard_imports)]
-use crate::tokenise::*;
+use crate::scan::*;
 
 #[allow(clippy::wildcard_imports)]
 use crate::token::*;
