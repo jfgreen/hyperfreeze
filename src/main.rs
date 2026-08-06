@@ -10,6 +10,7 @@ use crate::render::render_html;
 mod document;
 mod parse;
 mod render;
+mod token;
 mod tokenise;
 
 // Implementation ideas we could look into:

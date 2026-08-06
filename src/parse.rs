@@ -3,9 +3,11 @@ use std::fmt::{self, Display};
 
 use crate::document::{self as doc, Document};
 
+use crate::tokenise::*;
+
 // TODO: Can we solve this lint with a prelude?
 #[allow(clippy::wildcard_imports)]
-use crate::tokenise::*;
+use crate::token::*;
 
 #[derive(Debug)]
 pub struct ParseError {
