@@ -83,101 +83,6 @@ pub struct TokenDescription {
     pub position: Position,
 }
 
-//TODO: put in tokens!
-#[derive(Clone, Copy, Debug)]
-pub enum Token<'a> {
-    EndOfInput,
-    TitleDirective,
-    SectionDirective,
-    SubSectionDirective,
-    MetadataDirective,
-    ReferencesDirective,
-    ParagraphDirective,
-    ListDirective,
-    CodeDirective,
-    InfoContainerDirective,
-    BlockParametersStart,
-    BlockParametersEnd,
-    //TODO: This name is meh - just call it what it is: equals sign?
-    BlockParameterNameValueSeperator,
-    BlockBreak,
-    DataListSeperator,
-    DataKeyValueSeperator,
-    TitleTextSpace,
-    LineBreak,
-    StrongDelimiter,
-    EmphasisDelimiter,
-    StrikethroughDelimiter,
-    RawDelimiter,
-    MarkupTextSpace,
-    LinkOpeningDelimiter,
-    LinkClosingDelimiter,
-    CodeDelimiter,
-    //TODO: More rubbish naming
-    DelimitedContainerStart,
-    DelimitedContainerEnd,
-    UnknownDirective(&'a str),
-    Unknown(&'a str),
-    BlockParameterName(&'a str),
-    BlockParameterValue(&'a str),
-    DataIdentifier(&'a str),
-    DataValue(&'a str),
-    LinkToReference(&'a str),
-    TitleText(&'a str),
-    MarkupText(&'a str),
-    RawFragment(&'a str),
-    Code(&'a str),
-    ListBullet(Indent),
-}
-
-//TODO: put in tokens!
-impl Token<'_> {
-    fn name(&self) -> TokenName {
-        match self {
-            Token::EndOfInput => EndOfInput::NAME,
-            Token::TitleDirective => TitleDirective::NAME,
-            Token::SectionDirective => SectionDirective::NAME,
-            Token::SubSectionDirective => SubSectionDirective::NAME,
-            Token::MetadataDirective => MetadataDirective::NAME,
-            Token::ReferencesDirective => ReferencesDirective::NAME,
-            Token::ParagraphDirective => ParagraphDirective::NAME,
-            Token::ListDirective => ListDirective::NAME,
-            Token::CodeDirective => CodeDirective::NAME,
-            Token::InfoContainerDirective => InfoContainerDirective::NAME,
-            Token::BlockParametersStart => BlockParametersStart::NAME,
-            Token::BlockParametersEnd => BlockParametersEnd::NAME,
-            Token::BlockParameterNameValueSeperator => BlockParameterNameValueSeperator::NAME,
-            Token::BlockBreak => BlockBreak::NAME,
-            Token::DataListSeperator => DataListSeperator::NAME,
-            Token::DataKeyValueSeperator => DataKeyValueSeperator::NAME,
-            Token::TitleTextSpace => TitleTextSpace::NAME,
-            Token::LineBreak => LineBreak::NAME,
-            Token::StrongDelimiter => StrongDelimiter::NAME,
-            Token::EmphasisDelimiter => EmphasisDelimiter::NAME,
-            Token::StrikethroughDelimiter => StrikethroughDelimiter::NAME,
-            Token::RawDelimiter => RawDelimiter::NAME,
-            Token::MarkupTextSpace => MarkupTextSpace::NAME,
-            Token::LinkOpeningDelimiter => LinkOpeningDelimiter::NAME,
-            Token::LinkClosingDelimiter => LinkClosingDelimiter::NAME,
-            Token::CodeDelimiter => CodeDelimiter::NAME,
-            Token::DelimitedContainerStart => DelimitedContainerStart::NAME,
-            Token::DelimitedContainerEnd => DelimitedContainerEnd::NAME,
-            Token::UnknownDirective(_) => UnknownDirective::NAME,
-            Token::Unknown(_) => Unknown::NAME,
-            Token::BlockParameterName(_) => BlockParameterName::NAME,
-            Token::BlockParameterValue(_) => BlockParameterValue::NAME,
-            Token::DataIdentifier(_) => DataIdentifier::NAME,
-            Token::DataValue(_) => DataValue::NAME,
-            Token::LinkToReference(_) => LinkToReference::NAME,
-            Token::TitleText(_) => TitleText::NAME,
-            Token::MarkupText(_) => MarkupText::NAME,
-            Token::RawFragment(_) => RawFragment::NAME,
-            Token::Code(_) => Code::NAME,
-            Token::ListBullet(_) => ListBullet::NAME,
-        }
-    }
-}
-
 type Matcher = for<'a> fn(&Scanner<'a>) -> Option<ScanMatch<'a>>;
 
 #[derive(PartialEq, Eq, Debug)]
@@ -314,9 +219,33 @@ macro_rules! token {
     };
 }
 
+macro_rules! token_name_pattern {
+    ($name:ident) => {
+        Token::$name
+    };
+
+    ($name:ident($value:ty)) => {
+        Token::$name(_)
+    };
+}
+
 macro_rules! tokens {
     ($($name:ident $(<$lifetime:lifetime>)? $(($value:ty))?),+ $(,)?) => {
         $(token!($name $(<$lifetime>)?$(($value))?);)+
+
+        #[derive(Clone, Copy, Debug)]
+        //TODO: 'a just happening to match here is meh
+        pub enum Token<'a> {
+            $($name$(($value))?,)+
+        }
+
+        impl Token<'_> {
+            fn name(&self) -> TokenName {
+                match self {
+                    $(token_name_pattern!($name$(($value))?) => $name::NAME,)+
+                }
+            }
+        }
     };
 }
 
