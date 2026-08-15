@@ -271,8 +271,7 @@ impl Position {
 //TODO: Can we flip the script and give scanner a pattern?
 // i.e slowly reinventing regex?
 
-//TODO: Ideally we wouldn't need a copyable read head
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 struct ReadHead<'a> {
     last_token: Option<Token<'a>>,
     input_bytes: &'a [u8],
@@ -401,8 +400,8 @@ impl<'a> Scanner<'a> {
     //TODO: can we avoid skipping on empty line being special handling?
 
     fn skip_while_on_empty_line(&mut self) {
-        let mut start_of_line = ReadHead::new(self.input, self.last_token, self.position);
-        let mut head = start_of_line.clone();
+        let mut head = ReadHead::new(self.input, self.last_token, self.position);
+        let mut start_of_line = head.position();
 
         loop {
             while head.is_on(SPACE) {
@@ -411,13 +410,13 @@ impl<'a> Scanner<'a> {
 
             if head.is_on(NEW_LINE) {
                 head.read_next_byte();
-                start_of_line = head.clone();
+                start_of_line = head.position();
             } else {
                 break;
             }
         }
 
-        self.position = start_of_line.position();
+        self.position = start_of_line;
 
         // while self.is_on_empty_line() {
         //     while self.input[self.read_head.index..].starts_with([SPACE, NEW_LINE]) {
