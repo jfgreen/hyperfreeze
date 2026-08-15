@@ -268,9 +268,13 @@ impl Position {
     }
 }
 
+//TODO: Can we flip the script and give scanner a pattern?
+// i.e slowly reinventing regex?
+
 //TODO: Ideally we wouldn't need a copyable read head
 #[derive(Debug, Clone)]
 struct ReadHead<'a> {
+    last_token: Option<Token<'a>>,
     input_bytes: &'a [u8],
     //TODO: direct usage of index, column is a bit meh
     index: usize,
@@ -279,8 +283,9 @@ struct ReadHead<'a> {
 }
 
 impl<'a> ReadHead<'a> {
-    fn new(input: &'a str, position: Position) -> Self {
+    fn new(input: &'a str, last_token: Option<Token<'a>>, position: Position) -> Self {
         Self {
+            last_token,
             input_bytes: input.as_bytes(),
             index: position.index,
             column: position.column,
@@ -396,7 +401,7 @@ impl<'a> Scanner<'a> {
     //TODO: can we avoid skipping on empty line being special handling?
 
     fn skip_while_on_empty_line(&mut self) {
-        let mut start_of_line = ReadHead::new(self.input, self.position);
+        let mut start_of_line = ReadHead::new(self.input, self.last_token, self.position);
         let mut head = start_of_line.clone();
 
         loop {
@@ -433,10 +438,10 @@ pub struct ScanMatch<'a> {
 }
 
 fn match_list_bullet<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
-    let mut head = ReadHead::new(scanner.input, scanner.position);
+    let mut head = ReadHead::new(scanner.input, scanner.last_token, scanner.position);
 
     if !matches!(
-        scanner.last_token,
+        head.last_token,
         Some(Token::LineBreak | Token::BlockBreak) | None
     ) {
         return None;
@@ -466,7 +471,7 @@ fn match_list_bullet<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
 }
 
 fn match_markup_text_space<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
-    let mut head = ReadHead::new(scanner.input, scanner.position);
+    let mut head = ReadHead::new(scanner.input, scanner.last_token, scanner.position);
     let i1 = head.index;
 
     while head.is_on(SPACE) {
@@ -508,7 +513,7 @@ fn match_markup_text_space<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
 }
 
 fn match_list_markup_text_space<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
-    let mut head = ReadHead::new(scanner.input, scanner.position);
+    let mut head = ReadHead::new(scanner.input, scanner.last_token, scanner.position);
     let i1 = head.index;
 
     while head.is_on(SPACE) {
@@ -554,7 +559,7 @@ fn match_list_markup_text_space<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'
 }
 
 fn match_title_text_space<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
-    let mut head = ReadHead::new(scanner.input, scanner.position);
+    let mut head = ReadHead::new(scanner.input, scanner.last_token, scanner.position);
 
     if head.is_on(SPACE) {
         head.read_next_byte();
@@ -579,7 +584,7 @@ fn match_title_text_space<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
 }
 
 fn match_parameters_start<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
-    let mut head = ReadHead::new(scanner.input, scanner.position);
+    let mut head = ReadHead::new(scanner.input, scanner.last_token, scanner.position);
 
     if head.is_on(LEFT_BRACKET) {
         head.read_next_byte();
@@ -594,7 +599,7 @@ fn match_parameters_start<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
 }
 
 fn match_parameters_end<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
-    let mut head = ReadHead::new(scanner.input, scanner.position);
+    let mut head = ReadHead::new(scanner.input, scanner.last_token, scanner.position);
 
     if head.is_on(RIGHT_BRACKET) {
         head.read_next_byte();
@@ -609,7 +614,7 @@ fn match_parameters_end<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
 }
 
 fn match_parameter_name_value_seperator<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
-    let mut head = ReadHead::new(scanner.input, scanner.position);
+    let mut head = ReadHead::new(scanner.input, scanner.last_token, scanner.position);
 
     if head.is_on(EQUALS) {
         head.read_next_byte();
@@ -624,7 +629,7 @@ fn match_parameter_name_value_seperator<'a>(scanner: &Scanner<'a>) -> Option<Sca
 }
 
 fn match_raw_delimiter<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
-    let mut head = ReadHead::new(scanner.input, scanner.position);
+    let mut head = ReadHead::new(scanner.input, scanner.last_token, scanner.position);
 
     if head.is_on(BACKTICK) {
         head.read_next_byte();
@@ -639,7 +644,7 @@ fn match_raw_delimiter<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
 }
 
 fn match_link_opening_delimiter<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
-    let mut head = ReadHead::new(scanner.input, scanner.position);
+    let mut head = ReadHead::new(scanner.input, scanner.last_token, scanner.position);
 
     if head.is_on(LEFT_SQUARE_BRACKET) {
         head.read_next_byte();
@@ -654,7 +659,7 @@ fn match_link_opening_delimiter<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'
 }
 
 fn match_link_closing_delimiter<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
-    let mut head = ReadHead::new(scanner.input, scanner.position);
+    let mut head = ReadHead::new(scanner.input, scanner.last_token, scanner.position);
 
     if head.is_on(RIGHT_SQUARE_BRACKET) {
         head.read_next_byte();
@@ -669,9 +674,9 @@ fn match_link_closing_delimiter<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'
 }
 
 fn match_link_to_reference<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
-    let mut head = ReadHead::new(scanner.input, scanner.position);
+    let mut head = ReadHead::new(scanner.input, scanner.last_token, scanner.position);
 
-    if !matches!(scanner.last_token, Some(Token::LinkClosingDelimiter)) {
+    if !matches!(head.last_token, Some(Token::LinkClosingDelimiter)) {
         return None;
     }
 
@@ -701,7 +706,7 @@ fn match_link_to_reference<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
 }
 
 fn match_strong_delimiter<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
-    let mut head = ReadHead::new(scanner.input, scanner.position);
+    let mut head = ReadHead::new(scanner.input, scanner.last_token, scanner.position);
 
     if head.is_on(ASTERISK) {
         head.read_next_byte();
@@ -716,7 +721,7 @@ fn match_strong_delimiter<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
 }
 
 fn match_emphasis_delimiter<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
-    let mut head = ReadHead::new(scanner.input, scanner.position);
+    let mut head = ReadHead::new(scanner.input, scanner.last_token, scanner.position);
 
     if head.is_on(UNDERSCORE) {
         head.read_next_byte();
@@ -731,7 +736,7 @@ fn match_emphasis_delimiter<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> 
 }
 
 fn match_strikethrough_delimiter<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
-    let mut head = ReadHead::new(scanner.input, scanner.position);
+    let mut head = ReadHead::new(scanner.input, scanner.last_token, scanner.position);
 
     if head.is_on(TILDE) {
         head.read_next_byte();
@@ -746,7 +751,7 @@ fn match_strikethrough_delimiter<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<
 }
 
 fn match_code_delimiter<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
-    let mut head = ReadHead::new(scanner.input, scanner.position);
+    let mut head = ReadHead::new(scanner.input, scanner.last_token, scanner.position);
 
     for byte in CODE_DELIMITER_PATTERN {
         if head.is_on(byte) {
@@ -763,7 +768,7 @@ fn match_code_delimiter<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
 }
 
 fn match_code_block<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
-    let mut head = ReadHead::new(scanner.input, scanner.position);
+    let mut head = ReadHead::new(scanner.input, scanner.last_token, scanner.position);
 
     let i1 = head.index;
 
@@ -786,7 +791,7 @@ fn match_code_block<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
 }
 
 fn match_blockbreak<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
-    let mut head = ReadHead::new(scanner.input, scanner.position);
+    let mut head = ReadHead::new(scanner.input, scanner.last_token, scanner.position);
 
     let mut new_line_count = 0;
     loop {
@@ -811,7 +816,7 @@ fn match_blockbreak<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
 }
 
 fn match_linebreak<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
-    let mut head = ReadHead::new(scanner.input, scanner.position);
+    let mut head = ReadHead::new(scanner.input, scanner.last_token, scanner.position);
 
     while head.is_on(SPACE) {
         head.read_next_byte();
@@ -829,7 +834,7 @@ fn match_linebreak<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
 }
 
 fn match_end_of_input<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
-    let mut head = ReadHead::new(scanner.input, scanner.position);
+    let mut head = ReadHead::new(scanner.input, scanner.last_token, scanner.position);
 
     if head.is_on(NEW_LINE) {
         head.read_next_byte();
@@ -850,7 +855,7 @@ fn match_end_of_input<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
 }
 
 fn match_escaped_markup_text<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
-    let mut head = ReadHead::new(scanner.input, scanner.position);
+    let mut head = ReadHead::new(scanner.input, scanner.last_token, scanner.position);
 
     if head.is_on(BACKSLASH) {
         head.read_next_byte();
@@ -876,7 +881,7 @@ fn match_escaped_markup_text<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>>
 }
 
 fn match_raw_fragment<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
-    let mut head = ReadHead::new(scanner.input, scanner.position);
+    let mut head = ReadHead::new(scanner.input, scanner.last_token, scanner.position);
 
     let i1 = head.index;
 
@@ -898,7 +903,7 @@ fn match_raw_fragment<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
 }
 
 fn match_data_value<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
-    let mut head = ReadHead::new(scanner.input, scanner.position);
+    let mut head = ReadHead::new(scanner.input, scanner.last_token, scanner.position);
 
     let i1 = head.index;
 
@@ -925,7 +930,7 @@ fn match_data_value<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
 }
 
 fn match_markup_text<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
-    let mut head = ReadHead::new(scanner.input, scanner.position);
+    let mut head = ReadHead::new(scanner.input, scanner.last_token, scanner.position);
 
     let i1 = head.index;
 
@@ -947,7 +952,7 @@ fn match_markup_text<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
 }
 
 fn match_title_text<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
-    let mut head = ReadHead::new(scanner.input, scanner.position);
+    let mut head = ReadHead::new(scanner.input, scanner.last_token, scanner.position);
 
     let i1 = head.index;
 
@@ -969,10 +974,10 @@ fn match_title_text<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
 }
 
 fn match_parameter_value<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
-    let mut head = ReadHead::new(scanner.input, scanner.position);
+    let mut head = ReadHead::new(scanner.input, scanner.last_token, scanner.position);
 
     if !matches!(
-        scanner.last_token,
+        head.last_token,
         Some(Token::BlockParameterNameValueSeperator)
     ) {
         return None;
@@ -1002,7 +1007,7 @@ fn match_parameter_value<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
 }
 
 fn match_parameter_name<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
-    let mut head = ReadHead::new(scanner.input, scanner.position);
+    let mut head = ReadHead::new(scanner.input, scanner.last_token, scanner.position);
 
     let i1 = head.index;
 
@@ -1028,11 +1033,11 @@ fn match_parameter_name<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
 }
 
 fn match_data_identifier<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
-    let mut head = ReadHead::new(scanner.input, scanner.position);
+    let mut head = ReadHead::new(scanner.input, scanner.last_token, scanner.position);
 
     let i1 = head.index;
 
-    if !matches!(scanner.last_token, Some(Token::LineBreak)) {
+    if !matches!(head.last_token, Some(Token::LineBreak)) {
         return None;
     }
 
@@ -1054,7 +1059,7 @@ fn match_data_identifier<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
 }
 
 fn match_data_key_value_seperator<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
-    let mut head = ReadHead::new(scanner.input, scanner.position);
+    let mut head = ReadHead::new(scanner.input, scanner.last_token, scanner.position);
 
     while head.is_on(SPACE) {
         head.read_next_byte();
@@ -1077,7 +1082,7 @@ fn match_data_key_value_seperator<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch
 }
 
 fn match_data_list_seperator<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
-    let mut head = ReadHead::new(scanner.input, scanner.position);
+    let mut head = ReadHead::new(scanner.input, scanner.last_token, scanner.position);
 
     if head.is_on(VERTICAL_BAR) {
         head.read_next_byte();
@@ -1097,7 +1102,7 @@ fn match_data_list_seperator<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>>
 
 //TODO: This should probably be seperate functions for references, metadata
 fn match_data_directive<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
-    let mut head = ReadHead::new(scanner.input, scanner.position);
+    let mut head = ReadHead::new(scanner.input, scanner.last_token, scanner.position);
 
     let i1 = head.index;
 
@@ -1127,7 +1132,7 @@ fn match_data_directive<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
 }
 
 fn match_container_directive<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
-    let mut head = ReadHead::new(scanner.input, scanner.position);
+    let mut head = ReadHead::new(scanner.input, scanner.last_token, scanner.position);
 
     let i1 = head.index;
 
@@ -1157,7 +1162,7 @@ fn match_container_directive<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>>
 
 //TODO: should be seperate match functions?
 fn match_block_directive<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
-    let mut head = ReadHead::new(scanner.input, scanner.position);
+    let mut head = ReadHead::new(scanner.input, scanner.last_token, scanner.position);
 
     let i1 = head.index;
 
@@ -1188,7 +1193,7 @@ fn match_block_directive<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
 }
 
 fn match_subsection_directive<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
-    let mut head = ReadHead::new(scanner.input, scanner.position);
+    let mut head = ReadHead::new(scanner.input, scanner.last_token, scanner.position);
 
     if head.is_on(SLASH) {
         head.read_next_byte();
@@ -1219,7 +1224,7 @@ fn match_subsection_directive<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>
 }
 
 fn match_section_directive<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
-    let mut head = ReadHead::new(scanner.input, scanner.position);
+    let mut head = ReadHead::new(scanner.input, scanner.last_token, scanner.position);
 
     if head.is_on(SLASH) {
         head.read_next_byte();
@@ -1244,7 +1249,7 @@ fn match_section_directive<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
 }
 
 fn match_title_directive<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
-    let mut head = ReadHead::new(scanner.input, scanner.position);
+    let mut head = ReadHead::new(scanner.input, scanner.last_token, scanner.position);
 
     if head.is_on(SLASH) {
         head.read_next_byte();
@@ -1263,7 +1268,7 @@ fn match_title_directive<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
 }
 
 fn match_container_start<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
-    let mut head = ReadHead::new(scanner.input, scanner.position);
+    let mut head = ReadHead::new(scanner.input, scanner.last_token, scanner.position);
 
     for char in CONTAINER_START_PATTERN {
         if head.is_on(char) {
@@ -1284,7 +1289,7 @@ fn match_container_start<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
 }
 
 fn match_container_end<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
-    let mut head = ReadHead::new(scanner.input, scanner.position);
+    let mut head = ReadHead::new(scanner.input, scanner.last_token, scanner.position);
 
     for char in CONTAINER_END_PATTERN {
         if head.is_on(char) {
@@ -1305,7 +1310,7 @@ fn match_container_end<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
 }
 
 fn match_unknown<'a>(scanner: &Scanner<'a>) -> ScanMatch<'a> {
-    let mut head = ReadHead::new(scanner.input, scanner.position);
+    let mut head = ReadHead::new(scanner.input, scanner.last_token, scanner.position);
 
     let i1 = head.index;
 
