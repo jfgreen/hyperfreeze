@@ -8,6 +8,7 @@ use crate::parse::{ParseError, parse_str};
 use crate::render::render_html;
 
 mod document;
+mod head;
 mod parse;
 mod render;
 mod scan;
@@ -17,6 +18,9 @@ mod token;
 // - Stream processing (as opposed loading whole input into memory)
 // - Pre allocate sensible vec capacities?
 // - SIMD prefix matching - byte patterns - 'is_alphanumeric' could be range check?
+// - Some kind of chunked space aware run encoding pre-processing
+//   eg: SPACE{LEADING:0, NL:2, TRAILING: 1} TEXT{all_ascii: TRUE}, SPACE{...}
+//   This could be computed once upfront for each match attempt
 
 // TODO:
 // Features to build

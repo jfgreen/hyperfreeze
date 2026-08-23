@@ -1,6 +1,9 @@
 use std::fmt::{self, Display, Formatter, Write};
 
-use crate::token::{Indent, Token, TokenName, TokenSpec};
+use crate::{
+    head::ReadHead,
+    token::{Indent, Token, TokenName, TokenSpec},
+};
 
 // TODO: Some kind of annotated example that describes the terminology
 // Could even be a doc test?
@@ -271,77 +274,6 @@ impl Position {
 //TODO: Can we flip the script and give scanner a pattern?
 // i.e slowly reinventing regex?
 
-#[derive(Debug)]
-struct ReadHead<'a> {
-    last_token: Option<Token<'a>>,
-    input_bytes: &'a [u8],
-    //TODO: direct usage of index, column is a bit meh
-    index: usize,
-    column: u32,
-    row: u32,
-}
-
-impl<'a> ReadHead<'a> {
-    fn new(input: &'a str, last_token: Option<Token<'a>>, position: Position) -> Self {
-        Self {
-            last_token,
-            input_bytes: input.as_bytes(),
-            index: position.index,
-            column: position.column,
-            row: position.row,
-        }
-    }
-
-    fn position(&self) -> Position {
-        Position {
-            column: self.column,
-            row: self.row,
-            index: self.index,
-        }
-    }
-
-    fn read_next_byte(&mut self) {
-        let next_index = self.index + 1;
-        if next_index < self.input_bytes.len() {
-            if self.input_bytes[self.index] == b'\n' {
-                self.column = 0;
-                self.row += 1;
-            } else {
-                self.column += 1;
-            }
-            self.index = next_index;
-        } else {
-            self.index = self.input_bytes.len();
-        }
-    }
-
-    fn is_on(&self, byte: u8) -> bool {
-        self.input_bytes.get(self.index).copied() == Some(byte)
-    }
-
-    fn is_on_bytes(&self, pattern: &[u8]) -> bool {
-        self.input_bytes[self.index..].starts_with(pattern)
-    }
-
-    fn is_on_one_of(&self, bytes: &[u8]) -> bool {
-        bytes.iter().copied().any(|b| self.is_on(b))
-    }
-
-    fn is_end_of_input(&self) -> bool {
-        self.index >= self.input_bytes.len()
-    }
-
-    fn is_on_ascii_alphanumeric(&self) -> bool {
-        self.input_bytes
-            .get(self.index)
-            .is_some_and(u8::is_ascii_alphanumeric)
-    }
-
-    fn has_input_remaining(&self) -> bool {
-        !self.is_end_of_input()
-    }
-}
-
 // TODO: having stuff split across scanner and head is meh
 // the way this should work is
 // we feed a pattern into the scanner
@@ -471,7 +403,7 @@ fn match_list_bullet<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
 
 fn match_markup_text_space<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
     let mut head = ReadHead::new(scanner.input, scanner.last_token, scanner.position);
-    let i1 = head.index;
+    head.begin_span();
 
     while head.is_on(SPACE) {
         head.read_next_byte();
@@ -495,11 +427,7 @@ fn match_markup_text_space<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
         return None;
     }
 
-    let i2 = head.index;
-
-    if i1 == i2 {
-        return None;
-    }
+    head.end_span()?;
 
     if head.is_end_of_input() {
         return None;
@@ -513,7 +441,7 @@ fn match_markup_text_space<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
 
 fn match_list_markup_text_space<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
     let mut head = ReadHead::new(scanner.input, scanner.last_token, scanner.position);
-    let i1 = head.index;
+    head.begin_span();
 
     while head.is_on(SPACE) {
         head.read_next_byte();
@@ -537,11 +465,7 @@ fn match_list_markup_text_space<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'
         return None;
     }
 
-    let i2 = head.index;
-
-    if i1 == i2 {
-        return None;
-    }
+    head.end_span()?;
 
     if has_new_line && head.is_on(DASH) {
         return None;
@@ -685,18 +609,13 @@ fn match_link_to_reference<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
         return None;
     }
 
-    let i1 = head.index;
+    head.begin_span();
 
     while head.is_on_ascii_alphanumeric() || head.is_on_one_of(&[UNDERSCORE, DASH, FULL_STOP]) {
         head.read_next_byte();
     }
 
-    let i2 = head.index;
-    let text = &scanner.input[i1..i2];
-
-    if i1 == i2 {
-        return None;
-    }
+    let text = head.end_span()?;
 
     Some(ScanMatch {
         token: Token::LinkToReference(text),
@@ -769,14 +688,14 @@ fn match_code_delimiter<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
 fn match_code_block<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
     let mut head = ReadHead::new(scanner.input, scanner.last_token, scanner.position);
 
-    let i1 = head.index;
+    head.begin_span();
 
     loop {
-        let on_start_of_line = head.column == 0;
+        let position = head.position();
+        let on_start_of_line = position.column == 0;
         let prefix_matches = head.is_on_bytes(&CODE_DELIMITER_PATTERN);
         if on_start_of_line && prefix_matches {
-            let i2 = head.index;
-            let text = &scanner.input[i1..i2];
+            let text = head.end_span()?;
             return Some(ScanMatch {
                 token: Token::Code(text),
                 end: head.position(),
@@ -862,7 +781,7 @@ fn match_escaped_markup_text<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>>
         return None;
     }
 
-    let i1 = head.index;
+    head.begin_span();
 
     if head.has_input_remaining() {
         head.read_next_byte();
@@ -870,8 +789,7 @@ fn match_escaped_markup_text<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>>
         return None;
     }
 
-    let i2 = head.index;
-    let text = &scanner.input[i1..i2];
+    let text = head.end_span()?;
 
     Some(ScanMatch {
         token: Token::MarkupText(text),
@@ -882,94 +800,74 @@ fn match_escaped_markup_text<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>>
 fn match_raw_fragment<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
     let mut head = ReadHead::new(scanner.input, scanner.last_token, scanner.position);
 
-    let i1 = head.index;
+    head.begin_span();
 
     while head.has_input_remaining() && !head.is_on_one_of(&[BACKTICK, NEW_LINE]) {
         head.read_next_byte();
     }
 
-    let i2 = head.index;
-    let text = &scanner.input[i1..i2];
+    let text = head.end_span()?;
 
-    if i1 == i2 {
-        None
-    } else {
-        Some(ScanMatch {
-            token: Token::RawFragment(text),
-            end: head.position(),
-        })
-    }
+    Some(ScanMatch {
+        token: Token::RawFragment(text),
+        end: head.position(),
+    })
 }
 
 fn match_data_value<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
     let mut head = ReadHead::new(scanner.input, scanner.last_token, scanner.position);
 
-    let i1 = head.index;
+    head.begin_span();
 
     while head.has_input_remaining() && !head.is_on_one_of(&[SPACE, NEW_LINE, VERTICAL_BAR]) {
         head.read_next_byte();
     }
 
-    let i2 = head.index;
-    let text = &scanner.input[i1..i2];
+    let text = head.end_span()?;
 
     while head.is_on(SPACE) {
         head.read_next_byte();
     }
 
-    if i1 == i2 {
-        None
-    } else {
-        Some(ScanMatch {
-            //TODO: meh amounts of ceremony here
-            token: Token::DataValue(text),
-            end: head.position(),
-        })
-    }
+    Some(ScanMatch {
+        //TODO: meh amounts of ceremony here
+        token: Token::DataValue(text),
+        end: head.position(),
+    })
 }
 
 fn match_markup_text<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
     let mut head = ReadHead::new(scanner.input, scanner.last_token, scanner.position);
 
-    let i1 = head.index;
+    head.begin_span();
 
     while head.has_input_remaining() && !head.is_on_one_of(MARKUP_CHARS) {
         head.read_next_byte();
     }
 
-    let i2 = head.index;
-    let text = &scanner.input[i1..i2];
+    let text = head.end_span()?;
 
-    if i1 == i2 {
-        None
-    } else {
-        Some(ScanMatch {
-            token: Token::MarkupText(text),
-            end: head.position(),
-        })
-    }
+    Some(ScanMatch {
+        token: Token::MarkupText(text),
+        end: head.position(),
+    })
 }
 
 fn match_title_text<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
     let mut head = ReadHead::new(scanner.input, scanner.last_token, scanner.position);
 
-    let i1 = head.index;
+    head.begin_span();
 
     while head.has_input_remaining() && !head.is_on_one_of(MARKUP_CHARS) {
         head.read_next_byte();
     }
 
-    let i2 = head.index;
-    let text = &scanner.input[i1..i2];
+    let text = head.end_span()?;
 
-    if i1 == i2 {
-        None
-    } else {
-        Some(ScanMatch {
-            token: Token::TitleText(text),
-            end: head.position(),
-        })
-    }
+    Some(ScanMatch {
+        token: Token::TitleText(text),
+        end: head.position(),
+    })
 }
 
 fn match_parameter_value<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
@@ -982,18 +880,13 @@ fn match_parameter_value<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
         return None;
     }
 
-    let i1 = head.index;
+    head.begin_span();
 
     while head.is_on_one_of(&[UNDERSCORE, HASH, FULL_STOP]) || head.is_on_ascii_alphanumeric() {
         head.read_next_byte();
     }
 
-    let i2 = head.index;
-    let text = &scanner.input[i1..i2];
-
-    if i1 == i2 {
-        return None;
-    }
+    let text = head.end_span()?;
 
     while head.is_on(SPACE) {
         head.read_next_byte();
@@ -1008,18 +901,13 @@ fn match_parameter_value<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
 fn match_parameter_name<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
     let mut head = ReadHead::new(scanner.input, scanner.last_token, scanner.position);
 
-    let i1 = head.index;
+    head.begin_span();
 
     while head.is_on_ascii_alphanumeric() || head.is_on_one_of(&[UNDERSCORE, DASH, FULL_STOP]) {
         head.read_next_byte();
     }
 
-    let i2 = head.index;
-    let text = &scanner.input[i1..i2];
-
-    if i1 == i2 {
-        return None;
-    }
+    let text = head.end_span()?;
 
     while head.is_on(SPACE) {
         head.read_next_byte();
@@ -1034,7 +922,7 @@ fn match_parameter_name<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
 fn match_data_identifier<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
     let mut head = ReadHead::new(scanner.input, scanner.last_token, scanner.position);
 
-    let i1 = head.index;
+    head.begin_span();
 
     if !matches!(head.last_token, Some(Token::LineBreak)) {
         return None;
@@ -1044,12 +932,7 @@ fn match_data_identifier<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
         head.read_next_byte();
     }
 
-    let i2 = head.index;
-    let text = &scanner.input[i1..i2];
-
-    if i1 == i2 {
-        return None;
-    }
+    let text = head.end_span()?;
 
     Some(ScanMatch {
         token: Token::DataIdentifier(text),
@@ -1103,7 +986,7 @@ fn match_data_list_seperator<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>>
 fn match_data_directive<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
     let mut head = ReadHead::new(scanner.input, scanner.last_token, scanner.position);
 
-    let i1 = head.index;
+    head.begin_span();
 
     if head.is_on(AT_SIGN) {
         head.read_next_byte();
@@ -1115,8 +998,7 @@ fn match_data_directive<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
         head.read_next_byte();
     }
 
-    let i2 = head.index;
-    let text = &scanner.input[i1..i2];
+    let text = head.end_span()?;
 
     let token = match text {
         "@metadata" => Token::MetadataDirective,
@@ -1133,7 +1015,7 @@ fn match_data_directive<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
 fn match_container_directive<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
     let mut head = ReadHead::new(scanner.input, scanner.last_token, scanner.position);
 
-    let i1 = head.index;
+    head.begin_span();
 
     if head.is_on(EXCLAMATION_MARK) {
         head.read_next_byte();
@@ -1145,8 +1027,7 @@ fn match_container_directive<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>>
         head.read_next_byte();
     }
 
-    let i2 = head.index;
-    let text = &scanner.input[i1..i2];
+    let text = head.end_span()?;
 
     let token = match text {
         "!info" => Token::InfoContainerDirective,
@@ -1163,7 +1044,7 @@ fn match_container_directive<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>>
 fn match_block_directive<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
     let mut head = ReadHead::new(scanner.input, scanner.last_token, scanner.position);
 
-    let i1 = head.index;
+    head.begin_span();
 
     if head.is_on(HASH) {
         head.read_next_byte();
@@ -1175,8 +1056,7 @@ fn match_block_directive<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
         head.read_next_byte();
     }
 
-    let i2 = head.index;
-    let text = &scanner.input[i1..i2];
+    let text = head.end_span()?;
 
     let token = match text {
         "#paragraph" => Token::ParagraphDirective,
@@ -1311,14 +1191,14 @@ fn match_container_end<'a>(scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
 fn match_unknown<'a>(scanner: &Scanner<'a>) -> ScanMatch<'a> {
     let mut head = ReadHead::new(scanner.input, scanner.last_token, scanner.position);
 
-    let i1 = head.index;
+    head.begin_span();
 
     while head.has_input_remaining() && !head.is_on_one_of(&[SPACE, NEW_LINE]) {
         head.read_next_byte();
     }
 
-    let i2 = head.index;
-    let text = &scanner.input[i1..i2];
+    //TODO: This is meh
+    let text = head.end_span().unwrap_or("");
 
     ScanMatch {
         token: Token::Unknown(text),
