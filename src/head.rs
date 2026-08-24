@@ -5,7 +5,7 @@ use crate::{scan::Position, token::Token};
 
 //TODO: Can we save some bytes by removing option
 // e.g StartToken
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub struct ReadHead<'a> {
     //FIX:ME make last_token not be pub
     pub last_token: Option<Token<'a>>,

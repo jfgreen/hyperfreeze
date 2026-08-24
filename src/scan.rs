@@ -180,7 +180,7 @@ pub enum ScanMode {
 }
 
 impl ScanMode {
-    fn try_match<'a>(self, scanner: &Scanner<'a>) -> Option<ScanMatch<'a>> {
+    fn try_match<'a>(self, head: ReadHead<'a>) -> Option<ScanMatch<'a>> {
         let matchers = match self {
             ScanMode::ElementStart => SCAN_ELEMENT_START,
             ScanMode::Markup => SCAN_MARKUP,
@@ -192,14 +192,7 @@ impl ScanMode {
             ScanMode::Code => SCAN_CODE,
         };
 
-        //TODO: meh, should pass in a clonable readhead or something?
-        matchers.iter().find_map(|m| {
-            (m)(ReadHead::new(
-                scanner.input,
-                scanner.last_token,
-                scanner.position,
-            ))
-        })
+        matchers.iter().find_map(|m| (m)(head))
     }
 }
 
@@ -315,12 +308,13 @@ impl<'a> Scanner<'a> {
     }
 
     fn scan(&mut self) -> SpannedToken<'a> {
+        let head = ReadHead::new(self.input, self.last_token, self.position);
+
         let scan_match = self
             .mode_stack
             .last()
-            //TODO: passing self is a bit hmm
-            .and_then(|mode| mode.try_match(self))
-            .unwrap_or(match_generic(self));
+            .and_then(|mode| mode.try_match(head))
+            .unwrap_or(match_generic(head));
 
         let start = self.position;
         let end = scan_match.end;
@@ -1139,18 +1133,15 @@ fn match_unknown<'a>(mut head: ReadHead<'a>) -> ScanMatch<'a> {
     }
 }
 
-fn match_generic<'a>(scanner: &Scanner<'a>) -> ScanMatch<'a> {
-    //FIXME: really meh
-    let head = || ReadHead::new(scanner.input, scanner.last_token, scanner.position);
-
-    if let Some(end_of_input) = match_end_of_input(head()) {
+fn match_generic<'a>(head: ReadHead<'a>) -> ScanMatch<'a> {
+    if let Some(end_of_input) = match_end_of_input(head) {
         end_of_input
-    } else if let Some(blockbreak) = match_blockbreak(head()) {
+    } else if let Some(blockbreak) = match_blockbreak(head) {
         blockbreak
-    } else if let Some(linebreak) = match_linebreak(head()) {
+    } else if let Some(linebreak) = match_linebreak(head) {
         linebreak
     } else {
-        match_unknown(head())
+        match_unknown(head)
     }
 }
 
