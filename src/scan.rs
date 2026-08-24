@@ -180,7 +180,7 @@ pub enum ScanMode {
 }
 
 impl ScanMode {
-    fn try_match<'a>(self, head: ReadHead<'a>) -> Option<ScanMatch<'a>> {
+    fn try_match(self, head: ReadHead<'_>) -> Option<ScanMatch<'_>> {
         let matchers = match self {
             ScanMode::ElementStart => SCAN_ELEMENT_START,
             ScanMode::Markup => SCAN_MARKUP,
@@ -369,7 +369,7 @@ pub struct ScanMatch<'a> {
     end: Position,
 }
 
-fn match_list_bullet<'a>(mut head: ReadHead<'a>) -> Option<ScanMatch<'a>> {
+fn match_list_bullet(mut head: ReadHead<'_>) -> Option<ScanMatch<'_>> {
     if !matches!(
         head.last_token,
         Some(Token::LineBreak | Token::BlockBreak) | None
@@ -400,7 +400,7 @@ fn match_list_bullet<'a>(mut head: ReadHead<'a>) -> Option<ScanMatch<'a>> {
     })
 }
 
-fn match_markup_text_space<'a>(mut head: ReadHead<'a>) -> Option<ScanMatch<'a>> {
+fn match_markup_text_space(mut head: ReadHead<'_>) -> Option<ScanMatch<'_>> {
     head.begin_span();
 
     while head.is_on(SPACE) {
@@ -437,7 +437,7 @@ fn match_markup_text_space<'a>(mut head: ReadHead<'a>) -> Option<ScanMatch<'a>> 
     })
 }
 
-fn match_list_markup_text_space<'a>(mut head: ReadHead<'a>) -> Option<ScanMatch<'a>> {
+fn match_list_markup_text_space(mut head: ReadHead<'_>) -> Option<ScanMatch<'_>> {
     head.begin_span();
 
     while head.is_on(SPACE) {
@@ -478,7 +478,7 @@ fn match_list_markup_text_space<'a>(mut head: ReadHead<'a>) -> Option<ScanMatch<
     })
 }
 
-fn match_title_text_space<'a>(mut head: ReadHead<'a>) -> Option<ScanMatch<'a>> {
+fn match_title_text_space(mut head: ReadHead<'_>) -> Option<ScanMatch<'_>> {
     if head.is_on(SPACE) {
         head.read_next_byte();
     } else {
@@ -501,7 +501,7 @@ fn match_title_text_space<'a>(mut head: ReadHead<'a>) -> Option<ScanMatch<'a>> {
     })
 }
 
-fn match_parameters_start<'a>(mut head: ReadHead<'a>) -> Option<ScanMatch<'a>> {
+fn match_parameters_start(mut head: ReadHead<'_>) -> Option<ScanMatch<'_>> {
     if head.is_on(LEFT_BRACKET) {
         head.read_next_byte();
     } else {
@@ -514,7 +514,7 @@ fn match_parameters_start<'a>(mut head: ReadHead<'a>) -> Option<ScanMatch<'a>> {
     })
 }
 
-fn match_parameters_end<'a>(mut head: ReadHead<'a>) -> Option<ScanMatch<'a>> {
+fn match_parameters_end(mut head: ReadHead<'_>) -> Option<ScanMatch<'_>> {
     if head.is_on(RIGHT_BRACKET) {
         head.read_next_byte();
     } else {
@@ -527,7 +527,7 @@ fn match_parameters_end<'a>(mut head: ReadHead<'a>) -> Option<ScanMatch<'a>> {
     })
 }
 
-fn match_parameter_name_value_seperator<'a>(mut head: ReadHead<'a>) -> Option<ScanMatch<'a>> {
+fn match_parameter_name_value_seperator(mut head: ReadHead<'_>) -> Option<ScanMatch<'_>> {
     if head.is_on(EQUALS) {
         head.read_next_byte();
     } else {
@@ -540,7 +540,7 @@ fn match_parameter_name_value_seperator<'a>(mut head: ReadHead<'a>) -> Option<Sc
     })
 }
 
-fn match_raw_delimiter<'a>(mut head: ReadHead<'a>) -> Option<ScanMatch<'a>> {
+fn match_raw_delimiter(mut head: ReadHead<'_>) -> Option<ScanMatch<'_>> {
     if head.is_on(BACKTICK) {
         head.read_next_byte();
     } else {
@@ -553,7 +553,7 @@ fn match_raw_delimiter<'a>(mut head: ReadHead<'a>) -> Option<ScanMatch<'a>> {
     })
 }
 
-fn match_link_opening_delimiter<'a>(mut head: ReadHead<'a>) -> Option<ScanMatch<'a>> {
+fn match_link_opening_delimiter(mut head: ReadHead<'_>) -> Option<ScanMatch<'_>> {
     if head.is_on(LEFT_SQUARE_BRACKET) {
         head.read_next_byte();
     } else {
@@ -566,7 +566,7 @@ fn match_link_opening_delimiter<'a>(mut head: ReadHead<'a>) -> Option<ScanMatch<
     })
 }
 
-fn match_link_closing_delimiter<'a>(mut head: ReadHead<'a>) -> Option<ScanMatch<'a>> {
+fn match_link_closing_delimiter(mut head: ReadHead<'_>) -> Option<ScanMatch<'_>> {
     if head.is_on(RIGHT_SQUARE_BRACKET) {
         head.read_next_byte();
     } else {
@@ -579,7 +579,7 @@ fn match_link_closing_delimiter<'a>(mut head: ReadHead<'a>) -> Option<ScanMatch<
     })
 }
 
-fn match_link_to_reference<'a>(mut head: ReadHead<'a>) -> Option<ScanMatch<'a>> {
+fn match_link_to_reference(mut head: ReadHead<'_>) -> Option<ScanMatch<'_>> {
     if !matches!(head.last_token, Some(Token::LinkClosingDelimiter)) {
         return None;
     }
@@ -604,7 +604,7 @@ fn match_link_to_reference<'a>(mut head: ReadHead<'a>) -> Option<ScanMatch<'a>> 
     })
 }
 
-fn match_strong_delimiter<'a>(mut head: ReadHead<'a>) -> Option<ScanMatch<'a>> {
+fn match_strong_delimiter(mut head: ReadHead<'_>) -> Option<ScanMatch<'_>> {
     if head.is_on(ASTERISK) {
         head.read_next_byte();
     } else {
@@ -617,7 +617,7 @@ fn match_strong_delimiter<'a>(mut head: ReadHead<'a>) -> Option<ScanMatch<'a>> {
     })
 }
 
-fn match_emphasis_delimiter<'a>(mut head: ReadHead<'a>) -> Option<ScanMatch<'a>> {
+fn match_emphasis_delimiter(mut head: ReadHead<'_>) -> Option<ScanMatch<'_>> {
     if head.is_on(UNDERSCORE) {
         head.read_next_byte();
     } else {
@@ -630,7 +630,7 @@ fn match_emphasis_delimiter<'a>(mut head: ReadHead<'a>) -> Option<ScanMatch<'a>>
     })
 }
 
-fn match_strikethrough_delimiter<'a>(mut head: ReadHead<'a>) -> Option<ScanMatch<'a>> {
+fn match_strikethrough_delimiter(mut head: ReadHead<'_>) -> Option<ScanMatch<'_>> {
     if head.is_on(TILDE) {
         head.read_next_byte();
     } else {
@@ -643,7 +643,7 @@ fn match_strikethrough_delimiter<'a>(mut head: ReadHead<'a>) -> Option<ScanMatch
     })
 }
 
-fn match_code_delimiter<'a>(mut head: ReadHead<'a>) -> Option<ScanMatch<'a>> {
+fn match_code_delimiter(mut head: ReadHead<'_>) -> Option<ScanMatch<'_>> {
     for byte in CODE_DELIMITER_PATTERN {
         if head.is_on(byte) {
             head.read_next_byte();
@@ -658,7 +658,7 @@ fn match_code_delimiter<'a>(mut head: ReadHead<'a>) -> Option<ScanMatch<'a>> {
     })
 }
 
-fn match_code_block<'a>(mut head: ReadHead<'a>) -> Option<ScanMatch<'a>> {
+fn match_code_block(mut head: ReadHead<'_>) -> Option<ScanMatch<'_>> {
     head.begin_span();
 
     loop {
@@ -679,7 +679,7 @@ fn match_code_block<'a>(mut head: ReadHead<'a>) -> Option<ScanMatch<'a>> {
     }
 }
 
-fn match_blockbreak<'a>(mut head: ReadHead<'a>) -> Option<ScanMatch<'a>> {
+fn match_blockbreak(mut head: ReadHead<'_>) -> Option<ScanMatch<'_>> {
     let mut new_line_count = 0;
     loop {
         if head.is_on(SPACE) {
@@ -702,7 +702,7 @@ fn match_blockbreak<'a>(mut head: ReadHead<'a>) -> Option<ScanMatch<'a>> {
     }
 }
 
-fn match_linebreak<'a>(mut head: ReadHead<'a>) -> Option<ScanMatch<'a>> {
+fn match_linebreak(mut head: ReadHead<'_>) -> Option<ScanMatch<'_>> {
     while head.is_on(SPACE) {
         head.read_next_byte();
     }
@@ -718,7 +718,7 @@ fn match_linebreak<'a>(mut head: ReadHead<'a>) -> Option<ScanMatch<'a>> {
     }
 }
 
-fn match_end_of_input<'a>(mut head: ReadHead<'a>) -> Option<ScanMatch<'a>> {
+fn match_end_of_input(mut head: ReadHead<'_>) -> Option<ScanMatch<'_>> {
     if head.is_on(NEW_LINE) {
         head.read_next_byte();
     }
@@ -737,7 +737,7 @@ fn match_end_of_input<'a>(mut head: ReadHead<'a>) -> Option<ScanMatch<'a>> {
     }
 }
 
-fn match_escaped_markup_text<'a>(mut head: ReadHead<'a>) -> Option<ScanMatch<'a>> {
+fn match_escaped_markup_text(mut head: ReadHead<'_>) -> Option<ScanMatch<'_>> {
     if head.is_on(BACKSLASH) {
         head.read_next_byte();
     } else {
@@ -760,7 +760,7 @@ fn match_escaped_markup_text<'a>(mut head: ReadHead<'a>) -> Option<ScanMatch<'a>
     })
 }
 
-fn match_raw_fragment<'a>(mut head: ReadHead<'a>) -> Option<ScanMatch<'a>> {
+fn match_raw_fragment(mut head: ReadHead<'_>) -> Option<ScanMatch<'_>> {
     head.begin_span();
 
     while head.has_input_remaining() && !head.is_on_one_of(&[BACKTICK, NEW_LINE]) {
@@ -775,7 +775,7 @@ fn match_raw_fragment<'a>(mut head: ReadHead<'a>) -> Option<ScanMatch<'a>> {
     })
 }
 
-fn match_data_value<'a>(mut head: ReadHead<'a>) -> Option<ScanMatch<'a>> {
+fn match_data_value(mut head: ReadHead<'_>) -> Option<ScanMatch<'_>> {
     head.begin_span();
 
     while head.has_input_remaining() && !head.is_on_one_of(&[SPACE, NEW_LINE, VERTICAL_BAR]) {
@@ -795,7 +795,7 @@ fn match_data_value<'a>(mut head: ReadHead<'a>) -> Option<ScanMatch<'a>> {
     })
 }
 
-fn match_markup_text<'a>(mut head: ReadHead<'a>) -> Option<ScanMatch<'a>> {
+fn match_markup_text(mut head: ReadHead<'_>) -> Option<ScanMatch<'_>> {
     head.begin_span();
 
     while head.has_input_remaining() && !head.is_on_one_of(MARKUP_CHARS) {
@@ -810,7 +810,7 @@ fn match_markup_text<'a>(mut head: ReadHead<'a>) -> Option<ScanMatch<'a>> {
     })
 }
 
-fn match_title_text<'a>(mut head: ReadHead<'a>) -> Option<ScanMatch<'a>> {
+fn match_title_text(mut head: ReadHead<'_>) -> Option<ScanMatch<'_>> {
     head.begin_span();
 
     while head.has_input_remaining() && !head.is_on_one_of(MARKUP_CHARS) {
@@ -825,7 +825,7 @@ fn match_title_text<'a>(mut head: ReadHead<'a>) -> Option<ScanMatch<'a>> {
     })
 }
 
-fn match_parameter_value<'a>(mut head: ReadHead<'a>) -> Option<ScanMatch<'a>> {
+fn match_parameter_value(mut head: ReadHead<'_>) -> Option<ScanMatch<'_>> {
     if !matches!(
         head.last_token,
         Some(Token::BlockParameterNameValueSeperator)
@@ -851,7 +851,7 @@ fn match_parameter_value<'a>(mut head: ReadHead<'a>) -> Option<ScanMatch<'a>> {
     })
 }
 
-fn match_parameter_name<'a>(mut head: ReadHead<'a>) -> Option<ScanMatch<'a>> {
+fn match_parameter_name(mut head: ReadHead<'_>) -> Option<ScanMatch<'_>> {
     head.begin_span();
 
     while head.is_on_ascii_alphanumeric() || head.is_on_one_of(&[UNDERSCORE, DASH, FULL_STOP]) {
@@ -870,7 +870,7 @@ fn match_parameter_name<'a>(mut head: ReadHead<'a>) -> Option<ScanMatch<'a>> {
     })
 }
 
-fn match_data_identifier<'a>(mut head: ReadHead<'a>) -> Option<ScanMatch<'a>> {
+fn match_data_identifier(mut head: ReadHead<'_>) -> Option<ScanMatch<'_>> {
     head.begin_span();
 
     if !matches!(head.last_token, Some(Token::LineBreak)) {
@@ -889,7 +889,7 @@ fn match_data_identifier<'a>(mut head: ReadHead<'a>) -> Option<ScanMatch<'a>> {
     })
 }
 
-fn match_data_key_value_seperator<'a>(mut head: ReadHead<'a>) -> Option<ScanMatch<'a>> {
+fn match_data_key_value_seperator(mut head: ReadHead<'_>) -> Option<ScanMatch<'_>> {
     while head.is_on(SPACE) {
         head.read_next_byte();
     }
@@ -910,7 +910,7 @@ fn match_data_key_value_seperator<'a>(mut head: ReadHead<'a>) -> Option<ScanMatc
     })
 }
 
-fn match_data_list_seperator<'a>(mut head: ReadHead<'a>) -> Option<ScanMatch<'a>> {
+fn match_data_list_seperator(mut head: ReadHead<'_>) -> Option<ScanMatch<'_>> {
     if head.is_on(VERTICAL_BAR) {
         head.read_next_byte();
     } else {
@@ -928,7 +928,7 @@ fn match_data_list_seperator<'a>(mut head: ReadHead<'a>) -> Option<ScanMatch<'a>
 }
 
 //TODO: This should probably be seperate functions for references, metadata
-fn match_data_directive<'a>(mut head: ReadHead<'a>) -> Option<ScanMatch<'a>> {
+fn match_data_directive(mut head: ReadHead<'_>) -> Option<ScanMatch<'_>> {
     head.begin_span();
 
     if head.is_on(AT_SIGN) {
@@ -955,7 +955,7 @@ fn match_data_directive<'a>(mut head: ReadHead<'a>) -> Option<ScanMatch<'a>> {
     })
 }
 
-fn match_container_directive<'a>(mut head: ReadHead<'a>) -> Option<ScanMatch<'a>> {
+fn match_container_directive(mut head: ReadHead<'_>) -> Option<ScanMatch<'_>> {
     head.begin_span();
 
     if head.is_on(EXCLAMATION_MARK) {
@@ -982,7 +982,7 @@ fn match_container_directive<'a>(mut head: ReadHead<'a>) -> Option<ScanMatch<'a>
 }
 
 //TODO: should be seperate match functions?
-fn match_block_directive<'a>(mut head: ReadHead<'a>) -> Option<ScanMatch<'a>> {
+fn match_block_directive(mut head: ReadHead<'_>) -> Option<ScanMatch<'_>> {
     head.begin_span();
 
     if head.is_on(HASH) {
@@ -1010,7 +1010,7 @@ fn match_block_directive<'a>(mut head: ReadHead<'a>) -> Option<ScanMatch<'a>> {
     })
 }
 
-fn match_subsection_directive<'a>(mut head: ReadHead<'a>) -> Option<ScanMatch<'a>> {
+fn match_subsection_directive(mut head: ReadHead<'_>) -> Option<ScanMatch<'_>> {
     if head.is_on(SLASH) {
         head.read_next_byte();
     } else {
@@ -1039,7 +1039,7 @@ fn match_subsection_directive<'a>(mut head: ReadHead<'a>) -> Option<ScanMatch<'a
     })
 }
 
-fn match_section_directive<'a>(mut head: ReadHead<'a>) -> Option<ScanMatch<'a>> {
+fn match_section_directive(mut head: ReadHead<'_>) -> Option<ScanMatch<'_>> {
     if head.is_on(SLASH) {
         head.read_next_byte();
     } else {
@@ -1062,7 +1062,7 @@ fn match_section_directive<'a>(mut head: ReadHead<'a>) -> Option<ScanMatch<'a>> 
     })
 }
 
-fn match_title_directive<'a>(mut head: ReadHead<'a>) -> Option<ScanMatch<'a>> {
+fn match_title_directive(mut head: ReadHead<'_>) -> Option<ScanMatch<'_>> {
     if head.is_on(SLASH) {
         head.read_next_byte();
     } else {
@@ -1079,7 +1079,7 @@ fn match_title_directive<'a>(mut head: ReadHead<'a>) -> Option<ScanMatch<'a>> {
     })
 }
 
-fn match_container_start<'a>(mut head: ReadHead<'a>) -> Option<ScanMatch<'a>> {
+fn match_container_start(mut head: ReadHead<'_>) -> Option<ScanMatch<'_>> {
     for char in CONTAINER_START_PATTERN {
         if head.is_on(char) {
             head.read_next_byte();
@@ -1098,7 +1098,7 @@ fn match_container_start<'a>(mut head: ReadHead<'a>) -> Option<ScanMatch<'a>> {
     })
 }
 
-fn match_container_end<'a>(mut head: ReadHead<'a>) -> Option<ScanMatch<'a>> {
+fn match_container_end(mut head: ReadHead<'_>) -> Option<ScanMatch<'_>> {
     for char in CONTAINER_END_PATTERN {
         if head.is_on(char) {
             head.read_next_byte();
@@ -1117,7 +1117,7 @@ fn match_container_end<'a>(mut head: ReadHead<'a>) -> Option<ScanMatch<'a>> {
     })
 }
 
-fn match_unknown<'a>(mut head: ReadHead<'a>) -> ScanMatch<'a> {
+fn match_unknown(mut head: ReadHead<'_>) -> ScanMatch<'_> {
     head.begin_span();
 
     while head.has_input_remaining() && !head.is_on_one_of(&[SPACE, NEW_LINE]) {
@@ -1133,7 +1133,7 @@ fn match_unknown<'a>(mut head: ReadHead<'a>) -> ScanMatch<'a> {
     }
 }
 
-fn match_generic<'a>(head: ReadHead<'a>) -> ScanMatch<'a> {
+fn match_generic(head: ReadHead<'_>) -> ScanMatch<'_> {
     if let Some(end_of_input) = match_end_of_input(head) {
         end_of_input
     } else if let Some(blockbreak) = match_blockbreak(head) {

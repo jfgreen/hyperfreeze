@@ -40,10 +40,10 @@ impl<'a> ReadHead<'a> {
         let start = self.span_start;
         let end = self.index;
 
-        if start != end {
-            Some(&self.input[start..end])
-        } else {
+        if start == end {
             None
+        } else {
+            Some(&self.input[start..end])
         }
     }
 
