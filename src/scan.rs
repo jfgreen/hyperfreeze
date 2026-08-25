@@ -681,21 +681,26 @@ fn match_code_block(mut head: ReadHead<'_>) -> Option<ScanMatch<'_>> {
 
 fn match_blockbreak(mut head: ReadHead<'_>) -> Option<ScanMatch<'_>> {
     let mut new_line_count = 0;
+    let mut start_of_line = head.position();
+
     loop {
-        if head.is_on(SPACE) {
-            // TODO: meh
-        } else if head.is_on(NEW_LINE) {
+        while head.is_on(SPACE) {
+            head.read_next_byte();
+        }
+
+        if head.is_on(NEW_LINE) {
             new_line_count += 1;
+            head.read_next_byte();
+            start_of_line = head.position();
         } else {
             break;
         }
-        head.read_next_byte();
     }
 
     if new_line_count > 1 {
         Some(ScanMatch {
             token: Token::BlockBreak,
-            end: head.position(),
+            end: start_of_line,
         })
     } else {
         None
@@ -1117,6 +1122,21 @@ fn match_container_end(mut head: ReadHead<'_>) -> Option<ScanMatch<'_>> {
     })
 }
 
+fn match_space(mut head: ReadHead<'_>) -> Option<ScanMatch<'_>> {
+    head.begin_span();
+
+    while head.has_input_remaining() && head.is_on(SPACE) {
+        head.read_next_byte();
+    }
+
+    let text = head.end_span()?;
+
+    Some(ScanMatch {
+        token: Token::Space(text),
+        end: head.position(),
+    })
+}
+
 fn match_unknown(mut head: ReadHead<'_>) -> ScanMatch<'_> {
     head.begin_span();
 
@@ -1140,6 +1160,8 @@ fn match_generic(head: ReadHead<'_>) -> ScanMatch<'_> {
         blockbreak
     } else if let Some(linebreak) = match_linebreak(head) {
         linebreak
+    } else if let Some(space) = match_space(head) {
+        space
     } else {
         match_unknown(head)
     }

@@ -1500,13 +1500,17 @@ mod test {
 
     #[test]
     fn blockbreak_with_extra_whitespace() {
-        let input = content_lines!("Cats  ", "    ", "  whiskers");
+        let input = content_lines!(
+            "The increadible and mostly unbelieveable case of the Cats  ",
+            "    ",
+            "  whiskers",
+        );
 
-        let expected = contents![paragraph![text("Cats")], paragraph![text("whiskers")]];
+        let expected = ErrorKind::UnexpectedBlockStart;
 
         parse_str(input)
-            .expect_successful()
-            .assert_contents_eq(expected);
+            .expect_failure()
+            .assert_error_kind_eq(expected);
     }
 
     #[test]
@@ -2086,11 +2090,11 @@ mod test {
     fn leading_whitespace_on_paragraph_is_ignored() {
         let input = content_lines!("Cat", "", "  cat");
 
-        let expected = contents![paragraph![text("Cat")], paragraph![text("cat")]];
+        let expected = ErrorKind::UnexpectedBlockStart;
 
         parse_str(input)
-            .expect_successful()
-            .assert_contents_eq(expected);
+            .expect_failure()
+            .assert_error_kind_eq(expected);
     }
 
     #[test]

@@ -21,6 +21,7 @@ mod token;
 // - Some kind of chunked space aware run encoding pre-processing
 //   eg: SPACE{LEADING:0, NL:2, TRAILING: 1} TEXT{all_ascii: TRUE}, SPACE{...}
 //   This could be computed once upfront for each match attempt
+// - Try doing away with mode and using last N tokens for context instead?
 
 // TODO:
 // Features to build

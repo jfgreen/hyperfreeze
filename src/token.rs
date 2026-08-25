@@ -129,5 +129,7 @@ tokens!(
     RawFragment<'a>(&'a str),
     Code<'a>(&'a str),
     Unknown<'a>(&'a str),
+    //TODO: Use generic space instead of MarkupSpaceText and TitleTextSpace
+    Space<'a>(&'a str),
     ListBullet(Indent),
 );
