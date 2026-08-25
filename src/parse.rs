@@ -197,6 +197,11 @@ fn parse_document(tokeniser: &mut Tokeniser) -> ParseResult<Document> {
 
     tokeniser.push_mode(ScanMode::ElementStart);
 
+    let next = tokeniser.peek();
+    if next.is::<LineBreak>() || next.is::<BlockBreak>() {
+        tokeniser.advance();
+    }
+
     if tokeniser.peek().is::<MetadataDirective>() {
         metadata = parse_metadata(tokeniser)?;
     }
@@ -2153,6 +2158,47 @@ mod test {
         parse_str(input)
             .expect_failure()
             .assert_error_kind_eq(expected);
+    }
+
+    #[test]
+    fn doc_metadata_with_leading_lines_is_ignored() {
+        let input = document_lines!(
+            "",
+            "@metadata",
+            "tags: cool",
+            "",
+            "/ Doc with leading linebreak"
+        );
+
+        let expected = document! {
+            title: "Doc with leading linebreak",
+            tags: ["cool"],
+        };
+
+        parse_str(input)
+            .expect_successful()
+            .assert_document_eq(expected);
+    }
+
+    #[test]
+    fn doc_metadata_with_leading_blockbreak_is_ignored() {
+        let input = document_lines!(
+            "",
+            "",
+            "@metadata",
+            "tags: cool",
+            "",
+            "/ Doc with leading blockbreak"
+        );
+
+        let expected = document! {
+            title: "Doc with leading blockbreak",
+            tags: ["cool"],
+        };
+
+        parse_str(input)
+            .expect_successful()
+            .assert_document_eq(expected);
     }
 
     #[test]

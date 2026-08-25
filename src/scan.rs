@@ -205,11 +205,8 @@ pub struct Tokeniser<'a> {
 
 impl<'a> Tokeniser<'a> {
     pub fn new(input: &'a str) -> Self {
-        let mut scanner = Scanner::new(input);
-        scanner.skip_while_on_empty_line();
-
         Tokeniser {
-            scanner,
+            scanner: Scanner::new(input),
             peeked: None,
             token_count: 0,
             max_tokens: input.len(),
@@ -328,34 +325,6 @@ impl<'a> Scanner<'a> {
             lexeme,
             span,
         }
-    }
-
-    //TODO: can we avoid skipping on empty line being special handling?
-
-    fn skip_while_on_empty_line(&mut self) {
-        let mut head = ReadHead::new(self.input, self.last_token, self.position);
-        let mut start_of_line = head.position();
-
-        loop {
-            while head.is_on(SPACE) {
-                head.read_next_byte();
-            }
-
-            if head.is_on(NEW_LINE) {
-                head.read_next_byte();
-                start_of_line = head.position();
-            } else {
-                break;
-            }
-        }
-
-        self.position = start_of_line;
-
-        // while self.is_on_empty_line() {
-        //     while self.input[self.read_head.index..].starts_with([SPACE, NEW_LINE]) {
-        //         self.read_head.read_next_byte();
-        //     }
-        // }
     }
 
     pub fn advance_to(&mut self, position: Position) {
