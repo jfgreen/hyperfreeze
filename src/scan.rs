@@ -1136,113 +1136,78 @@ fn match_generic(head: ReadHead<'_>) -> ScanMatch<'_> {
     }
 }
 
-const CONTAINER_START: Matcher = match_container_start;
-const CONTAINER_END: Matcher = match_container_end;
-const SUBSECTION_DIRECTIVE: Matcher = match_subsection_directive;
-const SECTION_DIRECTIVE: Matcher = match_section_directive;
-const TITLE_DIRECTIVE: Matcher = match_title_directive;
-const DATA_DIRECTIVE: Matcher = match_data_directive;
-const CONTAINER_DIRECTIVE: Matcher = match_container_directive;
-const BLOCK_DIRECTIVE: Matcher = match_block_directive;
-const LIST_BULLET: Matcher = match_list_bullet;
-const RAW_DELIMITER: Matcher = match_raw_delimiter;
-const RAW_FRAGMENT: Matcher = match_raw_fragment;
-const LINK_OPENING: Matcher = match_link_opening_delimiter;
-const LINK_CLOSING: Matcher = match_link_closing_delimiter;
-const LINK_TO_REFERENCE: Matcher = match_link_to_reference;
-const STRONG_DELIMITER: Matcher = match_strong_delimiter;
-const EMPHASIS_DELIMITER: Matcher = match_emphasis_delimiter;
-const STRIKETHROUGH_DELIMITER: Matcher = match_strikethrough_delimiter;
-const ESCAPED_TEXT: Matcher = match_escaped_markup_text;
-const MARKUP_TEXT: Matcher = match_markup_text;
-const MARKUP_TEXT_SPACE: Matcher = match_markup_text_space;
-const LIST_MARKUP_TEXT_SPACE: Matcher = match_list_markup_text_space;
-const TITLE_TEXT: Matcher = match_title_text;
-const TITLE_TEXT_SPACE: Matcher = match_title_text_space;
-const PARAMETERS_START: Matcher = match_parameters_start;
-const PARAMETERS_END: Matcher = match_parameters_end;
-const PARAMETER_NAME_VALUE_SEP: Matcher = match_parameter_name_value_seperator;
-const PARAMETER_NAME: Matcher = match_parameter_name;
-const PARAMETER_VALUE: Matcher = match_parameter_value;
-const DATA_IDENTIFIER: Matcher = match_data_identifier;
-const DATA_KEY_VALUE_SEP: Matcher = match_data_key_value_seperator;
-const DATA_LIST_SEP: Matcher = match_data_list_seperator;
-const DATA_VALUE: Matcher = match_data_value;
-const CODE_DELIMITER: Matcher = match_code_delimiter;
-const CODE_BLOCK: Matcher = match_code_block;
-
 const SCAN_ELEMENT_START: &[Matcher] = &[
-    CONTAINER_START,
-    CONTAINER_END,
-    SUBSECTION_DIRECTIVE,
-    SECTION_DIRECTIVE,
-    TITLE_DIRECTIVE,
-    DATA_DIRECTIVE,
-    CONTAINER_DIRECTIVE,
-    BLOCK_DIRECTIVE,
-    LIST_BULLET,
-    RAW_DELIMITER,
-    LINK_OPENING,
-    STRONG_DELIMITER,
-    EMPHASIS_DELIMITER,
-    STRIKETHROUGH_DELIMITER,
-    ESCAPED_TEXT,
-    MARKUP_TEXT,
+    match_container_start,
+    match_container_end,
+    match_subsection_directive,
+    match_section_directive,
+    match_title_directive,
+    match_data_directive,
+    match_container_directive,
+    match_block_directive,
+    match_list_bullet,
+    match_raw_delimiter,
+    match_link_opening_delimiter,
+    match_strong_delimiter,
+    match_emphasis_delimiter,
+    match_strikethrough_delimiter,
+    match_escaped_markup_text,
+    match_markup_text,
 ];
 
 const SCAN_MARKUP: &[Matcher] = &[
-    RAW_DELIMITER,
-    LINK_OPENING,
-    LINK_CLOSING,
-    LINK_TO_REFERENCE,
-    STRONG_DELIMITER,
-    EMPHASIS_DELIMITER,
-    STRIKETHROUGH_DELIMITER,
-    ESCAPED_TEXT,
-    MARKUP_TEXT_SPACE,
-    MARKUP_TEXT,
+    match_raw_delimiter,
+    match_link_opening_delimiter,
+    match_link_closing_delimiter,
+    match_link_to_reference,
+    match_strong_delimiter,
+    match_emphasis_delimiter,
+    match_strikethrough_delimiter,
+    match_escaped_markup_text,
+    match_markup_text_space,
+    match_markup_text,
 ];
 
 const SCAN_LIST_MARKUP: &[Matcher] = &[
-    LIST_BULLET,
-    RAW_DELIMITER,
-    LINK_OPENING,
-    LINK_CLOSING,
-    LINK_TO_REFERENCE,
-    STRONG_DELIMITER,
-    EMPHASIS_DELIMITER,
-    STRIKETHROUGH_DELIMITER,
-    ESCAPED_TEXT,
-    LIST_MARKUP_TEXT_SPACE,
-    MARKUP_TEXT,
+    match_list_bullet,
+    match_raw_delimiter,
+    match_link_opening_delimiter,
+    match_link_closing_delimiter,
+    match_link_to_reference,
+    match_strong_delimiter,
+    match_emphasis_delimiter,
+    match_strikethrough_delimiter,
+    match_escaped_markup_text,
+    match_list_markup_text_space,
+    match_markup_text,
 ];
 
-const SCAN_RAW: &[Matcher] = &[RAW_DELIMITER, RAW_FRAGMENT];
+const SCAN_RAW: &[Matcher] = &[match_raw_delimiter, match_raw_fragment];
 
 const SCAN_TITLE: &[Matcher] = &[
-    SUBSECTION_DIRECTIVE,
-    SECTION_DIRECTIVE,
-    TITLE_DIRECTIVE,
-    TITLE_TEXT_SPACE,
-    TITLE_TEXT,
+    match_subsection_directive,
+    match_section_directive,
+    match_title_directive,
+    match_title_text_space,
+    match_title_text,
 ];
 
 const SCAN_HEADER: &[Matcher] = &[
-    DATA_DIRECTIVE,
-    CONTAINER_DIRECTIVE,
-    BLOCK_DIRECTIVE,
-    PARAMETERS_START,
-    PARAMETERS_END,
-    PARAMETER_NAME_VALUE_SEP,
-    PARAMETER_VALUE,
-    PARAMETER_NAME,
+    match_data_directive,
+    match_container_directive,
+    match_block_directive,
+    match_parameters_start,
+    match_parameters_end,
+    match_parameter_name_value_seperator,
+    match_parameter_value,
+    match_parameter_name,
 ];
 
 const SCAN_STRUCTURED_DATA: &[Matcher] = &[
-    DATA_IDENTIFIER,
-    DATA_KEY_VALUE_SEP,
-    DATA_LIST_SEP,
-    DATA_VALUE,
+    match_data_identifier,
+    match_data_key_value_seperator,
+    match_data_list_seperator,
+    match_data_value,
 ];
 
-const SCAN_CODE: &[Matcher] = &[CODE_DELIMITER, CODE_BLOCK];
+const SCAN_CODE: &[Matcher] = &[match_code_delimiter, match_code_block];
